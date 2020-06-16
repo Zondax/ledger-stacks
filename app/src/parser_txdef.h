@@ -26,7 +26,8 @@ extern "C" {
 #include <stddef.h>
 
 typedef struct {
-    uint64_t method;
+    uint8_t *state;
+    uint16_t len;
 } parser_tx_t;
 
 #ifdef __cplusplus
