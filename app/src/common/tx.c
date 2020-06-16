@@ -61,6 +61,10 @@ void tx_reset() {
     buffering_reset();
 }
 
+void tx_reset_state() {
+    parser_resetState();
+}
+
 uint32_t tx_append(unsigned char *buffer, uint32_t length) {
     return buffering_append(buffer, length);
 }
