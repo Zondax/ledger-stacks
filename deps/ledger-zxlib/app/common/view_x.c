@@ -15,6 +15,7 @@
 *  limitations under the License.
 ********************************************************************************/
 
+#include "app_mode.h"
 #include "view.h"
 #include "view_internal.h"
 #include "actions.h"
@@ -30,6 +31,8 @@
 
 #if defined(TARGET_NANOX)
 
+void h_expert_toggle();
+void h_expert_update();
 void h_review_loop_start();
 void h_review_loop_inside();
 void h_review_loop_end();
@@ -39,13 +42,21 @@ ux_state_t G_ux;
 bolos_ux_params_t G_ux_params;
 uint8_t flow_inside_loop;
 
+
 UX_FLOW_DEF_NOCB(ux_idle_flow_1_step, pbb, { &C_icon_app, MENU_MAIN_APP_LINE1, MENU_MAIN_APP_LINE2,});
-UX_FLOW_DEF_NOCB(ux_idle_flow_3_step, bn, { "Version", APPVERSION, });
-UX_FLOW_DEF_VALID(ux_idle_flow_4_step, pb, os_sched_exit(-1), { &C_icon_dashboard, "Quit",});
+UX_STEP_CB_INIT(ux_idle_flow_2_step, bn,  h_expert_update(), h_expert_toggle(), { "Expert mode:", viewdata.value, });
+UX_FLOW_DEF_NOCB(ux_idle_flow_3_step, bn, { APPVERSION_LINE1, APPVERSION_LINE2, });
+UX_FLOW_DEF_NOCB(ux_idle_flow_4_step, bn, { "Developed by:", "Zondax.ch", });
+UX_FLOW_DEF_NOCB(ux_idle_flow_5_step, bn, { "License:", "Apache 2.0", });
+UX_FLOW_DEF_VALID(ux_idle_flow_6_step, pb, os_sched_exit(-1), { &C_icon_dashboard, "Quit",});
+
 const ux_flow_step_t *const ux_idle_flow [] = {
   &ux_idle_flow_1_step,
+  &ux_idle_flow_2_step,
   &ux_idle_flow_3_step,
   &ux_idle_flow_4_step,
+  &ux_idle_flow_5_step,
+  &ux_idle_flow_6_step,
   FLOW_END_STEP,
 };
 
@@ -60,7 +71,13 @@ UX_STEP_NOCB_INIT(ux_addr_flow_2_step, bnnn_paging,
 UX_STEP_VALID(ux_addr_flow_3_step, pb, h_address_accept(0), { &C_icon_validate_14, "Ok"});
 
 UX_FLOW(
-    ux_addr_flow,
+    ux_addr_flow_no_path,
+    &ux_addr_flow_1_step,
+    &ux_addr_flow_3_step
+);
+
+UX_FLOW(
+    ux_addr_flow_with_path,
     &ux_addr_flow_1_step,
     &ux_addr_flow_2_step,
     &ux_addr_flow_3_step
@@ -184,13 +201,25 @@ void splitValueField() {
     }
 }
 
+void h_expert_toggle() {
+    app_mode_set_expert(!app_mode_expert());
+    ux_flow_init(0, ux_idle_flow, &ux_idle_flow_2_step);
+}
+
+void h_expert_update() {
+    strcpy(viewdata.value, "disabled");
+    if (app_mode_expert()) {
+        strcpy(viewdata.value, "enabled");
+    }
+}
+
 //////////////////////////
 //////////////////////////
 //////////////////////////
 //////////////////////////
 //////////////////////////
 
-void view_idle_show_impl() {
+void view_idle_show_impl(uint8_t item_idx) {
     if(G_ux.stack_count == 0) {
         ux_stack_push();
     }
@@ -202,7 +231,11 @@ void view_address_show_impl() {
     if(G_ux.stack_count == 0) {
         ux_stack_push();
     }
-    ux_flow_init(0, ux_addr_flow, NULL);
+    if (app_mode_expert()) {
+        ux_flow_init(0, ux_addr_flow_with_path, NULL);
+    } else {
+        ux_flow_init(0, ux_addr_flow_no_path, NULL);
+    }
 }
 
 void view_error_show_impl() {

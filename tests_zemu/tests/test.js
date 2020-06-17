@@ -113,8 +113,7 @@ describe('Basic checks', function () {
             const signatureRequest = app.sign("m/44'/5757'/5'/0/0", "1234");
             await Zemu.sleep(2000);
 
-            // Click right + double
-            await sim.clickRight();
+            // Approve
             await sim.clickBoth();
 
             let signature = await signatureRequest;
