@@ -103,6 +103,7 @@ describe('Basic checks', function () {
         }
     });
 
+    // FIXME: Temporarily disabling until we connect the parser to the UI
     test('sign', async function () {
         const sim = new Zemu(APP_PATH);
         try {
