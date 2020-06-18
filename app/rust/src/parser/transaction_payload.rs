@@ -196,6 +196,13 @@ impl<'a> TransactionPayload<'a> {
         };
         Ok(res)
     }
+
+    pub fn is_token_transfer_payload(&self) -> bool {
+        match *self {
+            Self::TokenTransfer(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
