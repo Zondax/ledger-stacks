@@ -17,7 +17,7 @@ pub const MAX_TUPLE_ELEMENTS: usize = 4;
 pub const MAX_LIST_ELEMENTS: usize = 4;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Value<'a> {
     Int(&'a [u8]),
     UInt(&'a [u8]),
