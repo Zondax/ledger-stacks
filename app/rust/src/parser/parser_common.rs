@@ -20,7 +20,7 @@ pub const SIGNATURE_LEN: usize = 65;
 pub const MAX_STACKS_STRING_LEN: usize = 256;
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy, Debug)]
 pub enum AssetInfoId {
     STX = 0,
     FungibleAsset = 1,
@@ -39,7 +39,7 @@ impl AssetInfoId {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AssetInfo<'a> {
     pub address: StacksAddress<'a>,
     pub contract_name: ContractName<'a>,
@@ -141,7 +141,7 @@ impl From<ParserError> for nom::Err<ParserError> {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hash160<'a>(pub &'a [u8]);
 
 impl<'a> Hash160<'a> {
@@ -154,7 +154,7 @@ impl<'a> Hash160<'a> {
 // tag address hash modes as "singlesig" or "multisig" so we can't accidentally construct an
 // invalid spending condition
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HashMode {
     //  A single public key is used. Hash it like a Bitcoin P2PKH output.
     P2PKH = 0x00,
@@ -173,7 +173,7 @@ impl HashMode {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StacksString<'a>(&'a [u8]);
 
 impl<'a> StacksString<'a> {
@@ -191,7 +191,7 @@ impl<'a> StacksString<'a> {
 // contract name with valid charactes being
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ContractName<'a>(pub &'a [u8]);
 
 impl<'a> ContractName<'a> {
@@ -208,7 +208,7 @@ impl<'a> ContractName<'a> {
 // Represent a clarity contract name with valid characters being
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_!?+<>=/*])*$|^[-+=/*]$|^[<>]=?$
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClarityName<'a>(pub &'a [u8]);
 
 impl<'a> ClarityName<'a> {
@@ -225,7 +225,7 @@ impl<'a> ClarityName<'a> {
 // An Asset name
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_!?])*$
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AssetName<'a>(pub &'a [u8]);
 
 impl<'a> AssetName<'a> {
@@ -240,7 +240,7 @@ impl<'a> AssetName<'a> {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StacksAddress<'a>(pub u8, pub Hash160<'a>);
 
 impl<'a> StacksAddress<'a> {
@@ -252,7 +252,7 @@ impl<'a> StacksAddress<'a> {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ContractPrincipal<'a>(StacksAddress<'a>, ContractName<'a>);
 impl<'a> ContractPrincipal<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {

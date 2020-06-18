@@ -1,6 +1,9 @@
 #![no_std]
 #![no_builtins]
 #![allow(dead_code, unused_imports)]
+#[cfg(test)]
+#[macro_use]
+extern crate std;
 
 mod bolos;
 mod parser;
