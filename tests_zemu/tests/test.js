@@ -75,15 +75,15 @@ describe('Basic checks', function () {
             await sim.start(simOptions);
             const app = new BlockstackApp(sim.getTransport());
 
-            const addr = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
+            const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
             console.log(response)
             expect(response.returnCode).toEqual(0x9000);
 
-            const expected_addr_raw = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
-            const expected_addr = "";
+            const expectedPublicKey = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
+            const expectedAddr = "";
 
-            expect(response.publicKey.toString('hex')).toEqual(expected_publicKey);
-            expect(response.address).toEqual(expected_address);
+            expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey);
+            expect(response.address).toEqual(expectedAddr);
         } finally {
             await sim.close();
         }
@@ -105,11 +105,11 @@ describe('Basic checks', function () {
             console.log(response)
             expect(response.returnCode).toEqual(0x9000);
 
-            const expected_publicKey = "0327ae12779c24a1b242fe609d772f4c610a120d0b96a524022864e77a3b869d23";
-            const expected_address = "";
+            const expectedPublicKey = "0327ae12779c24a1b242fe609d772f4c610a120d0b96a524022864e77a3b869d23";
+            const expectedAddr = "";
 
-            expect(response.publicKey.toString('hex')).toEqual(expected_publicKey);
-            expect(response.address).toEqual(expected_address);
+            expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey);
+            expect(response.address).toEqual(expectedAddr);
         } finally {
             await sim.close();
         }
