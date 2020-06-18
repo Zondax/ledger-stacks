@@ -163,7 +163,14 @@ impl<'a> Transaction<'a> {
             TransactionPayload::from_bytes,
         ))(bytes)
         {
-            Ok(tx) => Ok(Self::from(tx.1)),
+            Ok(tx) => {
+                // Note that if a transaction contains a token-transfer payload,
+                // it MUST have only a standard authorization field. It cannot be sponsored.
+                if (tx.1).6.is_token_transfer_payload() && !(tx.1).2.is_standard_auth() {
+                    return Err(ParserError::parser_invalid_transaction_payload);
+                }
+                Ok(Self::from(tx.1))
+            }
             Err(_e) => Err(ParserError::parser_unexpected_error),
         }
     }

@@ -52,6 +52,13 @@ impl<'a> TransactionAuth<'a> {
         let sponsored = TransactionSpendingCondition::from_bytes(standard.0)?;
         Ok((sponsored.0, Self::Sponsored(standard.1, sponsored.1)))
     }
+
+    pub fn is_standard_auth(&self) -> bool {
+        match *self {
+            Self::Standard(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
