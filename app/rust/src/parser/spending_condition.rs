@@ -9,6 +9,7 @@ use crate::parser::parser_common::{Hash160, HashMode, ParserError, SIGNATURE_LEN
 // Signature
 // should by 65-bytes length
 #[repr(C)]
+#[derive(PartialEq, Debug)]
 pub struct MessageSignature<'a>(&'a [u8]);
 
 impl<'a> MessageSignature<'a> {
@@ -19,14 +20,26 @@ impl<'a> MessageSignature<'a> {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum TransactionPublicKeyEncoding {
     // ways we can encode a public key
     Compressed = 0x00,
     Uncompressed = 0x01,
 }
 
+impl TransactionPublicKeyEncoding {
+    // BIPs 141 and 143 make it very clear that P2WPKH scripts may be only derived
+    // from compressed public-keys
+    fn is_valid_hash_mode(&self, mode: HashMode) -> bool {
+        if mode == HashMode::P2WPKH && *self != Self::Compressed {
+            return false;
+        }
+        true
+    }
+}
+
 #[repr(C)]
+#[derive(PartialEq, Debug)]
 pub struct TransactionSpendingCondition<'a> {
     pub hash_mode: HashMode,
     pub signer: Hash160<'a>,
@@ -49,6 +62,11 @@ impl<'a> TransactionSpendingCondition<'a> {
             1 => TransactionPublicKeyEncoding::Uncompressed,
             _ => return Err(nom::Err::Error(ParserError::parser_invalid_pubkey_encoding)),
         };
+
+        if !key_encoding.is_valid_hash_mode(mode) {
+            return Err(nom::Err::Error(ParserError::parser_invalid_pubkey_encoding));
+        }
+
         let signature = MessageSignature::from_bytes(key.0)
             .map_err(|_| ParserError::parser_invalid_signature)?;
         let condition = Self {
@@ -60,5 +78,648 @@ impl<'a> TransactionSpendingCondition<'a> {
             signature: signature.1,
         };
         Ok((signature.0, condition))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Result, Value};
+
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::string::String;
+    use std::string::ToString;
+    use std::vec::Vec;
+
+    #[test]
+    fn test_spending_condition_p2pkh() {
+        // p2pkh
+        let hash = [0x11; 20];
+        let sign_uncompressed = [0xff; 65];
+        let sign_compressed = [0xfe; 65];
+        let spending_condition_p2pkh_uncompressed = TransactionSpendingCondition {
+            signer: Hash160(hash.as_ref()),
+            hash_mode: HashMode::P2PKH,
+            key_encoding: TransactionPublicKeyEncoding::Uncompressed,
+            nonce: 123,
+            fee_rate: 456,
+            signature: MessageSignature(sign_uncompressed.as_ref()),
+        };
+
+        let spending_condition_p2pkh_uncompressed_bytes = vec![
+            // hash mode
+            HashMode::P2PKH as u8,
+            // signer
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            // nonce
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x7b,
+            // fee rate
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0xc8,
+            // key encoding,
+            TransactionPublicKeyEncoding::Uncompressed as u8,
+            // signature
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+        ];
+
+        let spending_condition_p2pkh_compressed = TransactionSpendingCondition {
+            signer: Hash160(hash.as_ref()),
+            hash_mode: HashMode::P2PKH,
+            key_encoding: TransactionPublicKeyEncoding::Compressed,
+            nonce: 345,
+            fee_rate: 456,
+            signature: MessageSignature(sign_compressed.as_ref()),
+        };
+
+        let spending_condition_p2pkh_compressed_bytes = vec![
+            // hash mode
+            HashMode::P2PKH as u8,
+            // signer
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            // nonce
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x59,
+            // fee rate
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0xc8,
+            // key encoding
+            TransactionPublicKeyEncoding::Compressed as u8,
+            // signature
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+        ];
+
+        /*spending_condition_p2pkh_compressed,
+        spending_condition_p2pkh_uncompressed,*/
+
+        let (bytes, compressed) =
+            TransactionSpendingCondition::from_bytes(&spending_condition_p2pkh_compressed_bytes)
+                .unwrap();
+        assert_eq!(spending_condition_p2pkh_compressed, compressed);
+        assert_eq!(bytes.len(), 0);
+
+        let (bytes, uncompressed) =
+            TransactionSpendingCondition::from_bytes(&spending_condition_p2pkh_uncompressed_bytes)
+                .unwrap();
+        assert_eq!(spending_condition_p2pkh_uncompressed, uncompressed);
+        assert_eq!(bytes.len(), 0);
+    }
+
+    #[test]
+    fn test_spending_condition_p2wpkh() {
+        let hash = [0x11; 20];
+        let sign_compressed = [0xfe; 65];
+        let spending_condition_p2pwkh_compressed = TransactionSpendingCondition {
+            signer: Hash160(hash.as_ref()),
+            hash_mode: HashMode::P2WPKH,
+            key_encoding: TransactionPublicKeyEncoding::Compressed,
+            nonce: 345,
+            fee_rate: 567,
+            signature: MessageSignature(sign_compressed.as_ref()),
+        };
+
+        let spending_condition_p2wpkh_compressed_bytes = vec![
+            // hash mode
+            HashMode::P2WPKH as u8,
+            // signer
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            // nonce
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x59,
+            // fee rate
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x02,
+            0x37,
+            // key encoding
+            TransactionPublicKeyEncoding::Compressed as u8,
+            // signature
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+            0xfe,
+        ];
+
+        let (bytes, decoded) =
+            TransactionSpendingCondition::from_bytes(&spending_condition_p2wpkh_compressed_bytes)
+                .unwrap();
+        assert_eq!(bytes.len(), 0);
+        assert_eq!(spending_condition_p2pwkh_compressed, decoded);
+    }
+
+    #[test]
+    fn test_invalid_spending_conditions() {
+        let bad_hash_mode_bytes = vec![
+            // singlesig
+            // hash mode
+            0xff,
+            // signer
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            // nonce
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0xc8,
+            // fee rate
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x02,
+            0x37,
+            // key encoding,
+            TransactionPublicKeyEncoding::Compressed as u8,
+            // signature
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+            0xfd,
+        ];
+        let bad_hash_mode = TransactionSpendingCondition::from_bytes(&bad_hash_mode_bytes);
+        assert!(bad_hash_mode.is_err());
+
+        let bad_p2wpkh_uncompressed_bytes = vec![
+            // hash mode
+            HashMode::P2WPKH as u8,
+            // signer
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            0x11,
+            // nonce
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x7b,
+            // fee rate
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x02,
+            0x37,
+            // public key uncompressed
+            TransactionPublicKeyEncoding::Uncompressed as u8,
+            // signature
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+        ];
+        let bad_signature =
+            TransactionSpendingCondition::from_bytes(&bad_p2wpkh_uncompressed_bytes);
+        assert!(bad_signature.is_err());
     }
 }
