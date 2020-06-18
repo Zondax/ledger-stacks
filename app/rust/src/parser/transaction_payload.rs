@@ -17,6 +17,7 @@ use crate::parser::value::{Value, BIG_INT_SIZE};
 pub const MAX_NUM_ARGS: u32 = 10;
 
 #[repr(u8)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenTranferType {
     Stx = 0x00,
     Fungible,
@@ -35,13 +36,14 @@ impl TokenTranferType {
 }
 
 #[repr(C)]
-pub enum TokeTransferPayload<'a> {
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenTransferPayload<'a> {
     StxToken(StacksAddress<'a>, u64),
     FungibleToken(AssetInfo<'a>, StacksAddress<'a>, u64),
-    NonFungibleToken(AssetInfo<'a>, AssetName<'a>, StacksAddress<'a>),
+    NonFungibleToken(AssetInfo<'a>, ClarityName<'a>, StacksAddress<'a>),
 }
 
-impl<'a> TokeTransferPayload<'a> {
+impl<'a> TokenTransferPayload<'a> {
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let id = le_u8(bytes)?;
         let res = match TokenTranferType::from_u8(id.1)? {
@@ -60,7 +62,7 @@ impl<'a> TokeTransferPayload<'a> {
             TokenTranferType::NonFungible => {
                 let values = permutation((
                     AssetInfo::from_bytes,
-                    AssetName::from_bytes,
+                    ClarityName::from_bytes,
                     StacksAddress::from_bytes,
                 ))(id.0)?;
                 (
@@ -75,6 +77,7 @@ impl<'a> TokeTransferPayload<'a> {
 
 /// A transaction that calls into a smart contract
 #[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransactionContractCall<'a> {
     address: StacksAddress<'a>,
     contract_name: ContractName<'a>,
@@ -103,7 +106,7 @@ impl<'a> TransactionContractCall<'a> {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Arguments<'a> {
     len: usize,
     args: [Option<Value<'a>>; MAX_NUM_ARGS as usize],
@@ -133,6 +136,7 @@ impl<'a> Arguments<'a> {
 
 /// A transaction that instantiates a smart contract
 #[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransactionSmartContract<'a> {
     pub name: ContractName<'a>,
     pub code_body: StacksString<'a>,
@@ -166,8 +170,9 @@ impl TransactionPayloadId {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TransactionPayload<'a> {
-    TokenTransfer(TokeTransferPayload<'a>),
+    TokenTransfer(TokenTransferPayload<'a>),
     ContractCall(TransactionContractCall<'a>),
     SmartContract(TransactionSmartContract<'a>),
 }
@@ -177,7 +182,7 @@ impl<'a> TransactionPayload<'a> {
         let id = le_u8(bytes)?;
         let res = match TransactionPayloadId::from_u8(id.1)? {
             TransactionPayloadId::TokenTransfer => {
-                let token = TokeTransferPayload::from_bytes(id.0)?;
+                let token = TokenTransferPayload::from_bytes(id.0)?;
                 (token.0, Self::TokenTransfer(token.1))
             }
             TransactionPayloadId::ContractCall => {
@@ -190,5 +195,82 @@ impl<'a> TransactionPayload<'a> {
             }
         };
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    extern crate std;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Result, Value};
+
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::string::String;
+    use std::string::ToString;
+    use std::vec::Vec;
+
+    #[test]
+    fn test_transaction_payload_tokens() {
+        let hash = [0xff; 20];
+        let hash160 = Hash160(hash.as_ref());
+        let contract_name = ContractName("contract-name".as_bytes().as_ref());
+        let asset_name = ClarityName("hello-asset".as_bytes().as_ref());
+        let asset_info = AssetInfo {
+            address: StacksAddress(1, Hash160([1u8; 20].as_ref())),
+            contract_name: contract_name.clone(),
+            asset_name: asset_name.clone(),
+        };
+        let token = TokenTransferPayload::StxToken(StacksAddress(1, hash160.clone()), 123);
+        let tt_stx = TransactionPayload::TokenTransfer(token);
+
+        let bytes: Vec<u8> = vec![
+            0, 0, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 123,
+        ];
+
+        let mut parsed = TransactionPayload::from_bytes(&bytes).unwrap().1;
+        assert_eq!(tt_stx, parsed);
+        let token =
+            TokenTransferPayload::FungibleToken(asset_info, StacksAddress(2, hash160.clone()), 123);
+        let tt_fungible = TransactionPayload::TokenTransfer(token);
+
+        let bytes_fungible: Vec<u8> = vec![
+            0, 1, // asset_info stack address
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, // asset-info contract name
+            13, 99, 111, 110, 116, 114, 97, 99, 116, 45, 110, 97, 109, 101,
+            // asset-info - asset_name
+            11, 104, 101, 108, 108, 111, 45, 97, 115, 115, 101, 116, // stacks-address
+            2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 123,
+        ];
+        parsed = TransactionPayload::from_bytes(&bytes_fungible).unwrap().1;
+        assert_eq!(tt_fungible, parsed);
+
+        let token = TokenTransferPayload::NonFungibleToken(
+            asset_info,
+            asset_name,
+            StacksAddress(2, hash160.clone()),
+        );
+        let tt_nonfungible = TransactionPayload::TokenTransfer(token);
+
+        let bytes_nonfungible: Vec<u8> = vec![
+            0, 2, // asset_info stack address
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, // asset-info contract name
+            13, 99, 111, 110, 116, 114, 97, 99, 116, 45, 110, 97, 109, 101,
+            // asset-info - asset_name
+            11, 104, 101, 108, 108, 111, 45, 97, 115, 115, 101, 116, // asset-name2
+            11, 104, 101, 108, 108, 111, 45, 97, 115, 115, 101, 116, // stacks-address
+            2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255,
+        ];
+        parsed = TransactionPayload::from_bytes(&bytes_nonfungible)
+            .unwrap()
+            .1;
+
+        assert_eq!(tt_nonfungible, parsed);
     }
 }
