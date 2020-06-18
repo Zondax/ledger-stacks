@@ -29,7 +29,7 @@ impl PostConditionPrincipalId {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum PostConditionPrincipal<'a> {
     Origin,
     Standard(StacksAddress<'a>),
@@ -61,7 +61,7 @@ impl<'a> PostConditionPrincipal<'a> {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy, Debug)]
 pub enum FungibleConditionCode {
     SentEq = 0x01,
     SentGt = 0x02,
@@ -94,7 +94,7 @@ impl FungibleConditionCode {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy, Debug)]
 pub enum NonfungibleConditionCode {
     Sent = 0x10,
     NotSent = 0x11,
@@ -128,9 +128,9 @@ pub enum PostConditionType {
 impl PostConditionType {
     pub fn from_u8(b: u8) -> Option<Self> {
         match b {
-            1 => Some(Self::STX),
-            2 => Some(Self::FungibleToken),
-            3 => Some(Self::NonFungibleToken),
+            0 => Some(Self::STX),
+            1 => Some(Self::FungibleToken),
+            2 => Some(Self::NonFungibleToken),
             _ => None,
         }
     }
@@ -138,7 +138,7 @@ impl PostConditionType {
 
 /// Post-condition on a transaction
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TransactionPostCondition<'a> {
     STX(PostConditionPrincipal<'a>, FungibleConditionCode, u64),
     Fungible(
@@ -150,7 +150,7 @@ pub enum TransactionPostCondition<'a> {
     Nonfungible(
         PostConditionPrincipal<'a>,
         AssetInfo<'a>,
-        AssetName<'a>, // Blocstacks uses her a Value, check this
+        AssetName<'a>, // BlockStacks uses  Value, but the documentation says it is an asset-name
         NonfungibleConditionCode,
     ),
 }
@@ -190,4 +190,100 @@ impl<'a> TransactionPostCondition<'a> {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod test {
+    extern crate std;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Result, Value};
+
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::string::String;
+    use std::string::ToString;
+    use std::vec::Vec;
+
+    #[test]
+    fn test_stx_postcondition() {
+        let hash = [1u8; 20];
+        let hash160 = Hash160(hash.as_ref());
+        let principal1 = PostConditionPrincipal::Standard(StacksAddress(1, hash160.clone()));
+        let stx_pc1 =
+            TransactionPostCondition::STX(principal1.clone(), FungibleConditionCode::SentGt, 12345);
+        let bytes: Vec<u8> = vec![
+            0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0,
+            0, 48, 57,
+        ];
+        let parsed1 = TransactionPostCondition::from_bytes(&bytes).unwrap().1;
+        assert_eq!(stx_pc1, parsed1);
+
+        let principal2 = PostConditionPrincipal::Contract(
+            StacksAddress(2, Hash160([2u8; 20].as_ref())),
+            ContractName("hello-world".as_bytes().as_ref()),
+        );
+        let stx_pc2 =
+            TransactionPostCondition::STX(principal2, FungibleConditionCode::SentGt, 12345);
+        let bytes2: Vec<u8> = vec![
+            0, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 11, 104, 101, 108,
+            108, 111, 45, 119, 111, 114, 108, 100, 2, 0, 0, 0, 0, 0, 0, 48, 57,
+        ];
+
+        let parsed2 = TransactionPostCondition::from_bytes(&bytes2).unwrap().1;
+        assert_eq!(stx_pc2, parsed2);
+    }
+
+    #[test]
+    fn test_fungible_postcondition() {
+        let hash = [0x01; 20];
+        let hash160 = Hash160(hash.as_ref());
+        let addr = StacksAddress(1, hash160.clone());
+        let contract_name = ContractName("contract-name".as_bytes().as_ref());
+        let asset_name = ClarityName("hello-asset".as_bytes().as_ref());
+        let principal = PostConditionPrincipal::Standard(addr.clone());
+        let asset_info = AssetInfo {
+            address: StacksAddress(1, Hash160([0xff; 20].as_ref())),
+            contract_name: contract_name.clone(),
+            asset_name: asset_name.clone(),
+        };
+        let fungible_pc = TransactionPostCondition::Fungible(
+            principal,
+            asset_info.clone(),
+            FungibleConditionCode::SentGt,
+            23456,
+        );
+        let bytes = vec![
+            1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            13, 99, 111, 110, 116, 114, 97, 99, 116, 45, 110, 97, 109, 101, 11, 104, 101, 108, 108,
+            111, 45, 97, 115, 115, 101, 116, 2, 0, 0, 0, 0, 0, 0, 91, 160,
+        ];
+
+        let parsed = TransactionPostCondition::from_bytes(&bytes).unwrap().1;
+        assert_eq!(fungible_pc, parsed);
+
+        let principal2 = PostConditionPrincipal::Contract(
+            StacksAddress(2, Hash160([2u8; 20].as_ref())),
+            ContractName("hello-world".as_bytes().as_ref()),
+        );
+        let fungible_pc2 = TransactionPostCondition::Fungible(
+            principal2,
+            asset_info.clone(),
+            FungibleConditionCode::SentGt,
+            23456,
+        );
+        let bytes2 = vec![
+            1, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 11, 104, 101, 108,
+            108, 111, 45, 119, 111, 114, 108, 100, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 13, 99, 111, 110, 116, 114, 97,
+            99, 116, 45, 110, 97, 109, 101, 11, 104, 101, 108, 108, 111, 45, 97, 115, 115, 101,
+            116, 2, 0, 0, 0, 0, 0, 0, 91, 160,
+        ];
+        let parsed2 = TransactionPostCondition::from_bytes(&bytes2).unwrap().1;
+        assert_eq!(fungible_pc2, parsed2);
+    }
+
+    #[test]
+    fn test_nonfungible_postcondition() {}
 }
