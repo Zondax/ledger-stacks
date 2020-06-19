@@ -32,7 +32,9 @@ pub extern "C" fn _parser_init(
         return ParserError::parser_no_memory_for_state as u32;
     }
     unsafe {
-        *alloc_size = core::mem::size_of::<Transaction>() as u16;
+        let size = core::mem::size_of::<Transaction>() as u16;
+        // Aproximate this size to the nearest(roof) multiple of 4
+        *alloc_size = size + (4 - size.rem_euclid(4));
     }
     parser_init_context(ctx, buffer, bufferSize) as u32
 }
