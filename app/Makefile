@@ -111,12 +111,14 @@ DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_LIGHT_16PX
 
 DEFINES       += HAVE_UX_FLOW
 
-#SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
-SDK_SOURCE_PATH  += lib_ux
+DEFINES       += HAVE_BLE
+DEFINES       += HAVE_BLE_APDU BLE_COMMAND_TIMEOUT_MS=2000
+
+SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
 else
 # Assume Nano S
 DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
-DEFINES       += HAVE_BOLOS_UX COMPLIANCE_UX_160 HAVE_UX_LEGACY HAVE_UX_FLOW
+DEFINES       += COMPLIANCE_UX_160 HAVE_UX_LEGACY HAVE_UX_FLOW
 endif
 
 # X specific
@@ -164,8 +166,6 @@ APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/src
 APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/app/common
 
 SDK_SOURCE_PATH += lib_stusb lib_stusb_impl
-
-#SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
 SDK_SOURCE_PATH  += lib_ux
 
 rust:
