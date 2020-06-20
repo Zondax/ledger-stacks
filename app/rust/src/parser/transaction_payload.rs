@@ -154,16 +154,12 @@ impl<'a> TransactionSmartContract<'a> {
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum TransactionPayloadId {
     TokenTransfer = 0,
-    SmartContract = 1,
-    ContractCall = 2,
 }
 
 impl TransactionPayloadId {
     fn from_u8(v: u8) -> Result<Self, ParserError> {
         match v {
             0 => Ok(Self::TokenTransfer),
-            1 => Ok(Self::SmartContract),
-            2 => Ok(Self::ContractCall),
             _ => Err(ParserError::parser_invalid_transaction_payload),
         }
     }
@@ -173,8 +169,6 @@ impl TransactionPayloadId {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TransactionPayload<'a> {
     TokenTransfer(TokenTransferPayload<'a>),
-    ContractCall(TransactionContractCall<'a>),
-    SmartContract(TransactionSmartContract<'a>),
 }
 
 impl<'a> TransactionPayload<'a> {
@@ -185,23 +179,12 @@ impl<'a> TransactionPayload<'a> {
                 let token = TokenTransferPayload::from_bytes(id.0)?;
                 (token.0, Self::TokenTransfer(token.1))
             }
-            TransactionPayloadId::ContractCall => {
-                let call = TransactionContractCall::from_bytes(id.0)?;
-                (call.0, Self::ContractCall(call.1))
-            }
-            TransactionPayloadId::SmartContract => {
-                let contract = TransactionSmartContract::from_bytes(id.0)?;
-                (contract.0, Self::SmartContract(contract.1))
-            }
         };
         Ok(res)
     }
 
     pub fn is_token_transfer_payload(&self) -> bool {
-        match *self {
-            Self::TokenTransfer(_) => true,
-            _ => false,
-        }
+        true
     }
 }
 
