@@ -1,4 +1,5 @@
 #![allow(non_camel_case_types, non_snake_case)]
+#![allow(clippy::cast_ptr_alignment)]
 
 use crate::parser::{
     parser_common::ParserError, post_condition::TransactionPostCondition, transaction::Transaction,
@@ -55,7 +56,7 @@ fn parser_init_context(
 
         (*ctx).buffer = buffer;
         (*ctx).bufferLen = bufferSize;
-        return ParserError::parser_ok;
+        ParserError::parser_ok
     }
 }
 
@@ -65,14 +66,15 @@ pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut par
         let data = core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _);
         match Transaction::from_bytes(data) {
             Ok(transaction) => {
+                let len = core::mem::size_of::<Transaction>();
                 if parser_state.is_null()
                     || (*parser_state).state.is_null()
-                    || (*parser_state).len < core::mem::size_of::<Transaction>() as _
+                    || ((*parser_state).len as usize) < len
                 {
                     return ParserError::parser_no_memory_for_state as u32;
                 }
                 let tx = &transaction as *const _ as *const u8;
-                core::ptr::copy_nonoverlapping(tx, (*parser_state).state, (*parser_state).len as _);
+                core::ptr::copy_nonoverlapping(tx, (*parser_state).state, len);
                 ParserError::parser_ok as u32
             }
             Err(e) => e as u32,
@@ -95,7 +97,7 @@ pub extern "C" fn _getNumItems(_ctx: *const parser_context_t, tx_t: *const parse
         if let Some(_tx) = ((*tx_t).state as *const Transaction).as_ref() {
             return 0;
         }
-        return 0;
+        0
     }
 }
 
@@ -118,7 +120,7 @@ pub extern "C" fn _getItem(
         if tx_t.is_null() || (*tx_t).state.is_null() {
             return ParserError::parser_context_mismatch as _;
         }
-        if let Some(tx) = ((*tx_t).state as *const Transaction).as_ref() {
+        if let Some(tx) = ((*tx_t).state as *const u8 as *const Transaction).as_ref() {
             return match tx.get_item(displayIdx, key, value, pageIdx) {
                 Ok(page) => {
                     *pageCount = page;

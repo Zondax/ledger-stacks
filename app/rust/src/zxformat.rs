@@ -285,13 +285,11 @@ mod test {
     fn test_paging_string() {
         let inValue = b"abcdabcdabcd";
         let mut outValue = [0u8; 6];
-        let mut idx = 0;
         // the pageString will left over the last byte
         // as a string terminator, so we make chunks of outValue.len() - 1
-        for chunk in inValue.chunks(outValue.len() - 1) {
-            pageString(outValue.as_mut(), inValue.as_ref(), idx).unwrap();
+        for (idx, chunk) in inValue.chunks(outValue.len() - 1).enumerate() {
+            pageString(outValue.as_mut(), inValue.as_ref(), idx as u8).unwrap();
             assert_eq!(outValue[..chunk.len()].as_ref(), chunk);
-            idx += 1;
         }
     }
 }

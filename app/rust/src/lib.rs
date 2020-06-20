@@ -1,6 +1,7 @@
 #![no_std]
 #![no_builtins]
 #![allow(dead_code, unused_imports)]
+#![macro_use]
 
 #[cfg(test)]
 #[macro_use]
@@ -21,4 +22,23 @@ use core::panic::PanicInfo;
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
+}
+
+extern "C" {
+    fn check_canary();
+}
+
+pub(crate) fn canary() {
+    #[cfg(not(test))]
+    unsafe {
+        check_canary();
+    }
+}
+
+#[macro_export]
+macro_rules! check_canary {
+    () => {
+        use crate::canary;
+        canary();
+    };
 }

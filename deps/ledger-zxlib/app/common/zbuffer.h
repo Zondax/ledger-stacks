@@ -34,4 +34,4 @@ zbuffer_error_e zb_deallocate();
 zbuffer_error_e zb_get(uint8_t **buffer);
 
 // check that the block boundary has not been corrupted
-zbuffer_error_e zb_check_canary();
+void zb_check_canary();

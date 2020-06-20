@@ -66,7 +66,7 @@ zbuffer_error_e zb_deallocate() {
     return zb_no_error;
 }
 
-zbuffer_error_e zb_check_canary() {
+void zb_check_canary() {
     CHECK_APP_CANARY();
     if (_internal.size != 0) {
         // allocated
@@ -75,6 +75,4 @@ zbuffer_error_e zb_check_canary() {
             handle_stack_overflow();
         }
     }
-
-    return zb_no_error;
 }

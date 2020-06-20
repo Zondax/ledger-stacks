@@ -222,14 +222,14 @@ mod test {
     fn test_transaction_payload_tokens() {
         let hash = [0xff; 20];
         let hash160 = Hash160(hash.as_ref());
-        let contract_name = ContractName("contract-name".as_bytes().as_ref());
-        let asset_name = ClarityName("hello-asset".as_bytes().as_ref());
+        let contract_name = ContractName(b"contract-name".as_ref());
+        let asset_name = ClarityName(b"hello-asset".as_ref());
         let asset_info = AssetInfo {
             address: StacksAddress(1, Hash160([1u8; 20].as_ref())),
-            contract_name: contract_name.clone(),
-            asset_name: asset_name.clone(),
+            contract_name,
+            asset_name,
         };
-        let token = TokenTransferPayload::StxToken(StacksAddress(1, hash160.clone()), 123);
+        let token = TokenTransferPayload::StxToken(StacksAddress(1, hash160), 123);
         let tt_stx = TransactionPayload::TokenTransfer(token);
 
         let bytes: Vec<u8> = vec![
@@ -239,8 +239,7 @@ mod test {
 
         let mut parsed = TransactionPayload::from_bytes(&bytes).unwrap().1;
         assert_eq!(tt_stx, parsed);
-        let token =
-            TokenTransferPayload::FungibleToken(asset_info, StacksAddress(2, hash160.clone()), 123);
+        let token = TokenTransferPayload::FungibleToken(asset_info, StacksAddress(2, hash160), 123);
         let tt_fungible = TransactionPayload::TokenTransfer(token);
 
         let bytes_fungible: Vec<u8> = vec![
@@ -259,7 +258,7 @@ mod test {
         let token = TokenTransferPayload::NonFungibleToken(
             asset_info,
             asset_name,
-            StacksAddress(2, hash160.clone()),
+            StacksAddress(2, hash160),
         );
         let tt_nonfungible = TransactionPayload::TokenTransfer(token);
 

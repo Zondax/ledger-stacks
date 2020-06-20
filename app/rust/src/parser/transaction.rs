@@ -12,7 +12,7 @@ use crate::parser::{
     transaction_payload::TransactionPayload, value::Value,
 };
 
-use crate::zxformat;
+use crate::check_canary;
 
 /// Stacks transaction versions
 #[repr(u8)]
@@ -27,6 +27,7 @@ impl TransactionVersion {
         let version_res = le_u8(bytes)?;
         let tx_version =
             Self::from_u8(version_res.1).ok_or(ParserError::parser_unexpected_error)?;
+        check_canary!();
         Ok((version_res.0, tx_version))
     }
 
@@ -58,6 +59,7 @@ impl TransactionPostConditionMode {
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
         let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
+        check_canary!();
         Ok((mode.0, tx_mode))
     }
 }
@@ -83,6 +85,7 @@ impl TransactionAnchorMode {
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
         let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
+        check_canary!();
         Ok((mode.0, tx_mode))
     }
 }
@@ -106,6 +109,7 @@ impl<'a> PostConditions<'a> {
                 *i.1 = Some((i.0).1);
             });
         let res = iter.finish()?;
+        check_canary!();
         Ok((
             res.0,
             Self {

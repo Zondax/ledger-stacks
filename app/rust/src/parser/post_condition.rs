@@ -209,9 +209,9 @@ mod test {
     fn test_stx_postcondition() {
         let hash = [1u8; 20];
         let hash160 = Hash160(hash.as_ref());
-        let principal1 = PostConditionPrincipal::Standard(StacksAddress(1, hash160.clone()));
+        let principal1 = PostConditionPrincipal::Standard(StacksAddress(1, hash160));
         let stx_pc1 =
-            TransactionPostCondition::STX(principal1.clone(), FungibleConditionCode::SentGt, 12345);
+            TransactionPostCondition::STX(principal1, FungibleConditionCode::SentGt, 12345);
         let bytes: Vec<u8> = vec![
             0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0,
             0, 48, 57,
@@ -221,7 +221,7 @@ mod test {
 
         let principal2 = PostConditionPrincipal::Contract(
             StacksAddress(2, Hash160([2u8; 20].as_ref())),
-            ContractName("hello-world".as_bytes().as_ref()),
+            ContractName(b"hello-world".as_ref()),
         );
         let stx_pc2 =
             TransactionPostCondition::STX(principal2, FungibleConditionCode::SentGt, 12345);
@@ -238,18 +238,18 @@ mod test {
     fn test_fungible_postcondition() {
         let hash = [0x01; 20];
         let hash160 = Hash160(hash.as_ref());
-        let addr = StacksAddress(1, hash160.clone());
-        let contract_name = ContractName("contract-name".as_bytes().as_ref());
-        let asset_name = ClarityName("hello-asset".as_bytes().as_ref());
-        let principal = PostConditionPrincipal::Standard(addr.clone());
+        let addr = StacksAddress(1, hash160);
+        let contract_name = ContractName(b"contract-name".as_ref());
+        let asset_name = ClarityName(b"hello-asset".as_ref());
+        let principal = PostConditionPrincipal::Standard(addr);
         let asset_info = AssetInfo {
             address: StacksAddress(1, Hash160([0xff; 20].as_ref())),
-            contract_name: contract_name.clone(),
-            asset_name: asset_name.clone(),
+            contract_name,
+            asset_name,
         };
         let fungible_pc = TransactionPostCondition::Fungible(
             principal,
-            asset_info.clone(),
+            asset_info,
             FungibleConditionCode::SentGt,
             23456,
         );
@@ -265,11 +265,11 @@ mod test {
 
         let principal2 = PostConditionPrincipal::Contract(
             StacksAddress(2, Hash160([2u8; 20].as_ref())),
-            ContractName("hello-world".as_bytes().as_ref()),
+            ContractName(b"hello-world".as_ref()),
         );
         let fungible_pc2 = TransactionPostCondition::Fungible(
             principal2,
-            asset_info.clone(),
+            asset_info,
             FungibleConditionCode::SentGt,
             23456,
         );

@@ -4,6 +4,7 @@ use nom::{
     number::complete::{be_u64, le_u8},
 };
 
+use crate::check_canary;
 use crate::parser::parser_common::{Hash160, HashMode, ParserError, SIGNATURE_LEN};
 
 // Signature
@@ -77,6 +78,7 @@ impl<'a> TransactionSpendingCondition<'a> {
             key_encoding,
             signature: signature.1,
         };
+        check_canary!();
         Ok((signature.0, condition))
     }
 }

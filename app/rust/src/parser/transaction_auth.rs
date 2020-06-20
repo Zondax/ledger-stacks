@@ -4,6 +4,7 @@ use nom::{
     number::complete::{be_u64, le_u8},
 };
 
+use crate::check_canary;
 use crate::parser::parser_common::ParserError;
 use crate::parser::spending_condition::TransactionSpendingCondition;
 
@@ -44,12 +45,14 @@ impl<'a> TransactionAuth<'a> {
 
     fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let standard = TransactionSpendingCondition::from_bytes(bytes)?;
+        check_canary!();
         Ok((standard.0, Self::Standard(standard.1)))
     }
 
     fn sponsored_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let standard = TransactionSpendingCondition::from_bytes(bytes)?;
         let sponsored = TransactionSpendingCondition::from_bytes(standard.0)?;
+        check_canary!();
         Ok((sponsored.0, Self::Sponsored(standard.1, sponsored.1)))
     }
 
