@@ -7,6 +7,8 @@ use nom::{
     number::complete::{be_u32, le_u32, le_u64, le_u8},
 };
 
+use crate::parser::c32;
+
 // The max len for asset, contract and clarity names
 pub const MAX_STRING_LEN: u8 = 128;
 pub const HASH160_LEN: usize = 20;
@@ -14,10 +16,9 @@ pub const HASH160_LEN: usize = 20;
 // The amount of post_conditions we can
 // handle
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 8;
-
 pub const SIGNATURE_LEN: usize = 65;
-
 pub const MAX_STACKS_STRING_LEN: usize = 256;
+pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy, Debug)]
@@ -98,8 +99,9 @@ pub enum ParserError {
     parser_invalid_pubkey_encoding,
     parser_invalid_auth_type,
     parser_invalid_argument_id,
-    parser_invalid_token_transfer_type,
+    parser_invalid_token_transfer_principal,
     parser_invalid_transaction_payload,
+    parser_invalid_address_version,
     parser_stacks_string_too_long,
     parser_unexpected_type,
     parser_unexpected_buffer_end,
@@ -191,7 +193,7 @@ impl<'a> StacksString<'a> {
 // contract name with valid charactes being
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ContractName<'a>(pub &'a [u8]);
 
 impl<'a> ContractName<'a> {
@@ -252,13 +254,83 @@ impl<'a> StacksAddress<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ContractPrincipal<'a>(StacksAddress<'a>, ContractName<'a>);
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct ContractPrincipal<'a>(StandardPrincipal<'a>, ContractName<'a>);
 impl<'a> ContractPrincipal<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let address = StacksAddress::from_bytes(bytes)?;
+        let address = StandardPrincipal::from_bytes(bytes)?;
         let name = ContractName::from_bytes(address.0)?;
         Ok((name.0, Self(address.1, name.1)))
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct StandardPrincipal<'a>(pub u8, pub &'a [u8]);
+
+impl<'a> StandardPrincipal<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        let addrId = le_u8(bytes)?;
+        let address = take(HASH160_LEN)(addrId.0)?;
+        Ok((address.0, Self(addrId.1, address.1)))
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum PrincipalData<'a> {
+    Standard(StandardPrincipal<'a>),
+    Contract(ContractPrincipal<'a>),
+}
+
+impl<'a> PrincipalData<'a> {
+    pub fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        let principal = StandardPrincipal::from_bytes(bytes)?;
+        Ok((principal.0, Self::Standard(principal.1)))
+    }
+
+    pub fn contract_principal_from_bytes(
+        bytes: &'a [u8],
+    ) -> nom::IResult<&[u8], Self, ParserError> {
+        let principal = ContractPrincipal::from_bytes(bytes)?;
+        Ok((principal.0, Self::Contract(principal.1)))
+    }
+
+    pub fn version(&self) -> u8 {
+        match *self {
+            Self::Standard(ref principal) => principal.0,
+            Self::Contract(ref principal) => (principal.0).0,
+        }
+    }
+
+    pub fn raw_address(&self) -> &[u8] {
+        match *self {
+            Self::Standard(ref principal) => principal.1,
+            Self::Contract(ref principal) => (principal.0).1,
+        }
+    }
+
+    pub fn encoded_address(&self) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+        let version = self.version();
+        let raw = self.raw_address();
+        c32::c32_address(version, raw)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TokenTransferMemo<'a>(pub &'a [u8]);
+
+impl<'a> TokenTransferMemo<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        let memo = take(TOKEN_TRANSFER_MEMO_LEN)(bytes)?;
+        Ok((memo.0, Self(memo.1)))
+    }
+
+    // returns a non null byte array with the memo
+    // content
+    pub fn memo(&self) -> &[u8] {
+        self.0
     }
 }
 

@@ -61,6 +61,7 @@ typedef enum {
     parser_invalid_argument_id,
     parser_invalid_token_transfer_type,
     parser_invalid_transaction_payload,
+    parser_invalid_address_version,
     parser_stacks_string_too_long,
     parser_unexpected_type,
     parser_unexpected_buffer_end,

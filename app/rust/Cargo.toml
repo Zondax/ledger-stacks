@@ -11,6 +11,8 @@ crate-type = ["staticlib"]
 
 [dependencies]
 nom = {version = "5.1.1", default-features = false}
+sha2 = {version = "0.9.1", default-features = false}
+arrayvec = {version = "0.5.1", default-features = false}
 
 [target.thumbv6m-none-eabi.dev-dependencies]
 panic-halt = "0.2.0"

@@ -1,3 +1,4 @@
+mod c32;
 mod ffi;
 mod parser_common;
 mod post_condition;
