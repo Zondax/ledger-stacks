@@ -154,7 +154,7 @@ const char *parser_getErrorDescription(parser_error_t err) {
         case parser_invalid_transaction_payload:
             return "Unsupported transaction payload";
         case parser_invalid_address_version:
-            return "Invalid address version"
+            return "Invalid address version";
         case parser_stacks_string_too_long:
             return "Contract body too long";
         case parser_unexpected_type:

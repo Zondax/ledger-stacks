@@ -80,7 +80,7 @@ describe('Basic checks', function () {
             expect(response.returnCode).toEqual(0x9000);
 
             const expectedPublicKey = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
-            const expectedAddr = "";
+            const expectedAddr = "ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5";
 
             expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey);
             expect(response.address).toEqual(expectedAddr);
@@ -99,6 +99,8 @@ describe('Basic checks', function () {
             await Zemu.sleep(1000);
             await sim.clickRight();
             await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickBoth();
 
             const response = await addrRequest;
@@ -106,7 +108,7 @@ describe('Basic checks', function () {
             expect(response.returnCode).toEqual(0x9000);
 
             const expectedPublicKey = "0327ae12779c24a1b242fe609d772f4c610a120d0b96a524022864e77a3b869d23";
-            const expectedAddr = "";
+            const expectedAddr = "STC47MG6DWWH30RJK8V10AWE7PP63DADXHV76MAQ";
 
             expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey);
             expect(response.address).toEqual(expectedAddr);
@@ -115,7 +117,6 @@ describe('Basic checks', function () {
         }
     });
 
-    // FIXME: Temporarily disabling until we connect the parser to the UI
     test('sign', async function () {
         const sim = new Zemu(APP_PATH);
         try {

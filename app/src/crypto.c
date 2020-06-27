@@ -43,31 +43,8 @@ typedef struct {
 #define VERSION_SIZE            1
 
 typedef struct {
-    // [ADDRESS                              ]
-    // [version][RIPEMD-160(SHA256(PK))]
-    union {
-        uint8_t address[VERSION_SIZE + CX_RIPEMD160_SIZE];
-
-        struct {
-            uint8_t extended_ripe[VERSION_SIZE + CX_RIPEMD160_SIZE];
-            uint8_t sha256_checksum[CX_SHA256_SIZE];
-        };
-
-        union {
-            // [EXTENDED RIPEMD-160]
-            // [version][RIPEMD-160]
-            struct {
-                uint8_t version;
-                uint8_t ripe_sha256_pk[CX_RIPEMD160_SIZE];
-            };
-        };
-    };
-
-    // Temporary buffers
-    union {
-        uint8_t sha256_pk[CX_SHA256_SIZE];
-        uint8_t sha256_extended_ripe[CX_SHA256_SIZE];
-    };
+    uint8_t hash_sha256[CX_SHA256_SIZE];
+    uint8_t hash_ripe[CX_RIPEMD160_SIZE];
 } __attribute__((packed)) address_temp_t;
 
 uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
@@ -82,26 +59,16 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
 
     address_temp_t address_temp;
 
-    address_temp.version = 0;
+    cx_hash_sha256(answer->publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
+    ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, address_temp.hash_ripe);         // RIPEMD-160
+
+    uint8_t version = COIN_VERSION_MAINNET_SINGLESIG;
     if (isTestnet()) {
-        address_temp.version |= 0x80;
+        version = COIN_VERSION_MAINNET_SINGLESIG;
     }
-
-//    // extended-ripemd-160 = [version][ripemd-160(sha256(pk))]
-//    address_temp.version[0] = VERSION_P2PKH >> 8;
-//    cx_hash_sha256(answer->publicKey, PK_LEN_SECP256K1, address_temp.sha256_pk, CX_SHA256_SIZE);      // SHA256
-//    ripemd160(address_temp.sha256_pk, CX_SHA256_SIZE, address_temp.ripe_sha256_pk);         // RIPEMD-160
-//
-//    // checksum = sha256(sha256(extended-ripe))
-//    cx_hash_sha256(address_temp.extended_ripe, CX_RIPEMD160_SIZE + VERSION_SIZE, address_temp.sha256_extended_ripe, CX_SHA256_SIZE);
-//    cx_hash_sha256(address_temp.sha256_extended_ripe, CX_SHA256_SIZE, address_temp.sha256_checksum, CX_SHA256_SIZE);
-//
-//    // 7. 25 bytes BTC address = [extended ripemd-160][checksum]
-//    // Encode as base58
     size_t outLen = sizeof_field(answer_t, address);
-//    encode_base58(address_temp.address, VERSION_SIZE + CX_RIPEMD160_SIZE + CHECKSUM_SIZE, answer->address, &outLen);
+    outLen = rs_c32_address(address_temp.hash_ripe, version, answer->address, outLen);
 
-    outLen = 0;
     return PK_LEN_SECP256K1 + outLen;
 }
 
