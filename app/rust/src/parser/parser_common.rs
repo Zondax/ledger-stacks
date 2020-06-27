@@ -111,7 +111,7 @@ pub enum ParserError {
     parser_unexpected_field,
     parser_value_out_of_range,
     parser_invalid_address,
-    parser_invalid_token_transfer_type
+    parser_invalid_token_transfer_type,
 }
 
 impl From<ErrorKind> for ParserError {

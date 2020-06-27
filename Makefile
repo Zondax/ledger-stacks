@@ -22,7 +22,7 @@ TESTS_ZEMU_JS_PACKAGE = "@zondax/ledger-blockstack"
 TESTS_ZEMU_JS_DIR = $(CURDIR)/js
 
 ifeq ($(BOLOS_SDK),)
-include $(CURDIR)/deps/ledger-zxlib/dockerized_build.mk
+	include $(CURDIR)/deps/ledger-zxlib/dockerized_build.mk
 else
 default:
 	$(MAKE) -C app

@@ -1,4 +1,21 @@
-version: 2
+version: 2.1
+
+commands:
+  restore-sccache-cache:
+    steps:
+      - restore_cache:
+          name: Restore sccache cache
+          key: sccache-cache-stable-{{ arch }}
+#          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
+  save-sccache-cache:
+    steps:
+      - save_cache:
+          name: Save sccache cache
+#          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}-{{ epoch }}
+          key: sccache-cache-stable-{{ arch }}-{{ epoch }}
+          paths:
+            - "~/.cache/sccache"
+
 jobs:
   build:
     docker:
@@ -27,6 +44,35 @@ jobs:
             source /home/zondax/.cargo/env
             cd /home/zondax/project
             make
+
+  build_rust:
+    docker:
+      - image: zondax/rust-ci:latest
+    steps:
+      - checkout
+      - run:
+          name: rustfmt
+          command: |
+            cd ~/project/app/rust
+            cargo fmt --version
+            cargo fmt -- --check
+      - run:
+          name: clippy
+          command: |
+            cd ~/project/app/rust
+            cargo clippy --version
+            cargo clippy --all-features --all-targets || true
+      - run:
+          name: audit
+          command: |
+            cd ~/project/app/rust
+            cargo audit --version
+            cargo audit
+      - run:
+          name: run tests
+          command: |
+            cd ~/project/app/rust
+            cargo test
 
   test_zemu:
     machine:
@@ -83,11 +129,13 @@ workflows:
   default:
     jobs:
       - build
+      - build_rust
       - build_ledger
       - test_zemu
       - build_package:
           requires:
             - build
+            - build_rust
             - build_ledger
             - test_zemu
           filters:
