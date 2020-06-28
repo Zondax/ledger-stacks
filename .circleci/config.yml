@@ -44,7 +44,6 @@ jobs:
             source /home/zondax/.cargo/env
             cd /home/zondax/project
             make
-
   build_rust:
     docker:
       - image: zondax/rust-ci:latest
@@ -73,7 +72,6 @@ jobs:
           command: |
             cd ~/project/app/rust
             cargo test
-
   test_zemu:
     machine:
       image: ubuntu-1604:201903-01
@@ -103,7 +101,6 @@ jobs:
           command: |
             nvm use 13.12.0
             make zemu_test
-
   build_package:
     docker:
       - image: zondax/builder-bolos:latest
@@ -131,9 +128,6 @@ workflows:
       - build
       - build_rust
       - build_ledger
-      - fmt_rust
-      - clippy_rust
-      - tests_rust
       - test_zemu
       - build_package:
           requires:
@@ -144,4 +138,3 @@ workflows:
           filters:
             branches:
               only:
-                - master
