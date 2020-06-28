@@ -7,38 +7,18 @@ use nom::{
     number::complete::{be_u32, le_u64, le_u8},
 };
 
+use arrayvec::ArrayVec;
+
 use crate::parser::{
     parser_common::*, post_condition::TransactionPostCondition, transaction_auth::TransactionAuth,
     transaction_payload::TransactionPayload, value::Value,
 };
 
+use crate::parser::ffi::fp_uint64_to_str;
+
+use crate::zxformat;
+
 use crate::check_canary;
-
-/// Stacks transaction versions
-#[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub enum TransactionVersion {
-    Mainnet = 0x00,
-    Testnet = 0x80,
-}
-
-impl TransactionVersion {
-    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let version_res = le_u8(bytes)?;
-        let tx_version =
-            Self::from_u8(version_res.1).ok_or(ParserError::parser_unexpected_error)?;
-        check_canary!();
-        Ok((version_res.0, tx_version))
-    }
-
-    fn from_u8(v: u8) -> Option<Self> {
-        match v {
-            0 => Some(Self::Mainnet),
-            1 => Some(Self::Testnet),
-            _ => None,
-        }
-    }
-}
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -91,6 +71,7 @@ impl TransactionAnchorMode {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct PostConditions<'a> {
     pub len: usize, // Number of post-conditions
     conditions: [Option<TransactionPostCondition<'a>>; NUM_SUPPORTED_POST_CONDITIONS],
@@ -117,6 +98,15 @@ impl<'a> PostConditions<'a> {
                 conditions,
             },
         ))
+    }
+
+    fn num_items(&self) -> u8 {
+        let mut num = 0;
+        // Iterates over valid values
+        for p in self.conditions[..self.len].iter() {
+            num += p.map(|post| post.num_items()).unwrap();
+        }
+        num
     }
 }
 
@@ -145,6 +135,7 @@ impl<'a> From<TxTuple<'a>> for Transaction<'a> {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
@@ -179,7 +170,72 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    #[allow(unused)]
+    pub fn payload_recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; 64]>> {
+        self.payload.recipient_address()
+    }
+
+    pub fn num_items(&self) -> u8 {
+        // nonce + origin + fee-rate + payload + post-conditions
+        3 + self.payload.num_items() + self.post_conditions.num_items()
+    }
+
+    fn get_origin_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+        let origin = self.transaction_auth.origin();
+
+        match display_idx {
+            // The address of who signed this transaction
+            0 => {
+                writer_key
+                    .write_str("Origin")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let origin_address = origin.signer_address(self.version)?;
+                zxformat::pageString(out_value, origin_address.as_ref(), page_idx)
+            }
+            // The signer nonce
+            1 => {
+                writer_key
+                    .write_str("Nonce")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let nonce_str = origin.nonce_str()?;
+                zxformat::pageString(out_value, nonce_str.as_ref(), page_idx)
+            }
+            // The signer fee-rate
+            2 => {
+                writer_key
+                    .write_str("Fee")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let fee_str = origin.fee_str()?;
+                zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
+            }
+
+            _ => unimplemented!(),
+        }
+    }
+
+    fn get_other_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        // 1. Format payloads
+        if display_idx < (self.num_items() - self.post_conditions.num_items()) {
+            self.payload
+                .get_items(display_idx, out_key, out_value, page_idx)
+        } else {
+            // 2. Format Post-conditions
+            Ok(0)
+        }
+    }
+
     pub fn get_item(
         &self,
         display_idx: u8,
@@ -187,7 +243,15 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        Ok(0)
+        if display_idx >= self.num_items() {
+            return Err(ParserError::parser_display_idx_out_of_range);
+        }
+
+        if display_idx < 3 {
+            self.get_origin_items(display_idx, out_key, out_value, page_idx)
+        } else {
+            self.get_other_items(display_idx, out_key, out_value, page_idx)
+        }
     }
 }
 
@@ -203,4 +267,84 @@ mod test {
     use std::string::String;
     use std::string::ToString;
     use std::vec::Vec;
+
+    #[derive(Serialize, Deserialize)]
+    struct StxTransaction {
+        raw: String,
+        recipient: String,
+        sender: String,
+        nonce: u64,
+        amount: u64,
+        fee: u32,
+    }
+
+    #[test]
+    fn test_token_stx_transfer() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("stx_token_transfer");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: StxTransaction = serde_json::from_str(&str).unwrap();
+
+        let bytes = hex::decode(&json.raw).unwrap();
+        let transaction = Transaction::from_bytes(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+
+        let spending_condition = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, spending_condition.nonce);
+        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(&json.sender, origin);
+
+        let recipient = transaction.payload_recipient_address().unwrap();
+        let addr_len = recipient.len();
+        let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
+        assert_eq!(&json.recipient, address);
+    }
+
+    #[test]
+    fn test_token_stx_transfer_testnet() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("stx_token_transfer_testnet");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: StxTransaction = serde_json::from_str(&str).unwrap();
+
+        let bytes = hex::decode(&json.raw).unwrap();
+        let transaction = Transaction::from_bytes(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+
+        let spending_condition = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, spending_condition.nonce);
+        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(&json.sender, origin);
+
+        let recipient = transaction.payload_recipient_address().unwrap();
+        let addr_len = recipient.len();
+        let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
+        assert_eq!(&json.recipient, address);
+    }
 }

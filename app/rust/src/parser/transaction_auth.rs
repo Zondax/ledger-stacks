@@ -18,6 +18,7 @@ pub struct Address {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 /// A Transaction's Authorization structure
 ///
 /// this structure contains the address of the origin account,
@@ -60,6 +61,27 @@ impl<'a> TransactionAuth<'a> {
         match *self {
             Self::Standard(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn origin(&self) -> &TransactionSpendingCondition {
+        match *self {
+            Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => origin,
+        }
+    }
+
+    pub fn sponsor(&self) -> Option<&TransactionSpendingCondition> {
+        match *self {
+            Self::Sponsored(_, ref sponsor) => Some(sponsor),
+            _ => None,
+        }
+    }
+
+    pub fn num_spending_conditions(&self) -> u8 {
+        if self.is_standard_auth() {
+            1
+        } else {
+            2
         }
     }
 }

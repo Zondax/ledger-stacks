@@ -5,6 +5,11 @@ use crate::parser::{
     parser_common::ParserError, post_condition::TransactionPostCondition, transaction::Transaction,
 };
 
+// extern c function for formatting to fixed point number
+extern "C" {
+    pub fn fp_uint64_to_str(out: *mut i8, outLen: u16, value: u64, decimals: u8) -> u16;
+}
+
 #[repr(C)]
 #[no_mangle]
 pub struct parser_context_t {
@@ -33,9 +38,7 @@ pub extern "C" fn _parser_init(
         return ParserError::parser_no_memory_for_state as u32;
     }
     unsafe {
-        let size = core::mem::size_of::<Transaction>() as u16;
-        // Aproximate this size to the nearest(roof) multiple of 4
-        *alloc_size = size + (4 - size.rem_euclid(4));
+        *alloc_size = core::mem::size_of::<Transaction>() as u16;
     }
     parser_init_context(ctx, buffer, bufferSize) as u32
 }
@@ -94,8 +97,8 @@ pub extern "C" fn _getNumItems(_ctx: *const parser_context_t, tx_t: *const parse
         if tx_t.is_null() || (*tx_t).state.is_null() {
             return 0;
         }
-        if let Some(_tx) = ((*tx_t).state as *const Transaction).as_ref() {
-            return 0;
+        if let Some(tx) = ((*tx_t).state as *const Transaction).as_ref() {
+            return tx.num_items();
         }
         0
     }

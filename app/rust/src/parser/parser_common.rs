@@ -20,6 +20,31 @@ pub const SIGNATURE_LEN: usize = 65;
 pub const MAX_STACKS_STRING_LEN: usize = 256;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
 
+/// Stacks transaction versions
+#[repr(u8)]
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum TransactionVersion {
+    Mainnet = 0x00,
+    Testnet = 0x80,
+}
+
+impl TransactionVersion {
+    pub fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        let version_res = le_u8(bytes)?;
+        let tx_version =
+            Self::from_u8(version_res.1).ok_or(ParserError::parser_unexpected_error)?;
+        Ok((version_res.0, tx_version))
+    }
+
+    fn from_u8(v: u8) -> Option<Self> {
+        match v {
+            0 => Some(Self::Mainnet),
+            1 => Some(Self::Testnet),
+            _ => None,
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy, Debug)]
 pub enum AssetInfoId {
@@ -152,6 +177,20 @@ impl<'a> Hash160<'a> {
         let name = take(HASH160_LEN)(bytes)?;
         Ok((name.0, Self(name.1)))
     }
+
+    pub fn to_mainnet_address(
+        &self,
+        mode: HashMode,
+    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+        c32::c32_address(mode.to_version_mainnet(), self.0)
+    }
+
+    pub fn to_testnet_address(
+        &self,
+        mode: HashMode,
+    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+        c32::c32_address(mode.to_version_testnet(), self.0)
+    }
 }
 
 // tag address hash modes as "singlesig" or "multisig" so we can't accidentally construct an
@@ -160,9 +199,11 @@ impl<'a> Hash160<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HashMode {
     //  A single public key is used. Hash it like a Bitcoin P2PKH output.
-    P2PKH = 0x00,
+    P2PKH = 0x00, // hash160(public-key)
+    P2SH = 0x01,  // hash160(multisig-red)
     //  A single public key is used. Hash it like a Bitcoin P2WPKH-P2SH output.
-    P2WPKH = 0x02,
+    P2WPKH = 0x02, // hash160(segwit-progr)
+    P2WSH = 0x03,  // hash160(segwit-prog)
 }
 
 impl HashMode {
@@ -171,6 +212,20 @@ impl HashMode {
             x if x == HashMode::P2PKH as u8 => Some(HashMode::P2PKH),
             x if x == HashMode::P2WPKH as u8 => Some(HashMode::P2WPKH),
             _ => None,
+        }
+    }
+
+    pub fn to_version_mainnet(&self) -> u8 {
+        match *self {
+            HashMode::P2PKH => c32::C32_ADDRESS_VERSION_MAINNET_SINGLESIG,
+            _ => c32::C32_ADDRESS_VERSION_MAINNET_MULTISIG,
+        }
+    }
+
+    pub fn to_version_testnet(&self) -> u8 {
+        match *self {
+            HashMode::P2PKH => c32::C32_ADDRESS_VERSION_TESTNET_SINGLESIG,
+            _ => c32::C32_ADDRESS_VERSION_TESTNET_MULTISIG,
         }
     }
 }

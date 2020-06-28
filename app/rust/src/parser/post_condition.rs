@@ -8,6 +8,7 @@ use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
     ParserError, StacksAddress, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
 };
+use crate::parser::value::Value;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -36,9 +37,6 @@ pub enum PostConditionPrincipal<'a> {
     Contract(StacksAddress<'a>, ContractName<'a>),
 }
 
-// The doc does not say if the principal contains 1-byte
-// used to define if it is either an account or contract
-// principal. Lets assume It does have this byte
 impl<'a> PostConditionPrincipal<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let id = le_u8(bytes)?;
@@ -150,7 +148,7 @@ pub enum TransactionPostCondition<'a> {
     Nonfungible(
         PostConditionPrincipal<'a>,
         AssetInfo<'a>,
-        AssetName<'a>, // BlockStacks uses  Value, but the documentation says it is an asset-name
+        Value<'a>, // BlockStacks uses  Value, but the documentation says it is an asset-name
         NonfungibleConditionCode,
     ),
 }
@@ -159,7 +157,7 @@ impl<'a> TransactionPostCondition<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let cond_type = le_u8(bytes)?;
         let principal = PostConditionPrincipal::from_bytes(cond_type.0)?;
-        match PostConditionType::from_u8(cond_type.1)
+        let res = match PostConditionType::from_u8(cond_type.1)
             .ok_or(ParserError::parser_invalid_post_condition)?
         {
             PostConditionType::STX => {
@@ -168,7 +166,7 @@ impl<'a> TransactionPostCondition<'a> {
                     .ok_or(ParserError::parser_invalid_fungible_code)?;
                 let amount = be_u64(code.0)?;
                 let condition = Self::STX(principal.1, fungible, amount.1);
-                Ok((amount.0, condition))
+                (amount.0, condition)
             }
             PostConditionType::FungibleToken => {
                 let asset = AssetInfo::from_bytes(principal.0)?;
@@ -177,17 +175,26 @@ impl<'a> TransactionPostCondition<'a> {
                     .ok_or(ParserError::parser_invalid_fungible_code)?;
                 let amount = be_u64(code.0)?;
                 let condition = Self::Fungible(principal.1, asset.1, fungible, amount.1);
-                Ok((amount.0, condition))
+                (amount.0, condition)
             }
             PostConditionType::NonFungibleToken => {
                 let asset = AssetInfo::from_bytes(principal.0)?;
-                let name = AssetName::from_bytes(asset.0)?;
+                let name = Value::from_bytes(asset.0)?;
                 let code = le_u8(name.0)?;
                 let non_fungible = NonfungibleConditionCode::from_u8(code.1)
                     .ok_or(ParserError::parser_invalid_non_fungible_code)?;
                 let condition = Self::Nonfungible(principal.1, asset.1, name.1, non_fungible);
-                Ok((code.0, condition))
+                (code.0, condition)
             }
+        };
+        Ok(res)
+    }
+
+    pub fn num_items(&self) -> u8 {
+        match *self {
+            Self::STX(..) => 3,
+            Self::Fungible(..) => 4,
+            Self::Nonfungible(..) => 3,
         }
     }
 }
@@ -207,6 +214,10 @@ mod test {
 
     #[test]
     fn test_stx_postcondition() {
+        println!(
+            "post-conditions size: {}",
+            core::mem::size_of::<TransactionPostCondition>()
+        );
         let hash = [1u8; 20];
         let hash160 = Hash160(hash.as_ref());
         let principal1 = PostConditionPrincipal::Standard(StacksAddress(1, hash160));

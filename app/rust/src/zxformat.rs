@@ -5,7 +5,7 @@ use nom::error::ParseError;
 
 use crate::parser::ParserError;
 
-pub const MAX_NUM_STR_BUFF_LEN: usize = 30;
+pub const MAX_STR_BUFF_LEN: usize = 30;
 
 pub struct Writer<'a> {
     buf: &'a mut [u8],
@@ -64,7 +64,7 @@ num_to_str!(i64_to_str, i64);
 /// # Returns
 /// The number of bytes written if success or Error otherwise
 pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, ParserError> {
-    let mut temp = [0u8; MAX_NUM_STR_BUFF_LEN];
+    let mut temp = [0u8; MAX_STR_BUFF_LEN];
     let len = u64_to_str(temp.as_mut(), value)?;
     fpstr_to_str(out, &temp[..len], decimals)
 }
@@ -80,7 +80,7 @@ pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, P
 /// # Returns
 /// The number of bytes written if success or Error otherwise
 pub fn fpi64_to_str(out: &mut [u8], value: i64, decimals: u8) -> Result<usize, ParserError> {
-    let mut temp = [0u8; MAX_NUM_STR_BUFF_LEN];
+    let mut temp = [0u8; MAX_STR_BUFF_LEN];
     let len = i64_to_str(temp.as_mut(), value)?;
     fpstr_to_str(out, &temp[..len], decimals)
 }

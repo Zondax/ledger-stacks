@@ -131,6 +131,9 @@ workflows:
       - build
       - build_rust
       - build_ledger
+      - fmt_rust
+      - clippy_rust
+      - tests_rust
       - test_zemu
       - build_package:
           requires:

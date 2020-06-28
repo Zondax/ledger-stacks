@@ -4,8 +4,14 @@ use nom::{
     number::complete::{be_u64, le_u8},
 };
 
+use arrayvec::ArrayVec;
+
 use crate::check_canary;
-use crate::parser::parser_common::{Hash160, HashMode, ParserError, SIGNATURE_LEN};
+use crate::parser::parser_common::{
+    Hash160, HashMode, ParserError, TransactionVersion, SIGNATURE_LEN,
+};
+use crate::parser::{c32, ffi::fp_uint64_to_str};
+use crate::zxformat;
 
 // Signature
 // should by 65-bytes length
@@ -80,6 +86,57 @@ impl<'a> TransactionSpendingCondition<'a> {
         };
         check_canary!();
         Ok((signature.0, condition))
+    }
+
+    pub fn signer_address(
+        &self,
+        chain: TransactionVersion,
+    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+        if chain == TransactionVersion::Testnet {
+            self.signer.to_testnet_address(self.hash_mode)
+        } else {
+            self.signer.to_mainnet_address(self.hash_mode)
+        }
+    }
+
+    pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
+        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let len = if cfg!(test) {
+            zxformat::fpu64_to_str(output.as_mut(), self.nonce, 0)? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    self.nonce,
+                    0,
+                ) as usize
+            }
+        };
+        unsafe {
+            output.set_len(len);
+        }
+        Ok(output)
+    }
+
+    pub fn fee_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
+        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let len = if cfg!(test) {
+            zxformat::fpu64_to_str(output.as_mut(), self.fee_rate, 0)? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    self.fee_rate,
+                    0,
+                ) as usize
+            }
+        };
+        unsafe {
+            output.set_len(len);
+        }
+        Ok(output)
     }
 }
 
