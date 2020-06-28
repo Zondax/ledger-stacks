@@ -52,13 +52,15 @@ async function debugScenario4(sim, app) {
     // Here you can customize what you want to do :)
     // Do not await.. we need to click asynchronously
     const blob = Buffer.from("00000000010400149be4d6c4667e4fb6d461e7c8378fa5a5e10c9f000000000000000a00000000000004e200010e997280fe04c9976e70d90a93b9f86507247f5e9fa78ec95cd4eebb27b23f3338a13f549bee779b646bffff41611c9eae53b65e6b7a911b00c906a36ad5920a0302000000000005169eb0a31b22af43679e4f58ce400ed641c28113a6000000000000138800000000000000000000000000000000000000000000000000000000000000000000", "hex");
+    // const signatureRequest = app.sign("m/44'/133'/5'/0/0", blob);
     const signatureRequest = app.sign("m/44'/133'/5'/0/0", blob);
     await Zemu.default.sleep(1000);
 
     await sim.clickRight();
     await sim.clickRight();
+    /*await Zemu.default.sleep(500);
     await sim.clickRight();
-    await sim.clickRight();
+    await sim.clickRight();*/
 
     await sim.clickBoth();
 

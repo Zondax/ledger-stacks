@@ -37,8 +37,8 @@ pub enum TransactionPublicKeyEncoding {
 impl TransactionPublicKeyEncoding {
     // BIPs 141 and 143 make it very clear that P2WPKH scripts may be only derived
     // from compressed public-keys
-    fn is_valid_hash_mode(&self, mode: HashMode) -> bool {
-        if mode == HashMode::P2WPKH && *self != Self::Compressed {
+    fn is_valid_hash_mode(self, mode: HashMode) -> bool {
+        if mode == HashMode::P2WPKH && self != Self::Compressed {
             return false;
         }
         true

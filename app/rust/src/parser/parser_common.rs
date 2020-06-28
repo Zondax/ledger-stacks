@@ -215,15 +215,15 @@ impl HashMode {
         }
     }
 
-    pub fn to_version_mainnet(&self) -> u8 {
-        match *self {
+    pub fn to_version_mainnet(self) -> u8 {
+        match self {
             HashMode::P2PKH => c32::C32_ADDRESS_VERSION_MAINNET_SINGLESIG,
             _ => c32::C32_ADDRESS_VERSION_MAINNET_MULTISIG,
         }
     }
 
-    pub fn to_version_testnet(&self) -> u8 {
-        match *self {
+    pub fn to_version_testnet(self) -> u8 {
+        match self {
             HashMode::P2PKH => c32::C32_ADDRESS_VERSION_TESTNET_SINGLESIG,
             _ => c32::C32_ADDRESS_VERSION_TESTNET_MULTISIG,
         }

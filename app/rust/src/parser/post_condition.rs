@@ -80,8 +80,8 @@ impl FungibleConditionCode {
         }
     }
 
-    pub fn check(&self, amount_sent_condition: u128, amount_sent: u128) -> bool {
-        match *self {
+    pub fn check(self, amount_sent_condition: u128, amount_sent: u128) -> bool {
+        match self {
             FungibleConditionCode::SentEq => amount_sent == amount_sent_condition,
             FungibleConditionCode::SentGt => amount_sent > amount_sent_condition,
             FungibleConditionCode::SentGe => amount_sent >= amount_sent_condition,
