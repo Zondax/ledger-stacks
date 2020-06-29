@@ -44,6 +44,7 @@ jobs:
             source /home/zondax/.cargo/env
             cd /home/zondax/project
             make
+
   build_rust:
     docker:
       - image: zondax/rust-ci:latest
@@ -72,6 +73,7 @@ jobs:
           command: |
             cd ~/project/app/rust
             cargo test
+
   test_zemu:
     machine:
       image: ubuntu-1604:201903-01
@@ -101,6 +103,7 @@ jobs:
           command: |
             nvm use 13.12.0
             make zemu_test
+
   build_package:
     docker:
       - image: zondax/builder-bolos:latest
@@ -116,8 +119,6 @@ jobs:
             source /home/zondax/.cargo/env
             cd /home/zondax/project
             make
-      - store_artifacts:
-          path: /home/zondax/project/app/pkg/zxtool.sh
       - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/zxtool.sh version) /home/zondax/project/app/pkg/zxtool.sh
 
 workflows:
@@ -138,3 +139,4 @@ workflows:
           filters:
             branches:
               only:
+                - master
