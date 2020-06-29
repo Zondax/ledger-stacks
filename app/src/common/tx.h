@@ -28,6 +28,8 @@ void tx_initialize();
 /// Clears the transaction buffer
 void tx_reset();
 
+void tx_reset_state();
+
 /// Appends buffer to the end of the current transaction buffer
 /// Transaction buffer will grow until it reaches the maximum allowed size
 /// \param buffer

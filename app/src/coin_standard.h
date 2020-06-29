@@ -54,6 +54,9 @@ typedef enum {
 #define COIN_AMOUNT_DECIMAL_PLACES          18                       // FIXME: Check this
 #define CRYPTO_BLOB_SKIP_BYTES              0
 
+#define COIN_VERSION_TESTNET_SINGLESIG   22
+#define COIN_VERSION_MAINNET_SINGLESIG   26
+
 #ifdef __cplusplus
 }
 #endif
