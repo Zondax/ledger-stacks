@@ -1,5 +1,5 @@
 /** ******************************************************************************
- *  (c) 2019 Zondax GmbH
+ *  (c) 2019-2020 Zondax GmbH
  *  (c) 2016-2017 Ledger
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,16 +35,16 @@ function processGetAddrResponse(response) {
   const errorCodeData = partialResponse.slice(-2);
   const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
 
-  const addressRaw = Buffer.from(partialResponse.slice(0, PKLEN));
+  const publicKey = Buffer.from(partialResponse.slice(0, PKLEN));
   partialResponse = partialResponse.slice(PKLEN);
 
   const address = Buffer.from(partialResponse.slice(0, -2)).toString();
 
   return {
+    publicKey,
     address,
-    address_raw: addressRaw,
-    return_code: returnCode,
-    error_message: errorCodeToString(returnCode),
+    returnCode,
+    errorMessage: errorCodeToString(returnCode),
   };
 }
 
@@ -109,8 +109,8 @@ export default class BlockstackApp {
 
       if (response[0] !== 1) {
         // Ledger responds with format ID 1. There is no spec for any format != 1
-        result.error_message = "response format ID not recognized";
-        result.return_code = 0x9001;
+        result.errorMessage = "response format ID not recognized";
+        result.returnCode = 0x9001;
       } else {
         const appNameLen = response[1];
         appName = response.slice(2, 2 + appNameLen).toString("ascii");
@@ -126,21 +126,21 @@ export default class BlockstackApp {
       }
 
       return {
-        return_code: returnCode,
-        error_message: errorCodeToString(returnCode),
+        returnCode,
+        errorMessage: errorCodeToString(returnCode),
         // //
         appName,
         appVersion,
         flagLen,
         flagsValue,
         // eslint-disable-next-line no-bitwise
-        flag_recovery: (flagsValue & 1) !== 0,
+        flagRecovery: (flagsValue & 1) !== 0,
         // eslint-disable-next-line no-bitwise
-        flag_signed_mcu_code: (flagsValue & 2) !== 0,
+        flagSignedMcuCode: (flagsValue & 2) !== 0,
         // eslint-disable-next-line no-bitwise
-        flag_onboarded: (flagsValue & 4) !== 0,
+        flagOnboarded: (flagsValue & 4) !== 0,
         // eslint-disable-next-line no-bitwise
-        flag_pin_validated: (flagsValue & 128) !== 0,
+        flagPINValidated: (flagsValue & 128) !== 0,
       };
     }, processErrorResponse);
   }
@@ -154,8 +154,8 @@ export default class BlockstackApp {
 
         if (returnCode === 0x6e00) {
           return {
-            return_code: returnCode,
-            error_message: "This command is only available in the Dashboard",
+            returnCode,
+            errorMessage: "This command is only available in the Dashboard",
           };
         }
 
@@ -182,8 +182,8 @@ export default class BlockstackApp {
         const mcuVersion = tmp.toString();
 
         return {
-          return_code: returnCode,
-          error_message: errorCodeToString(returnCode),
+          returnCode,
+          errorMessage: errorCodeToString(returnCode),
           // //
           targetId,
           seVersion,
@@ -204,7 +204,6 @@ export default class BlockstackApp {
 
   async showAddressAndPubKey(path) {
     const serializedPath = serializePathv1(path);
-    console.log(serializedPath);
 
     return this.transport
       .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.SHOW_ADDRESS_IN_DEVICE, 0, serializedPath, [0x9000])
@@ -219,10 +218,10 @@ export default class BlockstackApp {
     return this.signGetChunks(path, message).then((chunks) => {
       return this.signSendChunk(1, chunks.length, chunks[0], [ERROR_CODE.NoError]).then(async (response) => {
         let result = {
-          return_code: response.return_code,
-          error_message: response.error_message,
-          signature_compact: null,
-          signature_der: null,
+          returnCode: response.returnCode,
+          errorMessage: response.errorMessage,
+          signatureCompact: null,
+          signatureDER: null,
         };
 
         for (let i = 1; i < chunks.length; i += 1) {
@@ -234,11 +233,11 @@ export default class BlockstackApp {
         }
 
         return {
-          return_code: result.return_code,
-          error_message: result.error_message,
+          returnCode: result.returnCode,
+          errorMessage: result.errorMessage,
           // ///
-          signature_compact: result.signature_compact,
-          signature_der: result.signature_der,
+          signatureCompact: result.signatureCompact,
+          signatureDER: result.signatureDER,
         };
       }, processErrorResponse);
     }, processErrorResponse);
