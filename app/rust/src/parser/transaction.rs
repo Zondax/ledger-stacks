@@ -28,6 +28,7 @@ pub enum TransactionPostConditionMode {
 }
 
 impl TransactionPostConditionMode {
+    #[inline(never)]
     fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::Allow),
@@ -36,6 +37,7 @@ impl TransactionPostConditionMode {
         }
     }
 
+    #[inline(never)]
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
         let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
@@ -53,6 +55,7 @@ pub enum TransactionAnchorMode {
 }
 
 impl TransactionAnchorMode {
+    #[inline(never)]
     fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::OnChainOnly),
@@ -62,6 +65,7 @@ impl TransactionAnchorMode {
         }
     }
 
+    #[inline(never)]
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
         let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
@@ -78,6 +82,7 @@ pub struct PostConditions<'a> {
 }
 
 impl<'a> PostConditions<'a> {
+    #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = be_u32(bytes)?;
         let mut conditions: [Option<TransactionPostCondition<'a>>; NUM_SUPPORTED_POST_CONDITIONS] =
@@ -139,14 +144,76 @@ impl<'a> From<TxTuple<'a>> for Transaction<'a> {
 pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
-    transaction_auth: TransactionAuth<'a>,
-    anchor_mode: TransactionAnchorMode,
-    post_condition_mode: TransactionPostConditionMode,
-    post_conditions: PostConditions<'a>,
-    payload: TransactionPayload<'a>,
+    pub transaction_auth: TransactionAuth<'a>,
+    pub anchor_mode: TransactionAnchorMode,
+    pub post_condition_mode: TransactionPostConditionMode,
+    pub post_conditions: PostConditions<'a>,
+    pub payload: TransactionPayload<'a>,
 }
 
 impl<'a> Transaction<'a> {
+    #[inline(never)]
+    pub fn get_header(bytes: &[u8]) -> nom::IResult<&[u8], (TransactionVersion, u32), ParserError> {
+        check_canary!();
+        let version = match TransactionVersion::from_bytes(bytes) {
+            Ok(h) => h,
+            Err(_e) => return Err(nom::Err::Error(ParserError::parser_unexpected_value)),
+        };
+        let chain_id = be_u32(version.0)?;
+        Ok((chain_id.0, (version.1, chain_id.1)))
+    }
+
+    #[inline(never)]
+    pub fn get_auth(bytes: &[u8]) -> nom::IResult<&[u8], TransactionAuth, ParserError> {
+        check_canary!();
+        match TransactionAuth::from_bytes(bytes) {
+            Ok(auth) => Ok((auth.0, auth.1)),
+            Err(_) => return Err(nom::Err::Error(ParserError::parser_invalid_auth_type)),
+        }
+    }
+
+    #[inline(never)]
+    pub fn get_modes(
+        bytes: &[u8],
+    ) -> nom::IResult<&[u8], (TransactionAnchorMode, TransactionPostConditionMode), ParserError>
+    {
+        check_canary!();
+        let (raw, anchor) = match TransactionAnchorMode::from_bytes(bytes) {
+            Ok(res) => res,
+            Err(_e) => return Err(nom::Err::Error(ParserError::parser_post_condition_failed)),
+        };
+        let (raw2, mode) = match TransactionPostConditionMode::from_bytes(raw) {
+            Ok(res) => res,
+            Err(_e) => return Err(nom::Err::Error(ParserError::parser_post_condition_failed)),
+        };
+        Ok((raw2, (anchor, mode)))
+    }
+
+    #[inline(never)]
+    pub fn post_conditions(bytes: &'a [u8]) -> nom::IResult<&[u8], PostConditions, ParserError> {
+        let conditions = match PostConditions::from_bytes(bytes) {
+            Ok(res) => res,
+            Err(_e) => return Err(nom::Err::Error(ParserError::parser_post_condition_failed)),
+        };
+        check_canary!();
+        Ok((conditions.0, conditions.1))
+    }
+
+    #[inline(never)]
+    pub fn get_payload(bytes: &'a [u8]) -> nom::IResult<&[u8], TransactionPayload, ParserError> {
+        let conditions = match TransactionPayload::from_bytes(bytes) {
+            Ok(res) => res,
+            Err(_e) => {
+                return Err(nom::Err::Error(
+                    ParserError::parser_invalid_transaction_payload,
+                ))
+            }
+        };
+        check_canary!();
+        Ok((conditions.0, conditions.1))
+    }
+
+    #[cfg(test)]
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, ParserError> {
         match permutation((
             TransactionVersion::from_bytes,

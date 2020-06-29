@@ -20,6 +20,7 @@ use crate::zxformat;
 pub struct MessageSignature<'a>(&'a [u8]);
 
 impl<'a> MessageSignature<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let signature = take(SIGNATURE_LEN)(bytes)?;
         Ok((signature.0, Self(signature.1)))
@@ -57,6 +58,7 @@ pub struct TransactionSpendingCondition<'a> {
 }
 
 impl<'a> TransactionSpendingCondition<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let hash_mode = le_u8(bytes)?;
         let mode = HashMode::from_u8(hash_mode.1).ok_or(ParserError::parser_invalid_hash_mode)?;

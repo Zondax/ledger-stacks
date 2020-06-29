@@ -29,6 +29,7 @@ pub enum TransactionVersion {
 }
 
 impl TransactionVersion {
+    #[inline(never)]
     pub fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let version_res = le_u8(bytes)?;
         let tx_version =
@@ -36,6 +37,7 @@ impl TransactionVersion {
         Ok((version_res.0, tx_version))
     }
 
+    #[inline(never)]
     fn from_u8(v: u8) -> Option<Self> {
         match v {
             0 => Some(Self::Mainnet),
@@ -54,6 +56,7 @@ pub enum AssetInfoId {
 }
 
 impl AssetInfoId {
+    #[inline(never)]
     pub fn from_u8(b: u8) -> Option<AssetInfoId> {
         match b {
             0 => Some(AssetInfoId::STX),
@@ -73,6 +76,7 @@ pub struct AssetInfo<'a> {
 }
 
 impl<'a> AssetInfo<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let address = StacksAddress::from_bytes(bytes)?;
         let contract_name = ContractName::from_bytes(address.0)?;
@@ -173,6 +177,7 @@ impl From<ParserError> for nom::Err<ParserError> {
 pub struct Hash160<'a>(pub &'a [u8]);
 
 impl<'a> Hash160<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let name = take(HASH160_LEN)(bytes)?;
         Ok((name.0, Self(name.1)))
@@ -207,6 +212,7 @@ pub enum HashMode {
 }
 
 impl HashMode {
+    #[inline(never)]
     pub fn from_u8(n: u8) -> Option<HashMode> {
         match n {
             x if x == HashMode::P2PKH as u8 => Some(HashMode::P2PKH),
@@ -253,6 +259,7 @@ impl<'a> StacksString<'a> {
 pub struct ContractName<'a>(pub &'a [u8]);
 
 impl<'a> ContractName<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = u8_with_limits(MAX_STRING_LEN, bytes)
             .map_err(|_| ParserError::parser_invalid_contract_name)?;
@@ -270,6 +277,7 @@ impl<'a> ContractName<'a> {
 pub struct ClarityName<'a>(pub &'a [u8]);
 
 impl<'a> ClarityName<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = u8_with_limits(MAX_STRING_LEN, bytes)
             .map_err(|_| ParserError::parser_invalid_asset_name)?;
@@ -287,6 +295,7 @@ impl<'a> ClarityName<'a> {
 pub struct AssetName<'a>(pub &'a [u8]);
 
 impl<'a> AssetName<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = u8_with_limits(MAX_STRING_LEN, bytes)
             .map_err(|_| ParserError::parser_invalid_asset_name)?;
@@ -302,6 +311,7 @@ impl<'a> AssetName<'a> {
 pub struct StacksAddress<'a>(pub u8, pub Hash160<'a>);
 
 impl<'a> StacksAddress<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let addrId = le_u8(bytes)?;
         let address = take(HASH160_LEN)(addrId.0)?;
@@ -313,6 +323,7 @@ impl<'a> StacksAddress<'a> {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ContractPrincipal<'a>(StandardPrincipal<'a>, ContractName<'a>);
 impl<'a> ContractPrincipal<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let address = StandardPrincipal::from_bytes(bytes)?;
         let name = ContractName::from_bytes(address.0)?;
@@ -325,6 +336,7 @@ impl<'a> ContractPrincipal<'a> {
 pub struct StandardPrincipal<'a>(pub u8, pub &'a [u8]);
 
 impl<'a> StandardPrincipal<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let addrId = le_u8(bytes)?;
         let address = take(HASH160_LEN)(addrId.0)?;
@@ -340,11 +352,13 @@ pub enum PrincipalData<'a> {
 }
 
 impl<'a> PrincipalData<'a> {
+    #[inline(never)]
     pub fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let principal = StandardPrincipal::from_bytes(bytes)?;
         Ok((principal.0, Self::Standard(principal.1)))
     }
 
+    #[inline(never)]
     pub fn contract_principal_from_bytes(
         bytes: &'a [u8],
     ) -> nom::IResult<&[u8], Self, ParserError> {
@@ -378,6 +392,7 @@ impl<'a> PrincipalData<'a> {
 pub struct TokenTransferMemo<'a>(pub &'a [u8]);
 
 impl<'a> TokenTransferMemo<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let memo = take(TOKEN_TRANSFER_MEMO_LEN)(bytes)?;
         Ok((memo.0, Self(memo.1)))

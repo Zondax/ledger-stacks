@@ -63,25 +63,66 @@ fn parser_init_context(
     }
 }
 
+use crate::parser::{
+    parser_common::TransactionVersion, transaction::*, transaction_auth::TransactionAuth,
+    transaction_payload::TransactionPayload,
+};
+
+#[inline(never)]
+fn header_and_auth(
+    data: &[u8],
+) -> Result<(&[u8], TransactionVersion, u32, TransactionAuth), ParserError> {
+    let header = match Transaction::get_header(data) {
+        Ok(h) => h,
+        Err(_e) => return Err(ParserError::parser_unexpected_value),
+    };
+    let auth = match Transaction::get_auth(header.0) {
+        Ok(h) => h,
+        Err(_e) => return Err(ParserError::parser_invalid_auth_type),
+    };
+    Ok((auth.0, (header.1).0, (header.1).1, auth.1))
+}
+
 #[no_mangle]
+#[inline(never)]
 pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut parse_tx_t) -> u32 {
     unsafe {
         let data = core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _);
-        match Transaction::from_bytes(data) {
-            Ok(transaction) => {
-                let len = core::mem::size_of::<Transaction>();
-                if parser_state.is_null()
-                    || (*parser_state).state.is_null()
-                    || ((*parser_state).len as usize) < len
-                {
-                    return ParserError::parser_no_memory_for_state as u32;
-                }
-                let tx = &transaction as *const _ as *const u8;
-                core::ptr::copy_nonoverlapping(tx, (*parser_state).state, len);
-                ParserError::parser_ok as u32
-            }
-            Err(e) => e as u32,
+        let (raw, version, chain_id, auth) = match header_and_auth(data) {
+            Ok(res) => res,
+            Err(e) => return e as u32,
+        };
+        let modes = match Transaction::get_modes(raw) {
+            Ok(h) => h,
+            Err(_e) => return ParserError::parser_invalid_post_condition as u32,
+        };
+        let (raw_conditions, conditions) = match Transaction::post_conditions(modes.0) {
+            Ok(h) => h,
+            Err(_e) => return ParserError::parser_invalid_post_condition as u32,
+        };
+        let (_raw_payload, payload) = match Transaction::get_payload(raw_conditions) {
+            Ok(h) => h,
+            Err(_e) => return ParserError::parser_invalid_transaction_payload as u32,
+        };
+
+        // Note that if a transaction contains a token-transfer payload,
+        // it MUST have only a standard authorization field. It cannot be sponsored.
+        if payload.is_token_transfer_payload() && !auth.is_standard_auth() {
+            return ParserError::parser_invalid_transaction_payload as u32;
         }
+        let transaction = Transaction {
+            version,
+            chain_id,
+            transaction_auth: auth,
+            anchor_mode: (modes.1).0,
+            post_condition_mode: (modes.1).1,
+            post_conditions: conditions,
+            payload,
+        };
+        let len = core::mem::size_of::<Transaction>();
+        let tx = &transaction as *const _ as *const u8;
+        core::ptr::copy_nonoverlapping(tx, (*parser_state).state, len);
+        ParserError::parser_ok as u32
     }
 }
 
