@@ -153,23 +153,56 @@ pub struct Transaction<'a> {
 
 impl<'a> Transaction<'a> {
     #[inline(never)]
-    pub fn get_header(bytes: &[u8]) -> nom::IResult<&[u8], (TransactionVersion, u32), ParserError> {
-        check_canary!();
-        let version = match TransactionVersion::from_bytes(bytes) {
-            Ok(h) => h,
-            Err(_e) => return Err(nom::Err::Error(ParserError::parser_unexpected_value)),
-        };
-        let chain_id = be_u32(version.0)?;
-        Ok((chain_id.0, (version.1, chain_id.1)))
+    pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        // FIXME: We should avoid creating these local variable and operate directly on the tx_out memory space
+        let next_data = self.read_header(data   ).map_err(|_| ParserError::parser_unexpected_value)?;
+        let next_data = self.read_auth(next_data).map_err(|_|ParserError::parser_invalid_auth_type)?;
+
+        let modes = Transaction::get_modes(next_data).map_err(|_e| ParserError::parser_invalid_post_condition)?;
+        let (raw_conditions, conditions) = Transaction::post_conditions(modes.0).map_err(|_| ParserError::parser_invalid_post_condition)?;
+        // FIXME: reenable
+        // tx_out.anchor_mode = (modes.1).0;
+        // tx_out.post_condition_mode = (modes.1).1;
+        // tx_out.post_conditions = conditions;
+
+        let (_raw_payload, payload) = Transaction::get_payload(raw_conditions).map_err(|_e| ParserError::parser_invalid_transaction_payload)?;
+        // Note that if a transaction contains a token-transfer payload,
+        // it MUST have only a standard authorization field. It cannot be sponsored.
+
+        // FIXME: reenable
+        // let is_standard_auth = tx_out.transaction_auth.is_standard_auth();
+        // if payload.is_token_transfer_payload() && !is_standard_auth {
+        //     return Err(ParserError::parser_invalid_transaction_payload as u32);
+        // }
+//    tx_out.payload = payload;
+
+        Ok(())
     }
 
     #[inline(never)]
-    pub fn get_auth(bytes: &[u8]) -> nom::IResult<&[u8], TransactionAuth, ParserError> {
+    pub fn read_header(&mut self, bytes: &'a [u8]) -> Result<&[u8], ParserError> {
         check_canary!();
-        match TransactionAuth::from_bytes(bytes) {
-            Ok(auth) => Ok((auth.0, auth.1)),
-            Err(_) => return Err(nom::Err::Error(ParserError::parser_invalid_auth_type)),
-        }
+
+        // FIXME: improve this? Can we read directly in place?
+        let (next_data, version) = TransactionVersion::from_bytes(bytes).map_err(|_| ParserError::parser_unexpected_value)?;
+        self.version = version;
+
+        // FIXME: improve this? Can we read directly in place?
+        let (next_data, chain_id) = be_u32::<'a, ParserError>(next_data).map_err(|_| ParserError::parser_unexpected_value)?;
+        self.chain_id = chain_id;
+
+        // Can we keep the remainder local o something
+        Ok(next_data)
+    }
+
+    #[inline(never)]
+    pub fn read_auth(&mut self, bytes: &'a [u8]) -> Result<&[u8], ParserError> {
+        check_canary!();
+
+        let (next_data, auth ) = TransactionAuth::from_bytes(bytes).map_err(|_| ParserError::parser_invalid_auth_type)?;
+        self.transaction_auth = auth;
+
+        Ok(next_data)
     }
 
     #[inline(never)]

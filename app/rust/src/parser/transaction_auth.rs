@@ -60,6 +60,7 @@ impl<'a> TransactionAuth<'a> {
         Ok((sponsored.0, Self::Sponsored(standard.1, sponsored.1)))
     }
 
+    #[inline(never)]
     pub fn is_standard_auth(&self) -> bool {
         match *self {
             Self::Standard(_) => true,
