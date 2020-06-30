@@ -190,6 +190,33 @@ impl<'a> TransactionPostCondition<'a> {
         Ok(res)
     }
 
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+        let cond_type = le_u8(bytes)?;
+        let (raw, _) = PostConditionPrincipal::from_bytes(cond_type.0)?;
+        let leftover = match PostConditionType::from_u8(cond_type.1)
+            .ok_or(ParserError::parser_invalid_post_condition)?
+        {
+            PostConditionType::STX => {
+                let code = le_u8(raw)?;
+                let (bytes, _) = be_u64(code.0)?;
+                bytes
+            }
+            PostConditionType::FungibleToken => {
+                let (asset_raw, _) = AssetInfo::from_bytes(raw)?;
+                let code = le_u8(asset_raw)?;
+                let (bytes, _) = be_u64(code.0)?;
+                bytes
+            }
+            PostConditionType::NonFungibleToken => {
+                let (asset_raw, _) = AssetInfo::from_bytes(raw)?;
+                let (name_raw, _) = Value::from_bytes(asset_raw)?;
+                let (bytes, _) = le_u8(name_raw)?;
+                bytes
+            }
+        };
+        Ok((leftover, bytes))
+    }
+
     pub fn num_items(&self) -> u8 {
         match *self {
             Self::STX(..) => 3,

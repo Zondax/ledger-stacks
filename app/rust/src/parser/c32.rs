@@ -76,8 +76,8 @@ fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; 64]> {
         if carry_bits >= 5 {
             let c32_value = carry & ((1 << 5) - 1);
             result.push(c32_chars[c32_value as usize]);
-            carry_bits = carry_bits - 5;
-            carry = carry >> 5;
+            carry_bits -= 5;
+            carry >>= 5;
         }
     }
 
