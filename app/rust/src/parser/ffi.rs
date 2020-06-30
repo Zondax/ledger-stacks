@@ -25,6 +25,10 @@ pub struct parse_tx_t {
     len: u16,
 }
 
+fn transaction_from<'a>(tx: *mut parse_tx_t) -> Option<&'a mut Transaction<'a>> {
+    unsafe { ((*tx).state as *const u8 as *mut Transaction).as_mut() }
+}
+
 #[no_mangle]
 pub extern "C" fn _parser_init(
     ctx: *mut parser_context_t,
@@ -63,26 +67,17 @@ fn parser_init_context(
     }
 }
 
-use crate::parser::{
-    parser_common::TransactionVersion, transaction::*, transaction_auth::TransactionAuth,
-    transaction_payload::TransactionPayload,
-};
-
 #[no_mangle]
 pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut parse_tx_t) -> u32 {
-    unsafe {
-        // FIXME: Let's keep unsafe limited to the interfacing functions and move functionality out from here into safe Rust code
-        let data = core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _);
+    let data = unsafe { core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _) };
 
-        // FIXME: we have this conversion from parser_state.state to Transaction in multiple places, can we extract away in a function?
-        if let Some(tx) = ((*parser_state).state as *const u8 as *mut Transaction).as_mut() {
-            match tx.read(data) {
-                Ok(_) => ParserError::parser_ok as u32,
-                Err(e) => return e as u32,
-            }
-        } else {
-            return ParserError::parser_no_memory_for_state as u32;
+    if let Some(tx) = transaction_from(parser_state) {
+        match tx.read(data) {
+            Ok(_) => ParserError::parser_ok as u32,
+            Err(e) => e as u32,
         }
+    } else {
+        ParserError::parser_no_memory_for_state as u32
     }
 }
 
@@ -98,11 +93,11 @@ pub extern "C" fn _getNumItems(_ctx: *const parser_context_t, tx_t: *const parse
         if tx_t.is_null() || (*tx_t).state.is_null() {
             return 0;
         }
-        if let Some(tx) = ((*tx_t).state as *const Transaction).as_ref() {
-            return tx.num_items();
-        }
-        0
     }
+    if let Some(tx) = transaction_from(tx_t as _) {
+        return tx.num_items();
+    }
+    0
 }
 
 #[no_mangle]
@@ -117,24 +112,24 @@ pub extern "C" fn _getItem(
     pageCount: *mut u8,
     tx_t: *const parse_tx_t,
 ) -> u32 {
-    unsafe {
-        // FIXME: Let's keep unsafe limited to the interfacing functions and move functionality out from here into safe Rust code
-
+    let (page_count, key, value) = unsafe {
         *pageCount = 0u8;
+        let page_count = &mut *pageCount;
         let key = core::slice::from_raw_parts_mut(outKey as *mut u8, outKeyLen as usize);
         let value = core::slice::from_raw_parts_mut(outValue as *mut u8, outValueLen as usize);
         if tx_t.is_null() || (*tx_t).state.is_null() {
             return ParserError::parser_context_mismatch as _;
         }
-        if let Some(tx) = ((*tx_t).state as *const u8 as *const Transaction).as_ref() {
-            return match tx.get_item(displayIdx, key, value, pageIdx) {
-                Ok(page) => {
-                    *pageCount = page;
-                    ParserError::parser_ok as _
-                }
-                Err(e) => e as _,
-            };
-        }
-        ParserError::parser_context_mismatch as _
+        (page_count, key, value)
+    };
+    if let Some(tx) = transaction_from(tx_t as _) {
+        return match tx.get_item(displayIdx, key, value, pageIdx) {
+            Ok(page) => {
+                *page_count = page;
+                ParserError::parser_ok as _
+            }
+            Err(e) => e as _,
+        };
     }
+    ParserError::parser_context_mismatch as _
 }
