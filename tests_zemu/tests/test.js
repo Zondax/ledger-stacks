@@ -40,7 +40,7 @@ function compareSnapshots(snapshotPrefixTmp, snapshotPrefixGolden, snapshotCount
 }
 
 describe('Basic checks', function () {
-    test('can start and stop container', async function () {
+    it('can start and stop container', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -49,7 +49,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('get app version', async function () {
+    it('app version', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -69,7 +69,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('get address', async function () {
+    it('get address', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -90,28 +90,43 @@ describe('Basic checks', function () {
     });
 
     test('show address', async function () {
+        const snapshotPrefixGolden = "snapshots/show-address/";
+        const snapshotPrefixTmp = "snapshots-tmp/show-address/";
+        let snapshotCount = 0;
+
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
             const app = new BlockstackApp(sim.getTransport());
 
-            const addrRequest = app.showAddressAndPubKey("m/44'/5757'/5'/0/1", true);
-            await Zemu.sleep(1000);
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            // Derivation path. First 3 items are automatically hardened!
+            const path = "m/44'/5757'/5'/0/3";
+            const respRequest = app.showAddressAndPubKey(path);
 
-            const response = await addrRequest;
-            console.log(response)
-            expect(response.returnCode).toEqual(0x9000);
+            // We need to wait until the app responds to the APDU
+            await Zemu.sleep(2000);
 
-            const expectedPublicKey = "0327ae12779c24a1b242fe609d772f4c610a120d0b96a524022864e77a3b869d23";
-            const expectedAddr = "STC47MG6DWWH30RJK8V10AWE7PP63DADXHV76MAQ";
+            // Now navigate the address / path
+            await sim.snapshot(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await sim.clickBoth(`${snapshotPrefixTmp}${snapshotCount++}.png`);
 
-            expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey);
-            expect(response.address).toEqual(expectedAddr);
+            const resp = await respRequest;
+            console.log(resp);
+
+            compareSnapshots(snapshotPrefixTmp, snapshotPrefixGolden, snapshotCount);
+
+            expect(resp.returnCode).toEqual(0x9000);
+            expect(resp.errorMessage).toEqual("No errors");
+
+            const expected_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";
+            const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
+
+            expect(resp.address).toEqual(expected_address_string);
+            expect(resp.publicKey.toString('hex')).toEqual(expected_publicKey);
         } finally {
             await sim.close();
         }
@@ -122,8 +137,8 @@ describe('Basic checks', function () {
         try {
             await sim.start(simOptions);
             const app = new BlockstackApp(sim.getTransport());
-
-	        const blob = Buffer.from("00000000010400149be4d6c4667e4fb6d461e7c8378fa5a5e10c9f000000000000000a00000000000004e200010e997280fe04c9976e70d90a93b9f86507247f5e9fa78ec95cd4eebb27b23f3338a13f549bee779b646bffff41611c9eae53b65e6b7a911b00c906a36ad5920a0302000000000005169eb0a31b22af43679e4f58ce400ed641c28113a6000000000000138800000000000000000000000000000000000000000000000000000000000000000000","hex");
+    
+	          const blob = Buffer.from("00000000010400149be4d6c4667e4fb6d461e7c8378fa5a5e10c9f000000000000000a00000000000004e200010e997280fe04c9976e70d90a93b9f86507247f5e9fa78ec95cd4eebb27b23f3338a13f549bee779b646bffff41611c9eae53b65e6b7a911b00c906a36ad5920a0302000000000005169eb0a31b22af43679e4f58ce400ed641c28113a6000000000000138800000000000000000000000000000000000000000000000000000000000000000000","hex");
             // Do not await.. we need to click asynchronously
             const signatureRequest = app.sign("m/44'/133'/5'/0/0", blob);
             await Zemu.sleep(1000);
@@ -136,16 +151,16 @@ describe('Basic checks', function () {
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickBoth();
-
-            let signature = await signatureRequest;
-            console.log(signature)
-
-            expect(signature.returnCode).toEqual(0x9000);
-
-            // TODO: Verify signature
-        } finally {
-            await sim.close();
-        }
-    });
+    
+             let signature = await signatureRequest;
+             console.log(signature)
+    
+             expect(signature.returnCode).toEqual(0x9000);
+    
+             // TODO: Verify signature
+         } finally {
+             await sim.close();
+         }
+     });
 
 });
