@@ -49,6 +49,7 @@ pub struct StxTokenTransfer<'a> {
 }
 
 impl<'a> StxTokenTransfer<'a> {
+    #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let id = le_u8(bytes)?;
         let principal = match TokenTranferPrincipal::from_u8(id.1)? {
@@ -147,6 +148,7 @@ pub struct TransactionContractCall<'a> {
 }
 
 impl<'a> TransactionContractCall<'a> {
+    #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (leftover, (address, contract_name, function_name, function_args)) = permutation((
             StacksAddress::from_bytes,
@@ -174,6 +176,7 @@ pub struct Arguments<'a> {
 }
 
 impl<'a> Arguments<'a> {
+    #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = be_u32(bytes)?;
         let mut arguments: [Option<Value<'a>>; MAX_NUM_ARGS as _] = [None; MAX_NUM_ARGS as _];
@@ -204,6 +207,7 @@ pub struct TransactionSmartContract<'a> {
 }
 
 impl<'a> TransactionSmartContract<'a> {
+    #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (leftover, (name, code_body)) =
             permutation((ContractName::from_bytes, StacksString::from_bytes))(bytes)?;
@@ -258,6 +262,7 @@ pub enum TransactionPayload<'a> {
 }
 
 impl<'a> TransactionPayload<'a> {
+    #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let id = le_u8(bytes)?;
         let res = match TransactionPayloadId::from_u8(id.1)? {
@@ -270,6 +275,7 @@ impl<'a> TransactionPayload<'a> {
         Ok(res)
     }
 
+    #[inline(never)]
     pub fn is_token_transfer_payload(&self) -> bool {
         match *self {
             Self::TokenTransfer(_) => true,

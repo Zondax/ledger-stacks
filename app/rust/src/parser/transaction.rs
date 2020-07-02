@@ -28,6 +28,7 @@ pub enum TransactionPostConditionMode {
 }
 
 impl TransactionPostConditionMode {
+    #[inline(never)]
     fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::Allow),
@@ -36,6 +37,7 @@ impl TransactionPostConditionMode {
         }
     }
 
+    #[inline(never)]
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
         let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
@@ -53,6 +55,7 @@ pub enum TransactionAnchorMode {
 }
 
 impl TransactionAnchorMode {
+    #[inline(never)]
     fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::OnChainOnly),
@@ -62,6 +65,7 @@ impl TransactionAnchorMode {
         }
     }
 
+    #[inline(never)]
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
         let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
@@ -74,27 +78,28 @@ impl TransactionAnchorMode {
 #[derive(Debug, Clone)]
 pub struct PostConditions<'a> {
     pub len: usize, // Number of post-conditions
-    conditions: [Option<TransactionPostCondition<'a>>; NUM_SUPPORTED_POST_CONDITIONS],
+    conditions: [&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS],
 }
 
 impl<'a> PostConditions<'a> {
+    #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let len = be_u32(bytes)?;
-        let mut conditions: [Option<TransactionPostCondition<'a>>; NUM_SUPPORTED_POST_CONDITIONS] =
-            [None; NUM_SUPPORTED_POST_CONDITIONS];
-        let mut iter = iterator(len.0, TransactionPostCondition::from_bytes);
-        iter.take(len.1 as _)
+        let (raw, len) = be_u32(bytes)?;
+        let mut conditions: [&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS] =
+            [Default::default(); NUM_SUPPORTED_POST_CONDITIONS];
+        let mut iter = iterator(raw, TransactionPostCondition::read_as_bytes);
+        iter.take(len as _)
             .enumerate()
             .zip(conditions.iter_mut())
             .for_each(|i| {
-                *i.1 = Some((i.0).1);
+                *i.1 = (i.0).1;
             });
         let res = iter.finish()?;
         check_canary!();
         Ok((
             res.0,
             Self {
-                len: len.1 as usize,
+                len: len as usize,
                 conditions,
             },
         ))
@@ -104,7 +109,11 @@ impl<'a> PostConditions<'a> {
         let mut num = 0;
         // Iterates over valid values
         for p in self.conditions[..self.len].iter() {
-            num += p.map(|post| post.num_items()).unwrap();
+            if let Ok(items) =
+                TransactionPostCondition::from_bytes(p).and_then(|res| Ok(res.1.num_items()))
+            {
+                num += items;
+            }
         }
         num
     }
@@ -120,16 +129,17 @@ pub type TxTuple<'a> = (
     TransactionPayload<'a>,
 );
 
-impl<'a> From<TxTuple<'a>> for Transaction<'a> {
-    fn from(raw: TxTuple<'a>) -> Self {
+impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
+    fn from(raw: (&'a [u8], TxTuple<'a>)) -> Self {
         Self {
-            version: raw.0,
-            chain_id: raw.1,
-            transaction_auth: raw.2,
-            anchor_mode: raw.3,
-            post_condition_mode: raw.4,
-            post_conditions: raw.5,
-            payload: raw.6,
+            version: (raw.1).0,
+            chain_id: (raw.1).1,
+            transaction_auth: (raw.1).2,
+            anchor_mode: (raw.1).3,
+            post_condition_mode: (raw.1).4,
+            post_conditions: (raw.1).5,
+            payload: (raw.1).6,
+            remainder: raw.0,
         }
     }
 }
@@ -139,14 +149,98 @@ impl<'a> From<TxTuple<'a>> for Transaction<'a> {
 pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
-    transaction_auth: TransactionAuth<'a>,
-    anchor_mode: TransactionAnchorMode,
-    post_condition_mode: TransactionPostConditionMode,
-    post_conditions: PostConditions<'a>,
-    payload: TransactionPayload<'a>,
+    pub transaction_auth: TransactionAuth<'a>,
+    pub anchor_mode: TransactionAnchorMode,
+    pub post_condition_mode: TransactionPostConditionMode,
+    pub post_conditions: PostConditions<'a>,
+    pub payload: TransactionPayload<'a>,
+    pub remainder: &'a [u8],
 }
 
 impl<'a> Transaction<'a> {
+    fn update_remainder(&mut self, data: &'a [u8]) {
+        self.remainder = data;
+    }
+
+    #[inline(never)]
+    pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        self.update_remainder(data);
+        self.read_header()?;
+        self.read_auth()?;
+        self.read_transaction_modes()?;
+        self.read_post_conditions()?;
+        self.read_payload()?;
+
+        let is_token_transfer = self.payload.is_token_transfer_payload();
+        let is_standard_auth = self.transaction_auth.is_standard_auth();
+
+        if is_token_transfer && !is_standard_auth {
+            return Err(ParserError::parser_invalid_transaction_payload);
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn read_header(&mut self) -> Result<(), ParserError> {
+        let (next_data, version) = TransactionVersion::from_bytes(self.remainder)
+            .map_err(|_| ParserError::parser_unexpected_value)?;
+
+        let (next_data, chain_id) = be_u32::<'a, ParserError>(next_data)
+            .map_err(|_| ParserError::parser_unexpected_value)?;
+
+        self.version = version;
+        self.chain_id = chain_id;
+        check_canary!();
+
+        self.update_remainder(next_data);
+
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn read_auth(&mut self) -> Result<(), ParserError> {
+        let (next_data, auth) = TransactionAuth::from_bytes(self.remainder)
+            .map_err(|_| ParserError::parser_invalid_auth_type)?;
+        self.transaction_auth = auth;
+        self.update_remainder(next_data);
+        check_canary!();
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn read_transaction_modes(&mut self) -> Result<(), ParserError> {
+        let (raw, anchor) = TransactionAnchorMode::from_bytes(self.remainder)
+            .map_err(|_| ParserError::parser_unexpected_value)?;
+        let (raw2, mode) = TransactionPostConditionMode::from_bytes(raw)
+            .map_err(|_| ParserError::parser_post_condition_failed)?;
+        self.anchor_mode = anchor;
+        self.post_condition_mode = mode;
+        self.update_remainder(raw2);
+        check_canary!();
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn read_post_conditions(&mut self) -> Result<(), ParserError> {
+        let (raw, conditions) = PostConditions::from_bytes(self.remainder)
+            .map_err(|_| ParserError::parser_post_condition_failed)?;
+        self.post_conditions = conditions;
+        self.update_remainder(raw);
+        check_canary!();
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn read_payload(&mut self) -> Result<(), ParserError> {
+        let (raw, payload) = TransactionPayload::from_bytes(self.remainder)
+            .map_err(|_| ParserError::parser_invalid_transaction_payload)?;
+        self.payload = payload;
+        self.update_remainder(raw);
+        check_canary!();
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, ParserError> {
         match permutation((
             TransactionVersion::from_bytes,
@@ -164,7 +258,7 @@ impl<'a> Transaction<'a> {
                 if (tx.1).6.is_token_transfer_payload() && !(tx.1).2.is_standard_auth() {
                     return Err(ParserError::parser_invalid_transaction_payload);
                 }
-                Ok(Self::from(tx.1))
+                Ok(Self::from(tx))
             }
             Err(_e) => Err(ParserError::parser_unexpected_error),
         }
