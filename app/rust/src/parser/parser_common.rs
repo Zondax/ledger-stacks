@@ -13,6 +13,8 @@ use crate::parser::c32;
 pub const MAX_STRING_LEN: u8 = 128;
 pub const HASH160_LEN: usize = 20;
 
+pub const C32_ENCODED_ADDRS_LENGTH: usize = 50;
+
 // The amount of post_conditions we can
 // handle
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
@@ -40,8 +42,8 @@ impl TransactionVersion {
     #[inline(never)]
     fn from_u8(v: u8) -> Option<Self> {
         match v {
-            0 => Some(Self::Mainnet),
-            1 => Some(Self::Testnet),
+            0x00 => Some(Self::Mainnet),
+            0x80 => Some(Self::Testnet),
             _ => None,
         }
     }
@@ -186,14 +188,14 @@ impl<'a> Hash160<'a> {
     pub fn to_mainnet_address(
         &self,
         mode: HashMode,
-    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         c32::c32_address(mode.to_version_mainnet(), self.0)
     }
 
     pub fn to_testnet_address(
         &self,
         mode: HashMode,
-    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         c32::c32_address(mode.to_version_testnet(), self.0)
     }
 }
@@ -380,7 +382,7 @@ impl<'a> PrincipalData<'a> {
         }
     }
 
-    pub fn encoded_address(&self) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+    pub fn encoded_address(&self) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         let version = self.version();
         let raw = self.raw_address();
         c32::c32_address(version, raw)

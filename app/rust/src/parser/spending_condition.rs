@@ -8,7 +8,7 @@ use arrayvec::ArrayVec;
 
 use crate::check_canary;
 use crate::parser::parser_common::{
-    Hash160, HashMode, ParserError, TransactionVersion, SIGNATURE_LEN,
+    Hash160, HashMode, ParserError, TransactionVersion, SIGNATURE_LEN,C32_ENCODED_ADDRS_LENGTH
 };
 use crate::parser::{c32, ffi::fp_uint64_to_str};
 use crate::zxformat;
@@ -93,7 +93,7 @@ impl<'a> TransactionSpendingCondition<'a> {
     pub fn signer_address(
         &self,
         chain: TransactionVersion,
-    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         if chain == TransactionVersion::Testnet {
             self.signer.to_testnet_address(self.hash_mode)
         } else {

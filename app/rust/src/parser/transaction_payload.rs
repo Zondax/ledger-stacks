@@ -12,7 +12,7 @@ use arrayvec::ArrayVec;
 use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
     ParserError, PrincipalData, StacksAddress, StacksString, StandardPrincipal, TokenTransferMemo,
-    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,C32_ENCODED_ADDRS_LENGTH
 };
 
 use crate::parser::ffi::fp_uint64_to_str;
@@ -76,7 +76,7 @@ impl<'a> StxTokenTransfer<'a> {
         self.principal.raw_address()
     }
 
-    pub fn encoded_address(&self) -> Result<ArrayVec<[u8; 64]>, ParserError> {
+    pub fn encoded_address(&self) -> Result<ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         self.principal.encoded_address()
     }
 
@@ -214,6 +214,10 @@ impl<'a> TransactionSmartContract<'a> {
         Ok((leftover, Self { name, code_body }))
     }
 
+    pub fn contract_name(&self) -> &[u8] {
+        self.name.0
+    }
+
     fn get_contract_items(
         &self,
         display_idx: u8,
@@ -229,10 +233,9 @@ impl<'a> TransactionSmartContract<'a> {
                 writer_key
                     .write_str("Contract Name")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                // TODO: chck if contract name is encoded in somehow
                 zxformat::pageString(out_value, self.name.0, page_idx)
             }
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_value_out_of_range),
         }
     }
 }
@@ -270,7 +273,10 @@ impl<'a> TransactionPayload<'a> {
                 let token = StxTokenTransfer::from_bytes(id.0)?;
                 (token.0, Self::TokenTransfer(token.1))
             }
-            _ => unimplemented!(),
+            TransactionPayloadId::SmartContract => {
+                let contract = TransactionSmartContract::from_bytes(id.0)?;
+                (contract.0, Self::SmartContract(contract.1))
+            }
         };
         Ok(res)
     }
@@ -280,6 +286,21 @@ impl<'a> TransactionPayload<'a> {
         match *self {
             Self::TokenTransfer(_) => true,
             _ => false,
+        }
+    }
+
+    #[inline(never)]
+    pub fn is_smart_contract_payload(&self) -> bool {
+        match *self {
+            Self::SmartContract(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn contract_name(&self) -> Option<&[u8]> {
+        match *self {
+            Self::SmartContract(ref contract) => Some(contract.contract_name()),
+            _ => None,
         }
     }
 
@@ -297,7 +318,7 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; 64]>> {
+    pub fn recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         match *self {
             Self::TokenTransfer(ref token) => token.encoded_address().ok(),
             _ => None,

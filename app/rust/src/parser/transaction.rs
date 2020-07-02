@@ -79,6 +79,7 @@ impl TransactionAnchorMode {
 pub struct PostConditions<'a> {
     pub len: usize, // Number of post-conditions
     conditions: [&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS],
+    num_items: u8,
 }
 
 impl<'a> PostConditions<'a> {
@@ -95,20 +96,22 @@ impl<'a> PostConditions<'a> {
                 *i.1 = (i.0).1;
             });
         let res = iter.finish()?;
+        let num_items = Self::set_num_items(&conditions[..len as usize]);
         check_canary!();
         Ok((
             res.0,
             Self {
                 len: len as usize,
                 conditions,
+                num_items,
             },
         ))
     }
 
-    fn num_items(&self) -> u8 {
+    fn set_num_items(conditions: &[&[u8]]) -> u8 {
         let mut num = 0;
         // Iterates over valid values
-        for p in self.conditions[..self.len].iter() {
+        for p in conditions.iter() {
             if let Ok(items) =
                 TransactionPostCondition::from_bytes(p).and_then(|res| Ok(res.1.num_items()))
             {
@@ -116,6 +119,20 @@ impl<'a> PostConditions<'a> {
             }
         }
         num
+    }
+
+    pub fn num_items(&self) -> u8 {
+        self.num_items
+    }
+
+    pub fn get_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        Ok(0)
     }
 }
 
@@ -167,9 +184,11 @@ impl<'a> Transaction<'a> {
         self.update_remainder(data);
         self.read_header()?;
         self.read_auth()?;
+        crate::bolos::c_zemu_log_stack(b"read l:187\0");
         self.read_transaction_modes()?;
         self.read_post_conditions()?;
         self.read_payload()?;
+        crate::bolos::c_zemu_log_stack(b"read l:191\0");
 
         let is_token_transfer = self.payload.is_token_transfer_payload();
         let is_standard_auth = self.transaction_auth.is_standard_auth();
@@ -264,7 +283,7 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    pub fn payload_recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; 64]>> {
+    pub fn payload_recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         self.payload.recipient_address()
     }
 
@@ -326,6 +345,7 @@ impl<'a> Transaction<'a> {
                 .get_items(display_idx, out_key, out_value, page_idx)
         } else {
             // 2. Format Post-conditions
+            let _post_items = (display_idx as usize) % self.post_conditions.len;
             Ok(0)
         }
     }
@@ -370,6 +390,16 @@ mod test {
         nonce: u64,
         amount: u64,
         fee: u32,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct SmartContractTx {
+        raw: String,
+        sender: String,
+        sponsor_addrs: Option<String>,
+        fee: u64,
+        nonce: u64,
+        contract_name: String,
     }
 
     #[test]
@@ -431,7 +461,7 @@ mod test {
         assert_eq!(json.fee, spending_condition.fee_rate as u32);
 
         let origin = spending_condition
-            .signer_address(transaction.version)
+            .signer_address(TransactionVersion::Mainnet)
             .unwrap();
         let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
         assert_eq!(&json.sender, origin);
@@ -440,5 +470,46 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
+    }
+
+    #[test]
+    fn test_smart_contract_sponsored() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("sponsored_smart_contract");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: SmartContractTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(!transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_smart_contract_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let spending_condition = transaction.transaction_auth.origin();
+        let spending_condition_s = transaction.transaction_auth.sponsor().unwrap();
+
+        assert_eq!(json.nonce, spending_condition.nonce);
+        assert_eq!(json.fee as u32, spending_condition.fee_rate as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(json.sender, origin);
+
+        let sponsor_addrs = spending_condition_s
+            .signer_address(transaction.version)
+            .unwrap();
+        let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[0..sponsor_addrs.len()]).unwrap();
+        assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
     }
 }

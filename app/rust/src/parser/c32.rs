@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use sha2::Digest;
 use sha2::Sha256;
 
-use crate::parser::parser_common::{ParserError, HASH160_LEN};
+use crate::parser::parser_common::{ParserError, HASH160_LEN, C32_ENCODED_ADDRS_LENGTH};
 
 pub const C32_ADDRESS_VERSION_MAINNET_SINGLESIG: u8 = 22;
 pub const C32_ADDRESS_VERSION_MAINNET_MULTISIG: u8 = 20;
@@ -58,10 +58,10 @@ fn double_sha256_checksum(data: &[u8]) -> [u8; 4] {
     sum
 }
 
-fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; 64]> {
+fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
     let c32_chars: &[u8] = C32_CHARACTERS.as_bytes();
 
-    let mut result = ArrayVec::<[_; 64]>::new();
+    let mut result = ArrayVec::<[_; C32_ENCODED_ADDRS_LENGTH]>::new();
     let mut carry = 0;
     let mut carry_bits = 0;
 
@@ -101,11 +101,11 @@ fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; 64]> {
             break;
         }
     }
-    let result: ArrayVec<[_; 64]> = result.drain(..).rev().collect();
+    let result: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = result.drain(..).rev().collect();
     result
 }
 
-fn c32_check_encode(version: u8, data: &[u8]) -> Result<ArrayVec<[u8; 64]>, ParserError> {
+fn c32_check_encode(version: u8, data: &[u8]) -> Result<ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
     if version >= 32 {
         return Err(ParserError::parser_invalid_address_version);
     }
@@ -127,7 +127,7 @@ fn c32_check_encode(version: u8, data: &[u8]) -> Result<ArrayVec<[u8; 64]>, Pars
     Ok(c32_string)
 }
 
-pub fn c32_address(version: u8, data: &[u8]) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+pub fn c32_address(version: u8, data: &[u8]) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
     let mut c32_string = c32_check_encode(version, data)?;
     c32_string.insert(0, b'S');
     Ok(c32_string)

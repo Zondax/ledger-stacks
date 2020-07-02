@@ -241,10 +241,6 @@ mod test {
 
     #[test]
     fn test_stx_postcondition() {
-        println!(
-            "post-conditions size: {}",
-            core::mem::size_of::<TransactionPostCondition>()
-        );
         let hash = [1u8; 20];
         let hash160 = Hash160(hash.as_ref());
         let principal1 = PostConditionPrincipal::Standard(StacksAddress(1, hash160));
