@@ -227,7 +227,7 @@ export default class BlockstackApp {
         for (let i = 1; i < chunks.length; i += 1) {
           // eslint-disable-next-line no-await-in-loop
           result = await this.signSendChunk(1 + i, chunks.length, chunks[i]);
-          if (result.return_code !== ERROR_CODE.NoError) {
+          if (result.returnCode !== ERROR_CODE.NoError) {
             break;
           }
         }
