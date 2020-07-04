@@ -75,7 +75,7 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
     MEMZERO(outKey, outKeyLen);
     MEMZERO(outVal, outValLen);
     snprintf(outKey, outKeyLen, "?");
-    snprintf(outVal, outValLen, " ");
+    snprintf(outVal, outValLen, "?");
     *pageCount = 0;
 
     uint8_t numItems;

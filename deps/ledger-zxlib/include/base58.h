@@ -1,5 +1,7 @@
 /*******************************************************************************
-*   (c) 2020 Zondax GmbH
+*   Ledger App - Bitcoin Wallet
+*   (c) 2019 Zondax GmbH
+*   (c) 2016-2019 Ledger
 *
 *  Licensed under the Apache License, Version 2.0 (the "License");
 *  you may not use this file except in compliance with the License.
@@ -14,24 +16,23 @@
 *  limitations under the License.
 ********************************************************************************/
 
-#include <inttypes.h>
+#pragma once
+
+#include <stdlib.h>
 #include <stdint.h>
 
-typedef enum {
-    zb_no_error,
-    zb_misaligned_buffer,
-    zb_not_allocated
-} zbuffer_error_e;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-// allocate a block at the end of the stack
-// maximum size will not be checked
-zbuffer_error_e zb_allocate(uint16_t size);
+int decode_base58(const char *in, size_t length,
+                  unsigned char *out, size_t *outlen);
 
-// deallocate memory block as the end of the stack
-zbuffer_error_e zb_deallocate();
+int encode_base58(const unsigned char *in, size_t length,
+                  unsigned char *out, size_t *outlen);
 
-// obtain a pointer to the allocated block
-zbuffer_error_e zb_get(uint8_t **buffer);
+char encode_base58_clip(const unsigned char v);
 
-// check that the block boundary has not been corrupted
-zbuffer_error_e zb_check_canary();
+#ifdef __cplusplus
+}
+#endif
