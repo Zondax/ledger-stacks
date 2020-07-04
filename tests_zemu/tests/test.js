@@ -110,8 +110,6 @@ describe('Basic checks', function () {
             await sim.snapshot(`${snapshotPrefixTmp}${snapshotCount++}.png`);
             await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
             await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
             await sim.clickBoth(`${snapshotPrefixTmp}${snapshotCount++}.png`);
 
             const resp = await respRequest;
@@ -181,7 +179,6 @@ describe('Basic checks', function () {
              console.log(signature)
 
              expect(signature.returnCode).toEqual(0x9000);
-
              // TODO: Verify signature
          } finally {
              await sim.close();
