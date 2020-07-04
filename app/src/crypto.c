@@ -85,9 +85,9 @@ void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *p
     {
         TRY {
             os_perso_derive_node_bip32(CX_CURVE_256K1,
-                                                      path,
-                                                      HDPATH_LEN_DEFAULT,
-                                                      privateKeyData, NULL);
+                                       path,
+                                       HDPATH_LEN_DEFAULT,
+                                       privateKeyData, NULL);
 
             cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);
             cx_ecfp_init_public_key(CX_CURVE_256K1, NULL, 0, &cx_publicKey);
