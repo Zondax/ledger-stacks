@@ -121,11 +121,61 @@ impl<'a> PostConditions<'a> {
         num
     }
 
+    pub fn post_condition_seccion_name(
+        &self,
+        _display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+        writer_key
+            .write_str("postconditions: ")
+            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let len = if cfg!(test) {
+            zxformat::fpu64_to_str(output.as_mut(), self.num_items as u64, 0)? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    self.num_items as u64,
+                    0,
+                ) as usize
+            }
+        };
+        unsafe {
+            output.set_len(len);
+        }
+        zxformat::pageString(out_value, output.as_ref(), page_idx)
+    }
+
     pub fn num_items(&self) -> u8 {
-        self.num_items
+        // Number of post-conditions + postconditions
+        // seccion name
+        if self.num_items > 0 {
+            self.num_items + 1
+        } else {
+            0
+        }
     }
 
     pub fn get_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let item_idx = display_idx % self.num_items();
+        match item_idx {
+            0 => self.post_condition_seccion_name(display_idx, out_key, out_value, page_idx),
+            _ => self.get_condition_items(display_idx, out_key, out_value, page_idx),
+        }
+    }
+
+    pub fn get_condition_items(
         &self,
         display_idx: u8,
         out_key: &mut [u8],
@@ -283,7 +333,9 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    pub fn payload_recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
+    pub fn payload_recipient_address(
+        &self,
+    ) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         self.payload.recipient_address()
     }
 
@@ -339,14 +391,19 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        // 1. Format payloads
-        if display_idx < (self.num_items() - self.post_conditions.num_items()) {
+        let is_post_conditions =
+            display_idx >= (self.num_items() - self.post_conditions.num_items());
+
+        if is_post_conditions {
+            if self.post_conditions.num_items() > 0 {
+                return self
+                    .post_conditions
+                    .get_items(display_idx, out_key, out_value, page_idx);
+            }
+            Err(ParserError::parser_display_idx_out_of_range)
+        } else {
             self.payload
                 .get_items(display_idx, out_key, out_value, page_idx)
-        } else {
-            // 2. Format Post-conditions
-            let _post_items = (display_idx as usize) % self.post_conditions.len;
-            Ok(0)
         }
     }
 
@@ -400,6 +457,18 @@ mod test {
         fee: u64,
         nonce: u64,
         contract_name: String,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct ContractCallTx {
+        raw: String,
+        sender: String,
+        sponsor_addrs: Option<String>,
+        fee: u64,
+        nonce: u64,
+        contract_name: String,
+        function_name: String,
+        num_args: u32,
     }
 
     #[test]
@@ -473,7 +542,41 @@ mod test {
     }
 
     #[test]
-    fn test_smart_contract_sponsored() {
+    fn test_standard_smart_contract_tx() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("standard_smart_contract");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: SmartContractTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_smart_contract_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let spending_condition = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, spending_condition.nonce);
+        assert_eq!(json.fee as u32, spending_condition.fee_rate as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(json.sender, origin);
+    }
+
+    #[test]
+    fn test_sponsored_smart_contract_tx() {
         let input_path = {
             let mut r = PathBuf::new();
             r.push(env!("CARGO_MANIFEST_DIR"));
@@ -510,6 +613,92 @@ mod test {
             .signer_address(transaction.version)
             .unwrap();
         let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[0..sponsor_addrs.len()]).unwrap();
+        assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
+    }
+
+    #[test]
+    fn test_standard_contract_call_tx() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("contract_call_testnet.json");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_contract_call_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let function_name =
+            core::str::from_utf8(transaction.payload.function_name().unwrap()).unwrap();
+        assert_eq!(json.function_name, function_name);
+
+        let num_args = transaction.payload.num_args().unwrap();
+        assert_eq!(json.num_args, num_args);
+
+        let origin = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, origin.nonce);
+        assert_eq!(json.fee as u32, origin.fee_rate as u32);
+
+        let origin_addr = origin.signer_address(transaction.version).unwrap();
+        let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
+        assert_eq!(json.sender, origin_addr);
+    }
+
+    #[test]
+    fn test_sponsored_contract_call_tx() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("sponsored_contract_call_testnet.json");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(!transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_contract_call_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let function_name =
+            core::str::from_utf8(transaction.payload.function_name().unwrap()).unwrap();
+        assert_eq!(json.function_name, function_name);
+
+        // Test number of cuntion args
+        let num_args = transaction.payload.num_args().unwrap();
+        assert_eq!(json.num_args, num_args);
+
+        let origin = transaction.transaction_auth.origin();
+        let sponsor = transaction.transaction_auth.sponsor().unwrap();
+
+        // test Fee, Nonce of origin
+        assert_eq!(json.nonce, origin.nonce);
+        assert_eq!(json.fee as u32, origin.fee_rate as u32);
+
+        // Test origin and sponsor addresses
+        let origin_addr = origin.signer_address(transaction.version).unwrap();
+        let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
+        assert_eq!(json.sender, origin_addr);
+
+        let sponsor_addrs = sponsor.signer_address(transaction.version).unwrap();
+        let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[..sponsor_addrs.len()]).unwrap();
         assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
     }
 }

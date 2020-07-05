@@ -319,6 +319,12 @@ impl<'a> StacksAddress<'a> {
         let address = take(HASH160_LEN)(addrId.0)?;
         Ok((address.0, Self(addrId.1, Hash160(address.1))))
     }
+
+    pub fn encoded_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        c32::c32_address(self.0, (self.1).0)
+    }
 }
 
 #[repr(C)]
@@ -382,7 +388,9 @@ impl<'a> PrincipalData<'a> {
         }
     }
 
-    pub fn encoded_address(&self) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+    pub fn encoded_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         let version = self.version();
         let raw = self.raw_address();
         c32::c32_address(version, raw)
