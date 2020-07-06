@@ -10,7 +10,7 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::{
-    parser_common::*, post_condition::TransactionPostCondition, transaction_auth::TransactionAuth,
+    parser_common::*, post_condition::*, transaction_auth::TransactionAuth,
     transaction_payload::TransactionPayload, value::Value,
 };
 
@@ -80,6 +80,7 @@ pub struct PostConditions<'a> {
     pub len: usize, // Number of post-conditions
     conditions: [&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS],
     num_items: u8,
+    current_idx: u8,
 }
 
 impl<'a> PostConditions<'a> {
@@ -96,7 +97,7 @@ impl<'a> PostConditions<'a> {
                 *i.1 = (i.0).1;
             });
         let res = iter.finish()?;
-        let num_items = Self::set_num_items(&conditions[..len as usize]);
+        let num_items = Self::set_num_items(&mut conditions[..len as usize]);
         check_canary!();
         Ok((
             res.0,
@@ -104,14 +105,15 @@ impl<'a> PostConditions<'a> {
                 len: len as usize,
                 conditions,
                 num_items,
+                current_idx: 0,
             },
         ))
     }
 
-    fn set_num_items(conditions: &[&[u8]]) -> u8 {
+    fn set_num_items(conditions: &mut [&[u8]]) -> u8 {
         let mut num = 0;
         // Iterates over valid values
-        for p in conditions.iter() {
+        for p in conditions.iter_mut() {
             if let Ok(items) =
                 TransactionPostCondition::from_bytes(p).and_then(|res| Ok(res.1.num_items()))
             {
@@ -119,6 +121,10 @@ impl<'a> PostConditions<'a> {
             }
         }
         num
+    }
+
+    pub fn get_postconditions(&self) -> &[&[u8]] {
+        &self.conditions[..self.len]
     }
 
     pub fn post_condition_seccion_name(
@@ -154,35 +160,88 @@ impl<'a> PostConditions<'a> {
     pub fn num_items(&self) -> u8 {
         // Number of post-conditions + postconditions
         // seccion name
-        if self.num_items > 0 {
+        /*if self.num_items > 0 {
             self.num_items + 1
         } else {
             0
-        }
+        }*/
+        self.num_items
     }
 
     pub fn get_items(
-        &self,
+        &mut self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
         page_idx: u8,
+        num_items: u8,
     ) -> Result<u8, ParserError> {
-        let item_idx = display_idx % self.num_items();
-        match item_idx {
+        //let item_idx = display_idx % self.num_items();
+        self.get_post_condition_items(display_idx, out_key, out_value, page_idx, num_items)
+        /*match item_idx {
             0 => self.post_condition_seccion_name(display_idx, out_key, out_value, page_idx),
-            _ => self.get_condition_items(display_idx, out_key, out_value, page_idx),
-        }
+            _ => {
+                self.get_post_condition_items(display_idx, out_key, out_value, page_idx, num_items)
+            }
+        }*/
     }
 
-    pub fn get_condition_items(
-        &self,
+    fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
+        let slope = self.num_items / (in_end - in_start);
+        slope * (display_idx - in_start)
+    }
+
+    pub fn get_post_condition_items(
+        &mut self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
         page_idx: u8,
+        num_items: u8,
     ) -> Result<u8, ParserError> {
-        Ok(0)
+        // map display_idx to our range of items
+        let in_start = num_items - self.num_items;
+        let idx = self.map_idx(display_idx, in_start, num_items);
+        let mut limit = 0;
+
+        // Get the point at which the inner postcondition change to either
+        // the next or previous one
+        for bytes in &self.conditions[..(self.current_idx as usize)] {
+            let condition = TransactionPostCondition::from_bytes(bytes)
+                .map_err(|_| ParserError::parser_post_condition_failed)?
+                .1;
+            limit += condition.num_items();
+        }
+
+        // get the current postcondition which is used to
+        // check if it is time to chenge to the next/previous postconditions in our list
+        // and if that is not the case, we use it to get its item
+        let mut current = &self.conditions[self.current_idx as usize];
+        let mut current_condition = TransactionPostCondition::from_bytes(current)
+            .map_err(|_| ParserError::parser_post_condition_failed)?
+            .1;
+
+        // before continuing we need to check if the current display_idx
+        // correspond to the current, next or previous postcondition
+        // if so, update it
+        if idx >= (limit + current_condition.num_items()) {
+            self.current_idx += 1;
+            // this should not happen
+            if self.current_idx > self.num_items {
+                return Err(ParserError::parser_unexpected_error);
+            }
+            current = &self.conditions[self.current_idx as usize];
+            current_condition = TransactionPostCondition::from_bytes(current)
+                .map_err(|_| ParserError::parser_post_condition_failed)?
+                .1;
+        } else if idx < limit {
+            self.current_idx -= 1;
+            current = &self.conditions[self.current_idx as usize];
+            current_condition = TransactionPostCondition::from_bytes(current)
+                .map_err(|_| ParserError::parser_post_condition_failed)?
+                .1;
+        }
+        current_condition.get_items(idx, out_key, out_value, page_idx)
     }
 }
 
@@ -234,11 +293,9 @@ impl<'a> Transaction<'a> {
         self.update_remainder(data);
         self.read_header()?;
         self.read_auth()?;
-        crate::bolos::c_zemu_log_stack(b"read l:187\0");
         self.read_transaction_modes()?;
         self.read_post_conditions()?;
         self.read_payload()?;
-        crate::bolos::c_zemu_log_stack(b"read l:191\0");
 
         let is_token_transfer = self.payload.is_token_transfer_payload();
         let is_standard_auth = self.transaction_auth.is_standard_auth();
@@ -385,7 +442,7 @@ impl<'a> Transaction<'a> {
     }
 
     fn get_other_items(
-        &self,
+        &mut self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
@@ -396,9 +453,13 @@ impl<'a> Transaction<'a> {
 
         if is_post_conditions {
             if self.post_conditions.num_items() > 0 {
-                return self
-                    .post_conditions
-                    .get_items(display_idx, out_key, out_value, page_idx);
+                return self.post_conditions.get_items(
+                    display_idx,
+                    out_key,
+                    out_value,
+                    page_idx,
+                    self.num_items(),
+                );
             }
             Err(ParserError::parser_display_idx_out_of_range)
         } else {
@@ -408,7 +469,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn get_item(
-        &self,
+        &mut self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
@@ -539,6 +600,57 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
+    }
+
+    #[test]
+    fn test_token_stx_transfer_with_postcondition() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("stx_token_transfer_postcondition");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: StxTransaction = serde_json::from_str(&str).unwrap();
+
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+        println!("{:?}", transaction);
+        println!("size {}", core::mem::size_of::<Transaction>());
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+
+        let spending_condition = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, spending_condition.nonce);
+        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+
+        let origin = spending_condition
+            .signer_address(TransactionVersion::Mainnet)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(&json.sender, origin);
+
+        let recipient = transaction.payload_recipient_address().unwrap();
+        let addr_len = recipient.len();
+        let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
+        assert_eq!(&json.recipient, address);
+
+        // Check postconditions
+        assert_eq!(1, transaction.post_conditions.len);
+        let conditions = transaction.post_conditions.get_postconditions();
+        let post_condition = TransactionPostCondition::from_bytes(conditions[0])
+            .unwrap()
+            .1;
+        assert!(post_condition.is_stx());
+        let condition_code = post_condition.fungible_condition_code().unwrap();
+        assert_eq!(condition_code, FungibleConditionCode::SentGt);
+        let stx_condition_amount = post_condition.amount_stx().unwrap();
+        assert_eq!(0, stx_condition_amount);
+        assert!(post_condition.is_origin_principal());
     }
 
     #[test]

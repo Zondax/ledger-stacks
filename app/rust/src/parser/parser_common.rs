@@ -13,6 +13,9 @@ use crate::parser::c32;
 pub const MAX_STRING_LEN: u8 = 128;
 pub const HASH160_LEN: usize = 20;
 
+// The conversion constant between microSTX to STX
+pub const STX_DECIMALS: u8 = 6;
+
 pub const C32_ENCODED_ADDRS_LENGTH: usize = 50;
 
 // The amount of post_conditions we can
@@ -91,6 +94,10 @@ impl<'a> AssetInfo<'a> {
                 asset_name: asset_name.1,
             },
         ))
+    }
+
+    pub fn asset_name(&self) -> &[u8] {
+        self.asset_name.0
     }
 }
 

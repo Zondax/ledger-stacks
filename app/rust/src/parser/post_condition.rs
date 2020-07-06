@@ -1,14 +1,19 @@
+use arrayvec::ArrayVec;
+use core::fmt::{self, Write};
 use nom::{
     bytes::complete::take,
     error::ErrorKind,
     number::complete::{be_u64, le_u8},
 };
 
+use crate::parser::fp_uint64_to_str;
 use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
-    ParserError, StacksAddress, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    ParserError, StacksAddress, C32_ENCODED_ADDRS_LENGTH, MAX_STRING_LEN,
+    NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
 use crate::parser::value::Value;
+use crate::zxformat;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -56,6 +61,50 @@ impl<'a> PostConditionPrincipal<'a> {
             }
         }
     }
+
+    pub fn is_origin(&self) -> bool {
+        match *self {
+            Self::Origin => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_standard(&self) -> bool {
+        match *self {
+            Self::Standard(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_contract(&self) -> bool {
+        match *self {
+            Self::Contract(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_principal_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        match *self {
+            Self::Origin => {
+                let addr = b"Origin";
+                let mut output: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = ArrayVec::new();
+                output.copy_from_slice(addr.as_ref());
+                Ok(output)
+            }
+            Self::Standard(ref address) | Self::Contract(ref address, _) => {
+                address.encoded_address()
+            }
+        }
+    }
+
+    pub fn get_contract_name(&self) -> Option<&'a [u8]> {
+        match *self {
+            Self::Contract(_, ref name) => Some(name.0),
+            _ => None,
+        }
+    }
 }
 
 #[repr(u8)]
@@ -89,6 +138,16 @@ impl FungibleConditionCode {
             FungibleConditionCode::SentLe => amount_sent <= amount_sent_condition,
         }
     }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            FungibleConditionCode::SentEq => "SentEq",
+            FungibleConditionCode::SentGt => "SentGt",
+            FungibleConditionCode::SentGe => "SentGe",
+            FungibleConditionCode::SentLt => "SentLt",
+            FungibleConditionCode::SentLe => "SentLe",
+        }
+    }
 }
 
 #[repr(u8)]
@@ -104,6 +163,13 @@ impl NonfungibleConditionCode {
             0x10 => Some(NonfungibleConditionCode::Sent),
             0x11 => Some(NonfungibleConditionCode::NotSent),
             _ => None,
+        }
+    }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            Self::Sent => "Sent",
+            Self::NotSent => "NotSent",
         }
     }
 }
@@ -217,11 +283,269 @@ impl<'a> TransactionPostCondition<'a> {
         Ok((leftover, bytes))
     }
 
+    pub fn is_origin_principal(&self) -> bool {
+        match *self {
+            Self::STX(ref principal, _, _)
+            | Self::Fungible(ref principal, _, _, _)
+            | Self::Nonfungible(ref principal, _, _, _) => principal.is_origin(),
+        }
+    }
+
+    pub fn is_standard_principal(&self) -> bool {
+        match *self {
+            Self::STX(ref principal, _, _)
+            | Self::Fungible(ref principal, _, _, _)
+            | Self::Nonfungible(ref principal, _, _, _) => principal.is_standard(),
+        }
+    }
+
+    pub fn is_contract_principal(&self) -> bool {
+        match *self {
+            Self::STX(ref principal, _, _)
+            | Self::Fungible(ref principal, _, _, _)
+            | Self::Nonfungible(ref principal, _, _, _) => principal.is_contract(),
+        }
+    }
+
+    pub fn is_stx(&self) -> bool {
+        match *self {
+            Self::STX(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_fungible(&self) -> bool {
+        match *self {
+            Self::Fungible(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_non_fungible(&self) -> bool {
+        match *self {
+            Self::Nonfungible(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn tokens_amount(&self) -> Option<u64> {
+        match *self {
+            Self::STX(_, _, amount) => Some(amount),
+            Self::Fungible(_, _, _, amount) => Some(amount),
+            _ => None,
+        }
+    }
+
+    pub fn tokens_amount_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
+        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+
+        let len = match *self {
+            Self::Fungible(_, _, _, amount) => {
+                zxformat::u64_to_str(output.as_mut(), amount).ok()?
+            }
+            _ => return None,
+        };
+        unsafe {
+            output.set_len(len);
+        }
+        Some(output)
+    }
+
+    pub fn amount_stx(&self) -> Option<u64> {
+        match *self {
+            Self::STX(_, _, amount) => Some(amount),
+            _ => None,
+        }
+    }
+
+    // Move the content of this function to its own
+    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
+        let amount = match *self {
+            Self::STX(_, _, amount) => amount,
+            _ => return None,
+        };
+        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let len = if cfg!(test) {
+            zxformat::fpu64_to_str(output.as_mut(), amount, STX_DECIMALS).ok()? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    amount,
+                    STX_DECIMALS,
+                ) as usize
+            }
+        };
+        unsafe {
+            output.set_len(len);
+        }
+        Some(output)
+    }
+
+    pub fn fungible_condition_code(&self) -> Option<FungibleConditionCode> {
+        match *self {
+            Self::STX(_, code, _) | Self::Fungible(_, _, code, _) => Some(code),
+            _ => None,
+        }
+    }
+
+    pub fn non_fungible_condition_code(&self) -> Option<NonfungibleConditionCode> {
+        match *self {
+            Self::Nonfungible(_, _, _, code) => Some(code),
+            _ => None,
+        }
+    }
+
     pub fn num_items(&self) -> u8 {
         match *self {
             Self::STX(..) => 3,
             Self::Fungible(..) => 4,
             Self::Nonfungible(..) => 3,
+        }
+    }
+
+    pub fn get_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let index = display_idx % self.num_items();
+        match *self {
+            Self::STX(..) => self.get_stx_items(index, out_key, out_value, page_idx),
+            Self::Fungible(..) => self.get_fungible_items(index, out_key, out_value, page_idx),
+            Self::Nonfungible(..) => {
+                self.get_non_fungible_items(index, out_key, out_value, page_idx)
+            }
+        }
+    }
+
+    pub fn get_stx_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+        match *self {
+            Self::STX(ref principal, code, _) => match display_idx {
+                // The post condition principal address
+                0 => {
+                    writer_key
+                        .write_str("Principal")
+                        .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    let addr = principal.get_principal_address()?;
+                    zxformat::pageString(out_value, &addr[..addr.len()], page_idx)
+                }
+                // PostCondition code
+                1 => {
+                    writer_key
+                        .write_str("Fungi. Code")
+                        .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                }
+                // Amount in stx
+                2 => {
+                    writer_key
+                        .write_str("STX amount")
+                        .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    let amount = self.amount_stx_str().unwrap();
+                    zxformat::pageString(out_value, &amount[..amount.len()], page_idx)
+                }
+                _ => Err(ParserError::parser_display_idx_out_of_range),
+            },
+            _ => Err(ParserError::parser_unexpected_error),
+        }
+    }
+
+    pub fn get_fungible_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+        match *self {
+            Self::Fungible(ref principal, ref asset, code, _) => {
+                match display_idx {
+                    // Principal address
+                    0 => {
+                        writer_key
+                            .write_str("Principal")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        let addr = principal.get_principal_address()?;
+                        zxformat::pageString(out_value, &addr[..addr.len()], page_idx)
+                    }
+                    // Asset-name
+                    1 => {
+                        writer_key
+                            .write_str("Asset name")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        zxformat::pageString(out_value, asset.asset_name(), page_idx)
+                    }
+                    // Fungible code
+                    2 => {
+                        writer_key
+                            .write_str("Fungi. Code")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                    }
+                    // Amount of tokens
+                    3 => {
+                        writer_key
+                            .write_str("Token amount")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        let token = self.tokens_amount_str().unwrap();
+                        zxformat::pageString(out_value, &token[..token.len()], page_idx)
+                    }
+                    _ => Err(ParserError::parser_display_idx_out_of_range),
+                }
+            }
+            _ => Err(ParserError::parser_unexpected_error),
+        }
+    }
+
+    pub fn get_non_fungible_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+        match *self {
+            Self::Nonfungible(ref principal, ref asset, _, code) => {
+                match display_idx {
+                    // Principal address
+                    0 => {
+                        writer_key
+                            .write_str("Principal")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        let addr = principal.get_principal_address()?;
+                        zxformat::pageString(out_value, &addr[..addr.len()], page_idx)
+                    }
+                    // Asset-name
+                    1 => {
+                        writer_key
+                            .write_str("Asset name")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        zxformat::pageString(out_value, asset.asset_name(), page_idx)
+                    }
+                    // Fungible code
+                    2 => {
+                        writer_key
+                            .write_str("NonFungi. Code")
+                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                    }
+                    _ => Err(ParserError::parser_display_idx_out_of_range),
+                }
+            }
+            _ => Err(ParserError::parser_unexpected_error),
         }
     }
 }

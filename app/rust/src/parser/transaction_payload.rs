@@ -13,6 +13,7 @@ use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
     ParserError, PrincipalData, StacksAddress, StacksString, StandardPrincipal, TokenTransferMemo,
     C32_ENCODED_ADDRS_LENGTH, MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    STX_DECIMALS,
 };
 
 use crate::parser::ffi::fp_uint64_to_str;
@@ -20,8 +21,6 @@ use crate::parser::value::{Value, BIG_INT_SIZE};
 use crate::zxformat;
 
 pub const MAX_NUM_ARGS: u32 = 10;
-
-const STX_DECIMALS: u8 = 6;
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq)]
