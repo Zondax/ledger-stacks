@@ -234,6 +234,14 @@ describe('Basic checks', function () {
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickBoth();
 
             let signature = await signatureRequest;
@@ -262,6 +270,8 @@ describe('Basic checks', function () {
                 await Zemu.sleep(1000);
             }
 
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
@@ -298,6 +308,7 @@ describe('Basic checks', function () {
                 await Zemu.sleep(1000);
             }
 
+            await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
