@@ -141,7 +141,6 @@ describe('Basic checks', function () {
             const app = new BlockstackApp(sim.getTransport());
 
             const blob = Buffer.from("00000000010400149be4d6c4667e4fb6d461e7c8378fa5a5e10c9f000000000000000a00000000000004e200010e997280fe04c9976e70d90a93b9f86507247f5e9fa78ec95cd4eebb27b23f3338a13f549bee779b646bffff41611c9eae53b65e6b7a911b00c906a36ad5920a0302000000000005169eb0a31b22af43679e4f58ce400ed641c28113a6000000000000138800000000000000000000000000000000000000000000000000000000000000000000", "hex");
-            console.log("Stx token transfer payload " + blob.length)
             // Do not await.. we need to click asynchronously
             const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
 
@@ -172,17 +171,26 @@ describe('Basic checks', function () {
         }
     });
 
-    /*test('sign stx_token_transfer_with_postcondition', async function () {
+    test('sign stx_token_transfer_with_postcondition', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
             const app = new BlockstackApp(sim.getTransport());
 
-            console.log("Stx token transfer payload with postcondition")
             const blob = Buffer.from("80800000000400143e543243dfcd8c02a12ad7ea371bd07bc91df900000000000000000000000000000000000057293fd439db4be0b4af96a829543690455fdb4b60d6933629b44323dc9c5eb868170e283e1635f4ccc6e2e5067f936eb2b10a50b06eb70c1848f3d3269ddf8c030100000001000102000000000000000000051a3b471808467d33eec688b7a7a75f06aad921ba6e000000000000007b00000000000000000000000000000000000000000000000000000000000000000000", "hex");
-            // Do not await.. we need to click asynchronously
+	    // Do not await.. we need to click asynchronously
             const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
+
+		// Get start screen and loop until it changes
+            let startScreen = sim.snapshot()
             await Zemu.sleep(1000);
+            while(startScreen === sim.snapshot() ) {
+                await Zemu.sleep(1000);
+            }
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
@@ -202,10 +210,10 @@ describe('Basic checks', function () {
         } finally {
             await sim.close();
         }
-    });*/
+    });
 
 
-    /*test('sign sponsored_smart_contract_tx', async function () {
+    test('sign sponsored_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -232,16 +240,6 @@ describe('Basic checks', function () {
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
             await sim.clickBoth();
 
             let signature = await signatureRequest;
@@ -252,9 +250,9 @@ describe('Basic checks', function () {
         } finally {
             await sim.close();
         }
-    });*/
+    });
 
-    /*test('sign standard_smart_contract_tx', async function () {
+    test('sign standard_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -279,6 +277,7 @@ describe('Basic checks', function () {
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
+            await sim.clickRight();
             await sim.clickBoth();
 
             let signature = await signatureRequest;
@@ -290,7 +289,7 @@ describe('Basic checks', function () {
         } finally {
             await sim.close();
         }
-    });*/
+    });
 
     test('sign standard_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
@@ -329,14 +328,13 @@ describe('Basic checks', function () {
         }
     });
 
-    /*test('sign sponsored_contract_call_tx', async function () {
+    test('sign sponsored_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
             const app = new BlockstackApp(sim.getTransport());
 
             const blob = Buffer.from("808000000005002d89de56fd4db19741957831926e9ba96cf04158000000000000000000000000000000000001c88dc2ad9b081db525b68a04a4e9a021f05d6c8500b43ff01360f255826f3676636bcd0494a55bfd529028fe8c1b1e93ad23b75c31b29cee369d8bf5f643d478003b471808467d33eec688b7a7a75f06aad921ba6e0000000000000000000000000000000000001fc1ecc42a7b62598a6969cc0af77d81992839e203946867e603d4d8d2a3653a7efc00d16423b035f82d5550f26d3d59205b0cf578a93618c3eb7f50dc12f73c030200000000021a143e543243dfcd8c02a12ad7ea371bd07bc91df90b68656c6c6f2d776f726c64077365742d6261720000000200000000000000000000000000000000060000000000000000000000000000000002", "hex");
-            const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
 
             // Get start screen and loop until it changes
             await Zemu.sleep(1000);
@@ -363,7 +361,5 @@ describe('Basic checks', function () {
         } finally {
             await sim.close();
         }
-    });*/
-
-
+    });
 });

@@ -82,9 +82,14 @@ pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut par
 }
 
 #[no_mangle]
-pub extern "C" fn _validate(_ctx: *const parser_context_t, _tx_t: *const parse_tx_t) -> u32 {
+pub extern "C" fn _validate(_ctx: *const parser_context_t, tx_t: *const parse_tx_t) -> u32 {
     // TODO
-    ParserError::parser_ok as u32
+    if let Some(ref mut tx) = transaction_from(tx_t as _) {
+        if let Ok(()) = Transaction::validate(tx) {
+            return ParserError::parser_ok as u32;
+        }
+    }
+    ParserError::parser_unexpected_error as u32
 }
 
 #[no_mangle]

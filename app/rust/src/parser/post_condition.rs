@@ -88,9 +88,8 @@ impl<'a> PostConditionPrincipal<'a> {
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         match *self {
             Self::Origin => {
-                let addr = b"Origin";
                 let mut output: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = ArrayVec::new();
-                output.copy_from_slice(addr.as_ref());
+                (b"Origin").iter().for_each(|x| output.push(*x));
                 Ok(output)
             }
             Self::Standard(ref address) | Self::Contract(ref address, _) => {
@@ -307,6 +306,16 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
+    pub fn get_principal_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        match *self {
+            Self::STX(ref principal, _, _) => principal.get_principal_address(),
+            Self::Fungible(ref principal, _, _, _) => principal.get_principal_address(),
+            Self::Nonfungible(ref principal, _, _, _) => principal.get_principal_address(),
+        }
+    }
+
     pub fn is_stx(&self) -> bool {
         match *self {
             Self::STX(..) => true,
@@ -337,13 +346,23 @@ impl<'a> TransactionPostCondition<'a> {
     }
 
     pub fn tokens_amount_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
 
-        let len = match *self {
-            Self::Fungible(_, _, _, amount) => {
-                zxformat::u64_to_str(output.as_mut(), amount).ok()?
-            }
+        let amount = match *self {
+            Self::Fungible(_, _, _, amount) => amount,
             _ => return None,
+        };
+        let len = if cfg!(test) {
+            zxformat::u64_to_str(output.as_mut(), amount).ok()? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    amount,
+                    0,
+                ) as usize
+            }
         };
         unsafe {
             output.set_len(len);
@@ -364,7 +383,7 @@ impl<'a> TransactionPostCondition<'a> {
             Self::STX(_, _, amount) => amount,
             _ => return None,
         };
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = if cfg!(test) {
             zxformat::fpu64_to_str(output.as_mut(), amount, STX_DECIMALS).ok()? as usize
         } else {

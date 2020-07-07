@@ -102,8 +102,19 @@ impl<'a> TransactionSpendingCondition<'a> {
     }
 
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
-        let len = zxformat::u64_to_str(output.as_mut(), self.nonce)?;
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
+        let len = if cfg!(test) {
+            zxformat::u64_to_str(&mut output[..zxformat::MAX_STR_BUFF_LEN], self.nonce)? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    self.nonce,
+                    0,
+                ) as usize
+            }
+        };
         unsafe {
             output.set_len(len);
         }
@@ -111,8 +122,19 @@ impl<'a> TransactionSpendingCondition<'a> {
     }
 
     pub fn fee_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
-        let len = zxformat::u64_to_str(output.as_mut(), self.fee_rate)?;
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
+        let len = if cfg!(test) {
+            zxformat::fpu64_to_str(output.as_mut(), self.fee_rate, 0)? as usize
+        } else {
+            unsafe {
+                fp_uint64_to_str(
+                    output.as_mut_ptr() as _,
+                    zxformat::MAX_STR_BUFF_LEN as u16,
+                    self.fee_rate,
+                    0,
+                ) as usize
+            }
+        };
         unsafe {
             output.set_len(len);
         }

@@ -97,7 +97,7 @@ impl<'a> PostConditions<'a> {
                 *i.1 = (i.0).1;
             });
         let res = iter.finish()?;
-        let num_items = Self::set_num_items(&mut conditions[..len as usize]);
+        let num_items = Self::get_num_items(&conditions[..len as usize]);
         check_canary!();
         Ok((
             res.0,
@@ -110,61 +110,19 @@ impl<'a> PostConditions<'a> {
         ))
     }
 
-    fn set_num_items(conditions: &mut [&[u8]]) -> u8 {
-        let mut num = 0;
-        // Iterates over valid values
-        for p in conditions.iter_mut() {
-            if let Ok(items) =
-                TransactionPostCondition::from_bytes(p).and_then(|res| Ok(res.1.num_items()))
-            {
-                num += items;
-            }
-        }
-        num
+    fn get_num_items(conditions: &[&[u8]]) -> u8 {
+        conditions
+            .iter()
+            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
+            .map(|condition| (condition.1).num_items())
+            .sum()
     }
 
     pub fn get_postconditions(&self) -> &[&[u8]] {
         &self.conditions[..self.len]
     }
 
-    pub fn post_condition_seccion_name(
-        &self,
-        _display_idx: u8,
-        out_key: &mut [u8],
-        out_value: &mut [u8],
-        page_idx: u8,
-    ) -> Result<u8, ParserError> {
-        let mut writer_key = zxformat::Writer::new(out_key);
-        writer_key
-            .write_str("postconditions: ")
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
-        let len = if cfg!(test) {
-            zxformat::fpu64_to_str(output.as_mut(), self.num_items as u64, 0)? as usize
-        } else {
-            unsafe {
-                fp_uint64_to_str(
-                    output.as_mut_ptr() as _,
-                    zxformat::MAX_STR_BUFF_LEN as u16,
-                    self.num_items as u64,
-                    0,
-                ) as usize
-            }
-        };
-        unsafe {
-            output.set_len(len);
-        }
-        zxformat::pageString(out_value, output.as_ref(), page_idx)
-    }
-
     pub fn num_items(&self) -> u8 {
-        // Number of post-conditions + postconditions
-        // seccion name
-        /*if self.num_items > 0 {
-            self.num_items + 1
-        } else {
-            0
-        }*/
         self.num_items
     }
 
@@ -176,50 +134,16 @@ impl<'a> PostConditions<'a> {
         page_idx: u8,
         num_items: u8,
     ) -> Result<u8, ParserError> {
-        //let item_idx = display_idx % self.num_items();
-        self.get_post_condition_items(display_idx, out_key, out_value, page_idx, num_items)
-        /*match item_idx {
-            0 => self.post_condition_seccion_name(display_idx, out_key, out_value, page_idx),
-            _ => {
-                self.get_post_condition_items(display_idx, out_key, out_value, page_idx, num_items)
-            }
-        }*/
-    }
-
-    fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
-        let slope = self.num_items / (in_end - in_start);
-        slope * (display_idx - in_start)
-    }
-
-    pub fn get_post_condition_items(
-        &mut self,
-        display_idx: u8,
-        out_key: &mut [u8],
-        out_value: &mut [u8],
-        page_idx: u8,
-        num_items: u8,
-    ) -> Result<u8, ParserError> {
         // map display_idx to our range of items
         let in_start = num_items - self.num_items;
         let idx = self.map_idx(display_idx, in_start, num_items);
-        let mut limit = 0;
 
-        // Get the point at which the inner postcondition change to either
-        // the next or previous one
-        for bytes in &self.conditions[..(self.current_idx as usize)] {
-            let condition = TransactionPostCondition::from_bytes(bytes)
-                .map_err(|_| ParserError::parser_post_condition_failed)?
-                .1;
-            limit += condition.num_items();
-        }
+        let limit = self.get_current_limit();
 
         // get the current postcondition which is used to
-        // check if it is time to chenge to the next/previous postconditions in our list
-        // and if that is not the case, we use it to get its item
-        let mut current = &self.conditions[self.current_idx as usize];
-        let mut current_condition = TransactionPostCondition::from_bytes(current)
-            .map_err(|_| ParserError::parser_post_condition_failed)?
-            .1;
+        // check if it is time to change to the next/previous postconditions in our list
+        // and if that is not the case, we use it to get its items
+        let mut current_condition = self.current_post_condition()?;
 
         // before continuing we need to check if the current display_idx
         // correspond to the current, next or previous postcondition
@@ -230,18 +154,31 @@ impl<'a> PostConditions<'a> {
             if self.current_idx > self.num_items {
                 return Err(ParserError::parser_unexpected_error);
             }
-            current = &self.conditions[self.current_idx as usize];
-            current_condition = TransactionPostCondition::from_bytes(current)
-                .map_err(|_| ParserError::parser_post_condition_failed)?
-                .1;
-        } else if idx < limit {
+            current_condition = self.current_post_condition()?;
+        } else if idx < limit && idx > 0 {
             self.current_idx -= 1;
-            current = &self.conditions[self.current_idx as usize];
-            current_condition = TransactionPostCondition::from_bytes(current)
-                .map_err(|_| ParserError::parser_post_condition_failed)?
-                .1;
+            current_condition = self.current_post_condition()?;
         }
         current_condition.get_items(idx, out_key, out_value, page_idx)
+    }
+
+    fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
+        let slope = self.num_items / (in_end - in_start);
+        slope * (display_idx - in_start)
+    }
+
+    fn get_current_limit(&self) -> u8 {
+        self.conditions[..(self.current_idx as usize)]
+            .iter()
+            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
+            .map(|condition| (condition.1).num_items())
+            .sum()
+    }
+
+    fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
+        TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
+            .map_err(|_| ParserError::parser_post_condition_failed)
+            .map(|res| res.1)
     }
 }
 
@@ -437,7 +374,7 @@ impl<'a> Transaction<'a> {
                 zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
             }
 
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_display_idx_out_of_range),
         }
     }
 
@@ -448,20 +385,15 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        let is_post_conditions =
-            display_idx >= (self.num_items() - self.post_conditions.num_items());
+        let num_items = self.num_items();
+        let post_conditions_items = self.post_conditions.num_items();
 
-        if is_post_conditions {
-            if self.post_conditions.num_items() > 0 {
-                return self.post_conditions.get_items(
-                    display_idx,
-                    out_key,
-                    out_value,
-                    page_idx,
-                    self.num_items(),
-                );
+        if display_idx >= (num_items - post_conditions_items) {
+            if post_conditions_items == 0 {
+                return Err(ParserError::parser_display_idx_out_of_range);
             }
-            Err(ParserError::parser_display_idx_out_of_range)
+            self.post_conditions
+                .get_items(display_idx, out_key, out_value, page_idx, num_items)
         } else {
             self.payload
                 .get_items(display_idx, out_key, out_value, page_idx)
@@ -484,6 +416,28 @@ impl<'a> Transaction<'a> {
         } else {
             self.get_other_items(display_idx, out_key, out_value, page_idx)
         }
+    }
+
+    pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
+        let mut key = [0u8; 30];
+        let mut value = [0u8; 30];
+        let mut page_idx = 0;
+        let mut display_idx = 0;
+
+        let num_items = tx.num_items();
+        while display_idx < num_items {
+            let pages = match tx.get_item(display_idx, &mut key, &mut value, page_idx) {
+                Ok(pages) => pages,
+                Err(e) => return Err(e),
+            };
+
+            page_idx += 1;
+            if page_idx >= pages {
+                page_idx = 0;
+                display_idx += 1;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -508,6 +462,7 @@ mod test {
         nonce: u64,
         amount: u64,
         fee: u32,
+        post_condition_principal: Option<String>,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -530,6 +485,8 @@ mod test {
         contract_name: String,
         function_name: String,
         num_args: u32,
+        post_condition_principal: Option<String>,
+        post_condition_asset_name: Option<String>,
     }
 
     #[test]
@@ -546,7 +503,8 @@ mod test {
         let json: StxTransaction = serde_json::from_str(&str).unwrap();
 
         let bytes = hex::decode(&json.raw).unwrap();
-        let transaction = Transaction::from_bytes(&bytes).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
@@ -565,6 +523,7 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -581,7 +540,8 @@ mod test {
         let json: StxTransaction = serde_json::from_str(&str).unwrap();
 
         let bytes = hex::decode(&json.raw).unwrap();
-        let transaction = Transaction::from_bytes(&bytes).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        // transaction.read(&bytes).unwrap();
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
@@ -600,6 +560,7 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -618,8 +579,6 @@ mod test {
         let bytes = hex::decode(&json.raw).unwrap();
         let mut transaction = Transaction::from_bytes(&bytes).unwrap();
         transaction.read(&bytes).unwrap();
-        println!("{:?}", transaction);
-        println!("size {}", core::mem::size_of::<Transaction>());
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
@@ -651,6 +610,7 @@ mod test {
         let stx_condition_amount = post_condition.amount_stx().unwrap();
         assert_eq!(0, stx_condition_amount);
         assert!(post_condition.is_origin_principal());
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -685,6 +645,7 @@ mod test {
             .unwrap();
         let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
         assert_eq!(json.sender, origin);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -726,6 +687,7 @@ mod test {
             .unwrap();
         let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[0..sponsor_addrs.len()]).unwrap();
         assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -734,7 +696,7 @@ mod test {
             let mut r = PathBuf::new();
             r.push(env!("CARGO_MANIFEST_DIR"));
             r.push("tests");
-            r.push("contract_call_testnet.json");
+            r.push("contract_call_testnet");
             r.set_extension("json");
             r
         };
@@ -765,6 +727,59 @@ mod test {
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
         assert_eq!(json.sender, origin_addr);
+
+        assert!(Transaction::validate(&mut transaction).is_ok());
+    }
+
+    #[test]
+    fn test_standard_contract_call_tx_with_fungible_post_condition() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("contract_call_with_fungible_postcondition");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_contract_call_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let function_name =
+            core::str::from_utf8(transaction.payload.function_name().unwrap()).unwrap();
+        assert_eq!(json.function_name, function_name);
+
+        let num_args = transaction.payload.num_args().unwrap();
+        assert_eq!(json.num_args, num_args);
+
+        let origin = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, origin.nonce);
+        assert_eq!(json.fee as u32, origin.fee_rate as u32);
+
+        let origin_addr = origin.signer_address(transaction.version).unwrap();
+        let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
+        assert_eq!(json.sender, origin_addr);
+
+        let post_conditions = transaction.post_conditions.get_postconditions();
+        assert_eq!(post_conditions.len(), 1);
+        let condition = TransactionPostCondition::from_bytes(post_conditions[0])
+            .unwrap()
+            .1;
+        assert!(condition.is_fungible());
+        let addr = condition.get_principal_address().unwrap();
+        let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
+        assert_eq!(json.post_condition_principal, Some(principal_addr.into()));
+
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -812,5 +827,6 @@ mod test {
         let sponsor_addrs = sponsor.signer_address(transaction.version).unwrap();
         let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[..sponsor_addrs.len()]).unwrap();
         assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 }

@@ -80,7 +80,7 @@ impl<'a> StxTokenTransfer<'a> {
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = if cfg!(test) {
             zxformat::fpu64_to_str(output.as_mut(), self.amount, STX_DECIMALS)? as usize
         } else {
@@ -131,7 +131,7 @@ impl<'a> StxTokenTransfer<'a> {
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 zxformat::pageString(out_value, self.memo(), page_idx)
             }
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_display_idx_out_of_range),
         }
     }
 }
@@ -387,7 +387,7 @@ impl<'a> TransactionPayload<'a> {
     pub fn amount(&self) -> Option<u64> {
         match *self {
             Self::TokenTransfer(ref token) => Some(token.amount),
-            _ => unimplemented!(),
+            _ => None,
         }
     }
 
