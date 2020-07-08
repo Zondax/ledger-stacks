@@ -49,17 +49,11 @@ function processGetAddrResponse(response) {
 }
 
 export default class BlockstackApp {
-  constructor(transport, scrambleKey = APP_KEY) {
+  constructor(transport) {
     if (!transport) {
       throw new Error("Transport has not been defined");
     }
-
     this.transport = transport;
-    transport.decorateAppAPIMethods(
-      this,
-      ["getVersion", "appInfo", "deviceInfo", "getAddressAndPubKey", "sign"],
-      scrambleKey,
-    );
   }
 
   static prepareChunks(serializedPathBuffer, message) {
@@ -89,7 +83,6 @@ export default class BlockstackApp {
   async getVersion() {
     return getVersion(this.transport)
       .then((response) => {
-        this.versionResponse = response;
         return response;
       })
       .catch((err) => processErrorResponse(err));
@@ -143,54 +136,6 @@ export default class BlockstackApp {
         flagPINValidated: (flagsValue & 128) !== 0,
       };
     }, processErrorResponse);
-  }
-
-  async deviceInfo() {
-    return this.transport
-      .send(0xe0, 0x01, 0, 0, Buffer.from([]), [ERROR_CODE.NoError, 0x6e00])
-      .then((response) => {
-        const errorCodeData = response.slice(-2);
-        const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
-
-        if (returnCode === 0x6e00) {
-          return {
-            returnCode,
-            errorMessage: "This command is only available in the Dashboard",
-          };
-        }
-
-        const targetId = response.slice(0, 4).toString("hex");
-
-        let pos = 4;
-        const secureElementVersionLen = response[pos];
-        pos += 1;
-        const seVersion = response.slice(pos, pos + secureElementVersionLen).toString();
-        pos += secureElementVersionLen;
-
-        const flagsLen = response[pos];
-        pos += 1;
-        const flag = response.slice(pos, pos + flagsLen).toString("hex");
-        pos += flagsLen;
-
-        const mcuVersionLen = response[pos];
-        pos += 1;
-        // Patch issue in mcu version
-        let tmp = response.slice(pos, pos + mcuVersionLen);
-        if (tmp[mcuVersionLen - 1] === 0) {
-          tmp = response.slice(pos, pos + mcuVersionLen - 1);
-        }
-        const mcuVersion = tmp.toString();
-
-        return {
-          returnCode,
-          errorMessage: errorCodeToString(returnCode),
-          // //
-          targetId,
-          seVersion,
-          flag,
-          mcuVersion,
-        };
-      }, processErrorResponse);
   }
 
   async getAddressAndPubKey(path) {

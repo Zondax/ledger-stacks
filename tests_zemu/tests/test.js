@@ -301,7 +301,7 @@ describe('Basic checks', function () {
             const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
 
             // Wait until we are not in the main menu
-            await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
+            await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
             await sim.clickRight();
             await sim.clickRight();
