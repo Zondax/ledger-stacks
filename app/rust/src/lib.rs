@@ -24,36 +24,10 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-/// A handler struct to deal with
-/// static global variables and PIC
-pub struct GlobalVariable<T: Sized + 'static>(T);
-
-impl<T> GlobalVariable<T>
-where
-    T: Sized + 'static,
-{
-    pub fn new(inner: T) -> Self {
-        Self(inner)
-    }
-
-    pub fn inner(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> core::ops::Deref for GlobalVariable<T>
-where
-    T: Sized + 'static,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner()
-    }
-}
-
 extern "C" {
     fn check_canary();
+    fn pic(link_address: u32) -> u32;
+    fn app_mode_expert() -> u8;
 }
 
 pub(crate) fn canary() {
@@ -61,10 +35,6 @@ pub(crate) fn canary() {
     unsafe {
         check_canary();
     }
-}
-
-extern "C" {
-    fn pic(link_address: u32) -> u32;
 }
 
 pub fn pic_internal<T: Sized>(obj: &T) -> &T {
@@ -77,6 +47,14 @@ pub fn pic_internal<T: Sized>(obj: &T) -> &T {
         let link = pic(ptr_usize);
         let ptr = link as *const T;
         &*ptr
+    }
+}
+
+pub fn is_expert_mode() -> bool {
+    if cfg!(test) {
+        true
+    } else {
+        unsafe { app_mode_expert() > 0 }
     }
 }
 

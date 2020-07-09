@@ -16,6 +16,7 @@ use crate::parser::parser_common::{
     STX_DECIMALS,
 };
 
+use crate::is_expert_mode;
 use crate::parser::ffi::fp_uint64_to_str;
 use crate::parser::value::{Value, BIG_INT_SIZE};
 use crate::zxformat;
@@ -239,9 +240,11 @@ impl<'a> Arguments<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = be_u32(bytes)?;
-        // TODO: Check if we are in expert-mode and compare the max number of arguments
-        // for that case.Due to memory , we use the leftover bytes in the slice which
-        // represent the function arguments, quite similar to what we did with postconditions.
+        if len.1 > MAX_NUM_ARGS && !is_expert_mode() {
+            return Err(nom::Err::Error(
+                ParserError::parser_invalid_transaction_payload,
+            ));
+        }
         let args = take(len.0.len())(len.0)?;
         Ok((
             args.0,

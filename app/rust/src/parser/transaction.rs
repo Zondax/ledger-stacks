@@ -510,8 +510,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee, spending_condition.fee() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -547,8 +547,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee, spending_condition.fee() as u32);
 
         let origin = spending_condition
             .signer_address(TransactionVersion::Mainnet)
@@ -584,8 +584,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee, spending_condition.fee() as u32);
 
         let origin = spending_condition
             .signer_address(TransactionVersion::Mainnet)
@@ -637,8 +637,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee as u32, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -673,8 +673,8 @@ mod test {
         let spending_condition = transaction.transaction_auth.origin();
         let spending_condition_s = transaction.transaction_auth.sponsor().unwrap();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee as u32, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -721,8 +721,8 @@ mod test {
 
         let origin = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, origin.nonce);
-        assert_eq!(json.fee as u32, origin.fee_rate as u32);
+        assert_eq!(json.nonce, origin.nonce());
+        assert_eq!(json.fee as u32, origin.fee() as u32);
 
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
@@ -762,8 +762,8 @@ mod test {
 
         let origin = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, origin.nonce);
-        assert_eq!(json.fee as u32, origin.fee_rate as u32);
+        assert_eq!(json.nonce, origin.nonce());
+        assert_eq!(json.fee as u32, origin.fee() as u32);
 
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
@@ -816,8 +816,8 @@ mod test {
         let sponsor = transaction.transaction_auth.sponsor().unwrap();
 
         // test Fee, Nonce of origin
-        assert_eq!(json.nonce, origin.nonce);
-        assert_eq!(json.fee as u32, origin.fee_rate as u32);
+        assert_eq!(json.nonce, origin.nonce());
+        assert_eq!(json.fee as u32, origin.fee() as u32);
 
         // Test origin and sponsor addresses
         let origin_addr = origin.signer_address(transaction.version).unwrap();

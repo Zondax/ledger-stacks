@@ -212,12 +212,10 @@ impl<'a> Hash160<'a> {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HashMode {
-    //  A single public key is used. Hash it like a Bitcoin P2PKH output.
-    P2PKH = 0x00, // hash160(public-key)
-    P2SH = 0x01,  // hash160(multisig-red)
-    //  A single public key is used. Hash it like a Bitcoin P2WPKH-P2SH output.
-    P2WPKH = 0x02, // hash160(segwit-progr)
-    P2WSH = 0x03,  // hash160(segwit-prog)
+    P2PKH = 0x00,
+    P2SH = 0x01,
+    P2WPKH = 0x02,
+    P2WSH = 0x03,
 }
 
 impl HashMode {
@@ -226,6 +224,8 @@ impl HashMode {
         match n {
             x if x == HashMode::P2PKH as u8 => Some(HashMode::P2PKH),
             x if x == HashMode::P2WPKH as u8 => Some(HashMode::P2WPKH),
+            x if x == HashMode::P2SH as u8 => Some(HashMode::P2SH),
+            x if x == HashMode::P2WSH as u8 => Some(HashMode::P2WSH),
             _ => None,
         }
     }
@@ -253,7 +253,7 @@ impl<'a> StacksString<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = be_u32(bytes)?;
         let string_len = len.1 as usize;
-        if string_len > MAX_STACKS_STRING_LEN {
+        if string_len > MAX_STACKS_STRING_LEN && !crate::is_expert_mode() {
             return Err(nom::Err::Error(ParserError::parser_stacks_string_too_long));
         }
         let string = take(string_len)(len.0)?;
