@@ -47,10 +47,10 @@ COIN=STX
 endif
 
 APPVERSION_M=0
-APPVERSION_N=1
+APPVERSION_N=2
 APPVERSION_P=0
 
-$(info COIN  = [$(COIN)])
+$(info COIN      = [$(COIN)])
 ifeq ($(COIN),STX)
 # Main app configuration
 DEFINES += APP_STANDARD
@@ -79,6 +79,9 @@ endif
 ifeq ($(TARGET_NAME),TARGET_NANOX)
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 endif
+
+$(info TARGET_NAME  = [$(TARGET_NAME)])
+$(info ICONNAME  = [$(ICONNAME)])
 
 ifndef ICONNAME
 $(error ICONNAME is not set)

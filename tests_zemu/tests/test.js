@@ -164,7 +164,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign stx_token_transfer_with_postcondition', async function () {
+    test.skip('sign stx_token_transfer_with_postcondition', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -199,8 +199,7 @@ describe('Basic checks', function () {
         }
     });
 
-
-    test('sign sponsored_smart_contract_tx', async function () {
+    test.skip('sign sponsored_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -229,7 +228,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign standard_smart_contract_tx', async function () {
+    test.skip('sign standard_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -259,7 +258,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign standard_contract_call_tx', async function () {
+    test.skip('sign standard_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -291,7 +290,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign sponsored_contract_call_tx', async function () {
+    test.skip('sign sponsored_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
