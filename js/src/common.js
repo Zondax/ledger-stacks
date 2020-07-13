@@ -4,7 +4,6 @@ export const APP_KEY = "STX";
 
 export const INS = {
   GET_VERSION: 0x00,
-
   GET_ADDR_SECP256K1: 0x01,
   SIGN_SECP256K1: 0x02,
 };

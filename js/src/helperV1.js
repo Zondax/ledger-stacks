@@ -55,7 +55,7 @@ export async function signSendChunkv1(app, chunkIdx, chunkNum, chunk) {
   }
   return app.transport
     .send(CLA, INS.SIGN_SECP256K1, payloadType, 0, chunk, [0x9000, 0x6984, 0x6a80])
-    .then((response) => {
+    .then(response => {
       const errorCodeData = response.slice(-2);
       const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
       let errorMessage = errorCodeToString(returnCode);

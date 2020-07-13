@@ -1,6 +1,6 @@
 {
   "name": "@zondax/ledger-blockstack",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Node API for Blockstack App (Ledger Nano S/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,16 +20,20 @@
   },
   "homepage": "https://github.com/zondax/ledger-blockstack",
   "dependencies": {
-    "@babel/runtime": "^7.9",
-    "@ledgerhq/hw-transport": "^5.13"
+    "@babel/runtime": "^7.10.3",
+    "@ledgerhq/hw-transport": "^5.17.0"
   },
   "devDependencies": {
-    "@babel/cli": "^7.8.4",
-    "@babel/core": "^7.9.0",
-    "@babel/node": "^7.8.7",
-    "@babel/plugin-transform-runtime": "^7.9.0",
-    "@babel/preset-env": "^7.9.5",
+    "@babel/cli": "^7.10.3",
+    "@babel/core": "^7.10.3",
+    "@babel/node": "^7.10.3",
+    "@babel/plugin-transform-runtime": "^7.10.3",
+    "@babel/preset-env": "^7.10.3",
     "@ledgerhq/hw-transport-node-hid": "^5.13.0",
+    "@ledgerhq/hw-transport-webusb": "^5.17.0",
+    "@vue/cli-plugin-babel": "^4.4.4",
+    "@vue/cli-plugin-eslint": "^4.4.4",
+    "@vue/cli-service": "^4.4.4",
     "babel-eslint": "^10.1.0",
     "babel-jest": "^25.3.0",
     "bip32": "^2.0.5",
@@ -43,15 +47,18 @@
     "eslint-plugin-import": "^2.20.2",
     "eslint-plugin-jest": "^23.8.2",
     "eslint-plugin-prettier": "^3.1.3",
+    "eslint-plugin-vue": "^6.2.2",
     "index.js": "^0.0.3",
     "jest": "^25.3.0",
     "jest-serial-runner": "^1.1.0",
     "prettier": "^2.0.4",
-    "secp256k1": "^4.0.0"
+    "secp256k1": "^4.0.0",
+    "vue": "^2.6.11",
+    "vue-template-compiler": "^2.6.11"
   },
   "scripts": {
-    "build": "babel src --out-dir dist",
-    "certificate": "openssl req -nodes -new -x509 -keyout certs/server.key -out certs/server.cert; openssl x509 -in certs/server.cert -out certs/cert.pem -outform PEM",
+    "build": "babel src  --copy-files --out-dir dist",
+    "certificate": "openssl req -nodes -config certs/openssl.cnf  -new -x509 -keyout certs/server.key -out certs/server.cert; openssl x509 -in certs/server.cert -out certs/cert.pem -outform PEM",
     "test:unit": "jest -c jest.config.unit.js",
     "test:integration": "jest -c jest.config.integration.js --runInBand --detectOpenHandles",
     "serve": "vue-cli-service serve vue_example/main.js"

@@ -17,7 +17,7 @@
   ],
   "dependencies": {
     "@zondax/ledger-blockstack": "file:../js",
-    "@zondax/zemu": "^0.2"
+    "@zondax/zemu": "^0.3.1"
   },
   "devDependencies": {
     "@babel/cli": "^7.8.4",
