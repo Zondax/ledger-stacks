@@ -185,57 +185,6 @@ void app_init() {
     BLE_power(0, NULL);
     BLE_power(1, "Nano X");
 #endif // HAVE_BLE
+
+    zb_init();
 }
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
-
-void app_main() {
-    volatile uint32_t rx = 0, tx = 0, flags = 0;
-
-    for (;;) {
-        volatile uint16_t sw = 0;
-
-        BEGIN_TRY;
-        {
-            TRY;
-            {
-                rx = tx;
-                tx = 0;
-
-                rx = io_exchange(CHANNEL_APDU | flags, rx);
-                flags = 0;
-                CHECK_APP_CANARY()
-
-                if (rx == 0)
-                    THROW(APDU_CODE_EMPTY_BUFFER);
-
-                handle_generic_apdu(&flags, &tx, rx);
-                CHECK_APP_CANARY()
-
-                handleApdu(&flags, &tx, rx);
-                CHECK_APP_CANARY()
-            }
-            CATCH_OTHER(e);
-            {
-                switch (e & 0xF000) {
-                    case 0x6000:
-                    case 0x9000:
-                        sw = e;
-                        break;
-                    default:
-                        sw = 0x6800 | (e & 0x7FF);
-                        break;
-                }
-                G_io_apdu_buffer[tx] = sw >> 8;
-                G_io_apdu_buffer[tx + 1] = sw;
-                tx += 2;
-            }
-            FINALLY;
-            {}
-        }
-        END_TRY;
-    }
-}
-
-#pragma clang diagnostic pop
