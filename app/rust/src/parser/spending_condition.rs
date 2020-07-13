@@ -7,7 +7,9 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::check_canary;
-use crate::parser::parser_common::{Hash160, HashMode, ParserError, TransactionVersion, SIGNATURE_LEN, C32_ENCODED_ADDRS_LENGTH};
+use crate::parser::parser_common::{
+    Hash160, HashMode, ParserError, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, SIGNATURE_LEN,
+};
 use crate::parser::{c32, ffi::fp_uint64_to_str};
 use crate::zxformat;
 
