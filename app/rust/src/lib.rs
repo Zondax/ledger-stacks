@@ -24,34 +24,6 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-/// A handler struct to deal with
-/// static global variables and PIC
-pub struct GlobalVariable<T: Sized + 'static>(T);
-
-impl<T> GlobalVariable<T>
-where
-    T: Sized + 'static,
-{
-    pub fn new(inner: T) -> Self {
-        Self(inner)
-    }
-
-    pub fn inner(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> core::ops::Deref for GlobalVariable<T>
-where
-    T: Sized + 'static,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner()
-    }
-}
-
 extern "C" {
     fn check_canary();
     fn pic(link_address: u32) -> u32;
