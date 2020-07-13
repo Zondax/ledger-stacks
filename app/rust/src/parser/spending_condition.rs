@@ -7,9 +7,7 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::check_canary;
-use crate::parser::parser_common::{
-    Hash160, HashMode, ParserError, TransactionVersion, SIGNATURE_LEN,
-};
+use crate::parser::parser_common::{Hash160, HashMode, ParserError, TransactionVersion, SIGNATURE_LEN, C32_ENCODED_ADDRS_LENGTH};
 use crate::parser::{c32, ffi::fp_uint64_to_str};
 use crate::zxformat;
 
@@ -93,7 +91,7 @@ impl<'a> TransactionSpendingCondition<'a> {
     pub fn signer_address(
         &self,
         chain: TransactionVersion,
-    ) -> Result<arrayvec::ArrayVec<[u8; 64]>, ParserError> {
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         if chain == TransactionVersion::Testnet {
             self.signer.to_testnet_address(self.hash_mode)
         } else {
@@ -102,9 +100,9 @@ impl<'a> TransactionSpendingCondition<'a> {
     }
 
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = if cfg!(test) {
-            zxformat::fpu64_to_str(output.as_mut(), self.nonce, 0)? as usize
+            zxformat::u64_to_str(&mut output[..zxformat::MAX_STR_BUFF_LEN], self.nonce)? as usize
         } else {
             unsafe {
                 fp_uint64_to_str(
@@ -122,7 +120,7 @@ impl<'a> TransactionSpendingCondition<'a> {
     }
 
     pub fn fee_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = if cfg!(test) {
             zxformat::fpu64_to_str(output.as_mut(), self.fee_rate, 0)? as usize
         } else {

@@ -264,7 +264,9 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    pub fn payload_recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; 64]>> {
+    pub fn payload_recipient_address(
+        &self,
+    ) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         self.payload.recipient_address()
     }
 
@@ -309,7 +311,7 @@ impl<'a> Transaction<'a> {
                 zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
             }
 
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_display_idx_out_of_range),
         }
     }
 
