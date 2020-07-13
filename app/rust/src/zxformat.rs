@@ -3,7 +3,7 @@
 use core::fmt::{self, Write};
 use nom::error::ParseError;
 
-use crate::parser::ParserError;
+use crate::parser::{fp_uint64_to_str, ParserError};
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
 
@@ -42,10 +42,22 @@ macro_rules! num_to_str {
             if output.len() < 2 {
                 return Err(ParserError::parser_unexpected_buffer_end);
             }
-            let mut writer = Writer::new(output);
-            core::write!(writer, "{}", number)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-            Ok(writer.offset)
+            let len = if cfg!(test) {
+                let mut writer = Writer::new(output);
+                core::write!(writer, "{}", number)
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                writer.offset
+            } else {
+                unsafe {
+                    fp_uint64_to_str(
+                        output.as_mut_ptr() as _,
+                        output.len() as u16,
+                        number as _,
+                        0,
+                    ) as usize
+                }
+            };
+            Ok(len)
         }
     };
 }

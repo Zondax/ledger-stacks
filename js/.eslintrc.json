@@ -10,7 +10,6 @@
     "prettier"
   ],
   "extends": [
-    "airbnb-base",
     "plugin:vue/recommended",
     "plugin:prettier/recommended"
   ],
@@ -26,10 +25,6 @@
   "rules": {
     "import/prefer-default-export": "off",
     "vue/html-self-closing": "off",
-    "vue/max-attributes-per-line": "off",
-    "import/no-unresolved": [
-      2,
-      { "caseSensitive": false }
-    ]
+    "vue/max-attributes-per-line": "off"
   }
 }
