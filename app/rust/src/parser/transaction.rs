@@ -395,8 +395,7 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -408,7 +407,6 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
-        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -432,8 +430,7 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce);
 
         let origin = spending_condition
             .signer_address(TransactionVersion::Mainnet)
@@ -445,6 +442,5 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
-        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 }
