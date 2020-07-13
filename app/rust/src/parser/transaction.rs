@@ -388,14 +388,15 @@ mod test {
         let json: StxTransaction = serde_json::from_str(&str).unwrap();
 
         let bytes = hex::decode(&json.raw).unwrap();
-        let transaction = Transaction::from_bytes(&bytes).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee, spending_condition.fee() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -407,6 +408,7 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -423,17 +425,18 @@ mod test {
         let json: StxTransaction = serde_json::from_str(&str).unwrap();
 
         let bytes = hex::decode(&json.raw).unwrap();
-        let transaction = Transaction::from_bytes(&bytes).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        // transaction.read(&bytes).unwrap();
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee, spending_condition.fee() as u32);
 
         let origin = spending_condition
-            .signer_address(transaction.version)
+            .signer_address(TransactionVersion::Mainnet)
             .unwrap();
         let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
         assert_eq!(&json.sender, origin);
@@ -442,5 +445,6 @@ mod test {
         let addr_len = recipient.len();
         let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
         assert_eq!(&json.recipient, address);
+        assert!(Transaction::validate(&mut transaction).is_ok());
     }
 }
