@@ -26,7 +26,7 @@ const simOptions = {
     logging: true,
     start_delay: 3000,
     custom: `-s "${APP_SEED}"`
-    , X11: true
+//    , X11: true
 };
 
 jest.setTimeout(15000)

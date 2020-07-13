@@ -12,7 +12,8 @@ use arrayvec::ArrayVec;
 use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
     ParserError, PrincipalData, StacksAddress, StacksString, StandardPrincipal, TokenTransferMemo,
-    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    C32_ENCODED_ADDRS_LENGTH, MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    STX_DECIMALS,
 };
 
 use crate::parser::ffi::fp_uint64_to_str;
@@ -20,8 +21,6 @@ use crate::parser::value::{Value, BIG_INT_SIZE};
 use crate::zxformat;
 
 pub const MAX_NUM_ARGS: u32 = 10;
-
-const STX_DECIMALS: u8 = 6;
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq)]
@@ -76,12 +75,12 @@ impl<'a> StxTokenTransfer<'a> {
         self.principal.raw_address()
     }
 
-    pub fn encoded_address(&self) -> Result<ArrayVec<[u8; 64]>, ParserError> {
+    pub fn encoded_address(&self) -> Result<ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         self.principal.encoded_address()
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
-        let mut output: ArrayVec<[_; zxformat::MAX_STR_BUFF_LEN]> = ArrayVec::new();
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = if cfg!(test) {
             zxformat::fpu64_to_str(output.as_mut(), self.amount, STX_DECIMALS)? as usize
         } else {
@@ -132,7 +131,7 @@ impl<'a> StxTokenTransfer<'a> {
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 zxformat::pageString(out_value, self.memo(), page_idx)
             }
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_display_idx_out_of_range),
         }
     }
 }
@@ -297,7 +296,7 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; 64]>> {
+    pub fn recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         match *self {
             Self::TokenTransfer(ref token) => token.encoded_address().ok(),
             _ => None,

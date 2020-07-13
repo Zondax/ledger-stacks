@@ -264,7 +264,9 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    pub fn payload_recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; 64]>> {
+    pub fn payload_recipient_address(
+        &self,
+    ) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         self.payload.recipient_address()
     }
 
@@ -309,7 +311,7 @@ impl<'a> Transaction<'a> {
                 zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
             }
 
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_display_idx_out_of_range),
         }
     }
 
@@ -386,14 +388,14 @@ mod test {
         let json: StxTransaction = serde_json::from_str(&str).unwrap();
 
         let bytes = hex::decode(&json.raw).unwrap();
-        let transaction = Transaction::from_bytes(&bytes).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
         let spending_condition = transaction.transaction_auth.origin();
 
         assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -421,17 +423,17 @@ mod test {
         let json: StxTransaction = serde_json::from_str(&str).unwrap();
 
         let bytes = hex::decode(&json.raw).unwrap();
-        let transaction = Transaction::from_bytes(&bytes).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        // transaction.read(&bytes).unwrap();
 
         assert!(transaction.transaction_auth.is_standard_auth());
 
         let spending_condition = transaction.transaction_auth.origin();
 
         assert_eq!(json.nonce, spending_condition.nonce);
-        assert_eq!(json.fee, spending_condition.fee_rate as u32);
 
         let origin = spending_condition
-            .signer_address(transaction.version)
+            .signer_address(TransactionVersion::Mainnet)
             .unwrap();
         let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
         assert_eq!(&json.sender, origin);

@@ -1,14 +1,19 @@
+use arrayvec::ArrayVec;
+use core::fmt::{self, Write};
 use nom::{
     bytes::complete::take,
     error::ErrorKind,
     number::complete::{be_u64, le_u8},
 };
 
+use crate::parser::fp_uint64_to_str;
 use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
-    ParserError, StacksAddress, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    ParserError, StacksAddress, C32_ENCODED_ADDRS_LENGTH, MAX_STRING_LEN,
+    NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
 use crate::parser::value::Value;
+use crate::zxformat;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]

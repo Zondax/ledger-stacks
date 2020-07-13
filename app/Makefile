@@ -47,7 +47,7 @@ COIN=STX
 endif
 
 APPVERSION_M=0
-APPVERSION_N=2
+APPVERSION_N=3
 APPVERSION_P=0
 
 $(info COIN      = [$(COIN)])
@@ -161,7 +161,8 @@ AS := $(GCCPATH)arm-none-eabi-gcc
 AFLAGS +=
 
 LD       := $(GCCPATH)arm-none-eabi-gcc
-LDFLAGS  += -O3 -Os -z muldefs
+LDFLAGS  += -O3 -Os
+LDFLAGS  += -z muldefs
 LDLIBS   += -lm -lgcc -lc
 LDLIBS   += -Lrust/target/thumbv6m-none-eabi/release -lrslib
 
