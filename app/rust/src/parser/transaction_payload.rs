@@ -159,6 +159,71 @@ impl<'a> TransactionContractCall<'a> {
             },
         ))
     }
+
+    pub fn contract_name(&self) -> &[u8] {
+        self.contract_name.0
+    }
+
+    pub fn function_name(&self) -> &[u8] {
+        self.function_name.0
+    }
+
+    pub fn num_args(&self) -> u32 {
+        self.function_args.len
+    }
+
+    #[inline(never)]
+    pub fn contract_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        self.address.encoded_address()
+    }
+
+    pub fn num_items(&self) -> u8 {
+        // contract-address, contract-name, function-name
+        3
+    }
+
+    fn get_contract_call_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+
+        match display_idx {
+            // Contract-address
+            0 => {
+                writer_key
+                    .write_str("Contract address")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let address = self.address.encoded_address()?;
+                check_canary!();
+                zxformat::pageString(out_value, &address[..address.len()], page_idx)
+            }
+            // Contract.name
+            1 => {
+                writer_key
+                    .write_str("Contract name")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let name = self.contract_name();
+                check_canary!();
+                zxformat::pageString(out_value, name, page_idx)
+            }
+            // Function-name
+            2 => {
+                writer_key
+                    .write_str("Function name")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let name = self.function_name();
+                check_canary!();
+                zxformat::pageString(out_value, name, page_idx)
+            }
+            _ => Err(ParserError::parser_value_out_of_range),
+        }
+    }
 }
 
 #[repr(C)]
@@ -240,6 +305,7 @@ impl<'a> TransactionSmartContract<'a> {
 pub enum TransactionPayloadId {
     TokenTransfer = 0,
     SmartContract = 1,
+    ContractCall = 2,
 }
 
 impl TransactionPayloadId {
@@ -247,6 +313,7 @@ impl TransactionPayloadId {
         match v {
             0 => Ok(Self::TokenTransfer),
             1 => Ok(Self::SmartContract),
+            2 => Ok(Self::ContractCall),
             _ => Err(ParserError::parser_invalid_transaction_payload),
         }
     }
@@ -257,6 +324,7 @@ impl TransactionPayloadId {
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),
+    ContractCall(TransactionContractCall<'a>),
 }
 
 impl<'a> TransactionPayload<'a> {
@@ -270,8 +338,11 @@ impl<'a> TransactionPayload<'a> {
             }
             TransactionPayloadId::SmartContract => {
                 let contract = TransactionSmartContract::from_bytes(id.0)?;
-                check_canary!();
                 (contract.0, Self::SmartContract(contract.1))
+            }
+            TransactionPayloadId::ContractCall => {
+                let call = TransactionContractCall::from_bytes(id.0)?;
+                (call.0, Self::ContractCall(call.1))
             }
         };
         Ok(res)
@@ -281,6 +352,41 @@ impl<'a> TransactionPayload<'a> {
         match self {
             Self::TokenTransfer(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn is_smart_contract_payload(&self) -> bool {
+        match self {
+            Self::SmartContract(_) => true,
+            _ => false,
+        }
+    }
+    pub fn is_contract_call_payload(&self) -> bool {
+        match self {
+            Self::ContractCall(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn contract_name(&self) -> Option<&[u8]> {
+        match self {
+            Self::SmartContract(ref contract) => contract.contract_name().ok(),
+            Self::ContractCall(ref contract) => Some(contract.contract_name()),
+            _ => None,
+        }
+    }
+
+    pub fn function_name(&self) -> Option<&[u8]> {
+        match self {
+            Self::ContractCall(ref contract) => Some(contract.function_name()),
+            _ => None,
+        }
+    }
+
+    pub fn num_args(&self) -> Option<u32> {
+        match self {
+            Self::ContractCall(ref contract) => Some(contract.num_args()),
+            _ => None,
         }
     }
 
@@ -304,18 +410,10 @@ impl<'a> TransactionPayload<'a> {
             _ => None,
         }
     }
-
-    pub fn contract_name(&self) -> Option<&[u8]> {
+    pub fn contract_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         match self {
-            Self::SmartContract(ref contract) => contract.contract_name().ok(),
+            Self::ContractCall(ref call) => call.contract_address().ok(),
             _ => None,
-        }
-    }
-
-    pub fn is_smart_contract_payload(&self) -> bool {
-        match self {
-            Self::SmartContract(_) => true,
-            _ => false,
         }
     }
 
@@ -323,6 +421,7 @@ impl<'a> TransactionPayload<'a> {
         match self {
             Self::TokenTransfer(_) => 3,
             Self::SmartContract(_) => 1,
+            Self::ContractCall(_) => 3,
         }
     }
 
@@ -340,6 +439,10 @@ impl<'a> TransactionPayload<'a> {
             }
             Self::SmartContract(ref contract) => {
                 contract.get_contract_items(idx, out_key, out_value, page_idx)
+            }
+            Self::ContractCall(ref call) => {
+                check_canary!();
+                call.get_contract_call_items(idx, out_key, out_value, page_idx)
             }
         }
     }

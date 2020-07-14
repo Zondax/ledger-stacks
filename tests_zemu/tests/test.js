@@ -260,7 +260,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign standard_contract_call_tx', async function () {
+    test('sign standard_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -292,7 +292,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign sponsored_contract_call_tx', async function () {
+    test('sign sponsored_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
