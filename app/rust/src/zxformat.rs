@@ -48,6 +48,9 @@ macro_rules! num_to_str {
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 writer.offset
             } else {
+                // We add this path here because of the issue with the write! fmt trait
+                // so that it is preferable to use the c implementation when running on
+                // the ledger nano, nanoX.
                 unsafe {
                     fp_uint64_to_str(
                         output.as_mut_ptr() as _,

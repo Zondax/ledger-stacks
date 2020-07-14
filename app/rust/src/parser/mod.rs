@@ -7,6 +7,6 @@ mod transaction;
 mod transaction_auth;
 mod transaction_payload;
 mod value;
-pub use ffi::{_getItem, _getNumItems, _parser_init, _read, _validate, fp_uint64_to_str};
-pub use parser_common::{Hash160, ParserError};
+pub use ffi::{_getItem, _getNumItems, _parser_init, _read, fp_uint64_to_str};
+pub use parser_common::ParserError;
 pub use transaction_auth::TransactionAuth;

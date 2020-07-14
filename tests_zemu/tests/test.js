@@ -26,7 +26,7 @@ const simOptions = {
     logging: true,
     start_delay: 3000,
     custom: `-s "${APP_SEED}"`
-//    , X11: true
+    , X11: true
 };
 
 jest.setTimeout(15000)
@@ -164,7 +164,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign stx_token_transfer_with_postcondition', async function () {
+    test('sign stx_token_transfer_with_postcondition', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -177,6 +177,8 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();

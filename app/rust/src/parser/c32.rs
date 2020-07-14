@@ -131,7 +131,6 @@ fn c32_check_encode(
     Ok(c32_string)
 }
 
-#[inline(never)]
 pub fn c32_address(
     version: u8,
     data: &[u8],

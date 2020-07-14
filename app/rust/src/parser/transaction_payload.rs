@@ -10,15 +10,14 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, Hash160,
-    ParserError, PrincipalData, StacksAddress, StacksString, StandardPrincipal, TokenTransferMemo,
-    C32_ENCODED_ADDRS_LENGTH, MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
-    STX_DECIMALS,
+    u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, ParserError,
+    PrincipalData, StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH,
+    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
 
 use crate::parser::ffi::fp_uint64_to_str;
 use crate::parser::value::{Value, BIG_INT_SIZE};
-use crate::zxformat;
+use crate::{check_canary, is_expert_mode, zxformat};
 
 pub const MAX_NUM_ARGS: u32 = 10;
 
@@ -43,8 +42,7 @@ impl TokenTranferPrincipal {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StxTokenTransfer<'a> {
     pub principal: PrincipalData<'a>,
-    pub amount: u64,
-    pub memo: TokenTransferMemo<'a>,
+    pub data: &'a [u8],
 }
 
 impl<'a> StxTokenTransfer<'a> {
@@ -55,47 +53,38 @@ impl<'a> StxTokenTransfer<'a> {
             TokenTranferPrincipal::Standard => PrincipalData::standard_from_bytes(id.0)?,
             TokenTranferPrincipal::Contract => PrincipalData::contract_principal_from_bytes(id.0)?,
         };
-        let amount = be_u64(principal.0)?;
-        let memo = TokenTransferMemo::from_bytes(amount.0)?;
+        let (raw, data) = take(34usize + 8)(principal.0)?;
         Ok((
-            memo.0,
+            raw,
             Self {
                 principal: principal.1,
-                amount: amount.1,
-                memo: memo.1,
+                data,
             },
         ))
     }
 
     pub fn memo(&self) -> &[u8] {
-        self.memo.0
+        &self.data[8..]
+    }
+
+    pub fn amount(&self) -> Result<u64, ParserError> {
+        be_u64::<'a, ParserError>(self.data)
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_unexpected_buffer_end)
     }
 
     pub fn raw_address(&self) -> &[u8] {
         self.principal.raw_address()
     }
 
-    pub fn encoded_address(&self) -> Result<ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
-        self.principal.encoded_address()
-    }
-
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
-        let len = if cfg!(test) {
-            zxformat::fpu64_to_str(output.as_mut(), self.amount, STX_DECIMALS)? as usize
-        } else {
-            unsafe {
-                fp_uint64_to_str(
-                    output.as_mut_ptr() as _,
-                    zxformat::MAX_STR_BUFF_LEN as u16,
-                    self.amount,
-                    STX_DECIMALS,
-                ) as usize
-            }
-        };
+        let amount = self.amount()?;
+        let len = zxformat::u64_to_str(output.as_mut(), amount)? as usize;
         unsafe {
             output.set_len(len);
         }
+        check_canary!();
         Ok(output)
     }
 
@@ -115,6 +104,7 @@ impl<'a> StxTokenTransfer<'a> {
                     .write_str("Amount")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 let amount = self.amount_stx()?;
+                check_canary!();
                 zxformat::pageString(out_value, amount.as_ref(), page_idx)
             }
             // Recipient address
@@ -122,13 +112,15 @@ impl<'a> StxTokenTransfer<'a> {
                 writer_key
                     .write_str("To")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                let recipient = self.encoded_address()?;
+                let recipient = self.principal.encoded_address()?;
+                check_canary!();
                 zxformat::pageString(out_value, recipient.as_ref(), page_idx)
             }
             2 => {
                 writer_key
                     .write_str("Memo")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                check_canary!();
                 zxformat::pageString(out_value, self.memo(), page_idx)
             }
             _ => Err(ParserError::parser_display_idx_out_of_range),
@@ -155,6 +147,7 @@ impl<'a> TransactionContractCall<'a> {
             ClarityName::from_bytes,
             Arguments::from_bytes,
         ))(bytes)?;
+        check_canary!();
         Ok((
             leftover,
             Self {
@@ -170,28 +163,26 @@ impl<'a> TransactionContractCall<'a> {
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arguments<'a> {
-    len: usize,
-    args: [Option<Value<'a>>; MAX_NUM_ARGS as usize],
+    len: u32,
+    args: &'a [u8],
 }
 
 impl<'a> Arguments<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let len = be_u32(bytes)?;
-        let mut arguments: [Option<Value<'a>>; MAX_NUM_ARGS as _] = [None; MAX_NUM_ARGS as _];
-        let mut iter = iterator(len.0, Value::from_bytes);
-        iter.take(len.1 as _)
-            .enumerate()
-            .zip(arguments.iter_mut())
-            .for_each(|i| {
-                *i.1 = Some((i.0).1);
-            });
-        let res = iter.finish()?;
+        if len.1 > MAX_NUM_ARGS && !is_expert_mode() {
+            return Err(nom::Err::Error(
+                ParserError::parser_invalid_transaction_payload,
+            ));
+        }
+        let args = take(len.0.len())(len.0)?;
+        check_canary!();
         Ok((
-            res.0,
+            args.0,
             Self {
-                len: len.1 as usize,
-                args: arguments,
+                len: len.1,
+                args: args.1,
             },
         ))
     }
@@ -210,6 +201,7 @@ impl<'a> TransactionSmartContract<'a> {
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (leftover, (name, code_body)) =
             permutation((ContractName::from_bytes, StacksString::from_bytes))(bytes)?;
+        check_canary!();
         Ok((leftover, Self { name, code_body }))
     }
 
@@ -269,42 +261,45 @@ impl<'a> TransactionPayload<'a> {
                 let token = StxTokenTransfer::from_bytes(id.0)?;
                 (token.0, Self::TokenTransfer(token.1))
             }
-            _ => unimplemented!(),
+            TransactionPayloadId::SmartContract => {
+                let contract = TransactionSmartContract::from_bytes(id.0)?;
+                check_canary!();
+                (contract.0, Self::SmartContract(contract.1))
+            }
         };
         Ok(res)
     }
 
-    #[inline(never)]
     pub fn is_token_transfer_payload(&self) -> bool {
-        match *self {
+        match self {
             Self::TokenTransfer(_) => true,
             _ => false,
         }
     }
 
     pub fn amount(&self) -> Option<u64> {
-        match *self {
-            Self::TokenTransfer(ref token) => Some(token.amount),
-            _ => unimplemented!(),
+        match self {
+            Self::TokenTransfer(ref token) => token.amount().ok(),
+            _ => None,
         }
     }
 
     pub fn memo(&self) -> Option<&[u8]> {
-        match *self {
-            Self::TokenTransfer(ref token) => Some(token.memo.0),
+        match self {
+            Self::TokenTransfer(ref token) => Some(token.memo()),
             _ => None,
         }
     }
 
     pub fn recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
-        match *self {
-            Self::TokenTransfer(ref token) => token.encoded_address().ok(),
+        match self {
+            Self::TokenTransfer(ref token) => token.principal.encoded_address().ok(),
             _ => None,
         }
     }
 
     pub fn num_items(&self) -> u8 {
-        match *self {
+        match self {
             Self::TokenTransfer(_) => 3,
             Self::SmartContract(_) => 1,
         }
@@ -318,7 +313,7 @@ impl<'a> TransactionPayload<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let idx = display_idx % self.num_items();
-        match *self {
+        match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
             }
@@ -346,10 +341,16 @@ mod test {
     fn test_transaction_payload_tokens() {
         let hash = [0xff; 20];
         let memo = [0x00; 34];
+        let mut vec = 123usize.to_be_bytes().to_vec();
+        let mut principal = vec![1u8];
+        principal.extend_from_slice(hash.as_ref());
+        vec.extend_from_slice(memo.as_ref());
+
         let token = StxTokenTransfer {
-            principal: PrincipalData::Standard(StandardPrincipal(1, hash.as_ref())),
-            amount: 123,
-            memo: TokenTransferMemo(memo.as_ref()),
+            principal: PrincipalData {
+                data: (StandardPrincipal(principal.as_ref()), None),
+            },
+            data: vec.as_ref(),
         };
         let tt_stx = TransactionPayload::TokenTransfer(token);
 
