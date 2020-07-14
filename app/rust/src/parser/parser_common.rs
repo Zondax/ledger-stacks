@@ -95,6 +95,18 @@ impl<'a> AssetInfo<'a> {
             },
         ))
     }
+
+    #[inline(never)]
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+        let (raw, _) = StacksAddress::from_bytes(bytes)?;
+        let (raw1, _) = ContractName::from_bytes(raw)?;
+        let (raw2, _) = ClarityName::from_bytes(raw1)?;
+        Ok((raw2, bytes))
+    }
+
+    pub fn asset_name(&self) -> &[u8] {
+        self.asset_name.0
+    }
 }
 
 #[repr(u32)]

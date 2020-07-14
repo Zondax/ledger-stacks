@@ -81,6 +81,31 @@ pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, P
     fpstr_to_str(out, &temp[..len], decimals)
 }
 
+/// Fixed point u64 number with native/test support
+///
+/// Converts an u64 number into its fixed point string representation
+/// using #decimals padding zeros. This functions is intended to be used where
+/// linking to the native zxformat library is needed, and also be able to run tests
+/// which dont have access to this native library.
+/// # Arguments
+/// * * `out`: the output buffer where the conversion result is written
+/// * `value`: The number to convert to
+/// * `decimals`: the number of decimals after the decimal point
+/// # Returns
+/// The number of bytes written if success or Error otherwise
+pub fn fpu64_to_str_check_test(
+    out: &mut [u8],
+    value: u64,
+    decimals: u8,
+) -> Result<usize, ParserError> {
+    let len = if cfg!(test) {
+        fpu64_to_str(out, value, decimals)? as usize
+    } else {
+        unsafe { fp_uint64_to_str(out.as_mut_ptr() as _, out.len() as _, value, decimals) as usize }
+    };
+    Ok(len)
+}
+
 /// Fixed point i64 number
 ///
 /// Converts an u64 number into its fixed point string representation
