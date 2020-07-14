@@ -10,15 +10,18 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::{
-    parser_common::*, post_condition::*, transaction_auth::TransactionAuth,
-    transaction_payload::TransactionPayload, value::Value,
+    parser_common::{
+        ParserError, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, NUM_SUPPORTED_POST_CONDITIONS,
+    },
+    post_condition::TransactionPostCondition,
+    transaction_auth::TransactionAuth,
+    transaction_payload::TransactionPayload,
+    value::Value,
 };
 
 use crate::parser::ffi::fp_uint64_to_str;
 
-use crate::zxformat;
-
-use crate::check_canary;
+use crate::{check_canary, zxformat};
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -126,6 +129,7 @@ impl<'a> PostConditions<'a> {
         self.num_items
     }
 
+    #[inline(never)]
     pub fn get_items(
         &mut self,
         display_idx: u8,
@@ -159,6 +163,7 @@ impl<'a> PostConditions<'a> {
             self.current_idx -= 1;
             current_condition = self.current_post_condition()?;
         }
+        check_canary!();
         current_condition.get_items(idx, out_key, out_value, page_idx)
     }
 
@@ -175,6 +180,7 @@ impl<'a> PostConditions<'a> {
             .sum()
     }
 
+    #[inline(never)]
     fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
         TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
             .map_err(|_| ParserError::parser_post_condition_failed)
@@ -335,7 +341,7 @@ impl<'a> Transaction<'a> {
 
     pub fn num_items(&self) -> u8 {
         // nonce + origin + fee-rate + payload + post-conditions
-        3 + self.payload.num_items() + self.post_conditions.num_items()
+        3 + self.payload.num_items() + self.post_conditions.num_items
     }
 
     fn get_origin_items(
@@ -374,7 +380,7 @@ impl<'a> Transaction<'a> {
                 zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
             }
 
-            _ => Err(ParserError::parser_display_idx_out_of_range),
+            _ => unreachable!(),
         }
     }
 
@@ -386,7 +392,7 @@ impl<'a> Transaction<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let num_items = self.num_items();
-        let post_conditions_items = self.post_conditions.num_items();
+        let post_conditions_items = self.post_conditions.num_items;
 
         if display_idx >= (num_items - post_conditions_items) {
             if post_conditions_items == 0 {
@@ -418,6 +424,7 @@ impl<'a> Transaction<'a> {
         }
     }
 
+    #[cfg(test)]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
         let mut key = [0u8; 30];
         let mut value = [0u8; 30];
@@ -426,10 +433,7 @@ impl<'a> Transaction<'a> {
 
         let num_items = tx.num_items();
         while display_idx < num_items {
-            let pages = match tx.get_item(display_idx, &mut key, &mut value, page_idx) {
-                Ok(pages) => pages,
-                Err(e) => return Err(e),
-            };
+            let pages = tx.get_item(display_idx, &mut key, &mut value, page_idx)?;
 
             page_idx += 1;
             if page_idx >= pages {
@@ -448,6 +452,7 @@ mod test {
     use serde_json::{Result, Value};
 
     use super::*;
+    use crate::parser::post_condition::FungibleConditionCode;
     use std::fs;
     use std::path::PathBuf;
     use std::string::String;
@@ -463,30 +468,6 @@ mod test {
         amount: u64,
         fee: u32,
         post_condition_principal: Option<String>,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    struct SmartContractTx {
-        raw: String,
-        sender: String,
-        sponsor_addrs: Option<String>,
-        fee: u64,
-        nonce: u64,
-        contract_name: String,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    struct ContractCallTx {
-        raw: String,
-        sender: String,
-        sponsor_addrs: Option<String>,
-        fee: u64,
-        nonce: u64,
-        contract_name: String,
-        function_name: String,
-        num_args: u32,
-        post_condition_principal: Option<String>,
-        post_condition_asset_name: Option<String>,
     }
 
     #[test]
@@ -610,223 +591,6 @@ mod test {
         let stx_condition_amount = post_condition.amount_stx().unwrap();
         assert_eq!(0, stx_condition_amount);
         assert!(post_condition.is_origin_principal());
-        assert!(Transaction::validate(&mut transaction).is_ok());
-    }
-
-    #[test]
-    fn test_standard_smart_contract_tx() {
-        let input_path = {
-            let mut r = PathBuf::new();
-            r.push(env!("CARGO_MANIFEST_DIR"));
-            r.push("tests");
-            r.push("standard_smart_contract");
-            r.set_extension("json");
-            r
-        };
-        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
-        let json: SmartContractTx = serde_json::from_str(&str).unwrap();
-        let bytes = hex::decode(&json.raw).unwrap();
-        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
-        transaction.read(&bytes).unwrap();
-
-        assert!(transaction.transaction_auth.is_standard_auth());
-        assert!(transaction.payload.is_smart_contract_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
-        assert_eq!(json.contract_name, contract_name);
-
-        let spending_condition = transaction.transaction_auth.origin();
-
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
-
-        let origin = spending_condition
-            .signer_address(transaction.version)
-            .unwrap();
-        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
-        assert_eq!(json.sender, origin);
-        assert!(Transaction::validate(&mut transaction).is_ok());
-    }
-
-    #[test]
-    fn test_sponsored_smart_contract_tx() {
-        let input_path = {
-            let mut r = PathBuf::new();
-            r.push(env!("CARGO_MANIFEST_DIR"));
-            r.push("tests");
-            r.push("sponsored_smart_contract");
-            r.set_extension("json");
-            r
-        };
-        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
-        let json: SmartContractTx = serde_json::from_str(&str).unwrap();
-        let bytes = hex::decode(&json.raw).unwrap();
-        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
-        transaction.read(&bytes).unwrap();
-
-        assert!(!transaction.transaction_auth.is_standard_auth());
-        assert!(transaction.payload.is_smart_contract_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
-        assert_eq!(json.contract_name, contract_name);
-
-        let spending_condition = transaction.transaction_auth.origin();
-        let spending_condition_s = transaction.transaction_auth.sponsor().unwrap();
-
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
-
-        let origin = spending_condition
-            .signer_address(transaction.version)
-            .unwrap();
-        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
-        assert_eq!(json.sender, origin);
-
-        let sponsor_addrs = spending_condition_s
-            .signer_address(transaction.version)
-            .unwrap();
-        let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[0..sponsor_addrs.len()]).unwrap();
-        assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
-        assert!(Transaction::validate(&mut transaction).is_ok());
-    }
-
-    #[test]
-    fn test_standard_contract_call_tx() {
-        let input_path = {
-            let mut r = PathBuf::new();
-            r.push(env!("CARGO_MANIFEST_DIR"));
-            r.push("tests");
-            r.push("contract_call_testnet");
-            r.set_extension("json");
-            r
-        };
-        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
-        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
-        let bytes = hex::decode(&json.raw).unwrap();
-        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
-        transaction.read(&bytes).unwrap();
-
-        assert!(transaction.transaction_auth.is_standard_auth());
-        assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
-        assert_eq!(json.contract_name, contract_name);
-
-        let function_name =
-            core::str::from_utf8(transaction.payload.function_name().unwrap()).unwrap();
-        assert_eq!(json.function_name, function_name);
-
-        let num_args = transaction.payload.num_args().unwrap();
-        assert_eq!(json.num_args, num_args);
-
-        let origin = transaction.transaction_auth.origin();
-
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
-
-        let origin_addr = origin.signer_address(transaction.version).unwrap();
-        let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
-        assert_eq!(json.sender, origin_addr);
-
-        assert!(Transaction::validate(&mut transaction).is_ok());
-    }
-
-    #[test]
-    fn test_standard_contract_call_tx_with_fungible_post_condition() {
-        let input_path = {
-            let mut r = PathBuf::new();
-            r.push(env!("CARGO_MANIFEST_DIR"));
-            r.push("tests");
-            r.push("contract_call_with_fungible_postcondition");
-            r.set_extension("json");
-            r
-        };
-        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
-        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
-        let bytes = hex::decode(&json.raw).unwrap();
-        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
-        transaction.read(&bytes).unwrap();
-
-        assert!(transaction.transaction_auth.is_standard_auth());
-        assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
-        assert_eq!(json.contract_name, contract_name);
-
-        let function_name =
-            core::str::from_utf8(transaction.payload.function_name().unwrap()).unwrap();
-        assert_eq!(json.function_name, function_name);
-
-        let num_args = transaction.payload.num_args().unwrap();
-        assert_eq!(json.num_args, num_args);
-
-        let origin = transaction.transaction_auth.origin();
-
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
-
-        let origin_addr = origin.signer_address(transaction.version).unwrap();
-        let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
-        assert_eq!(json.sender, origin_addr);
-
-        let post_conditions = transaction.post_conditions.get_postconditions();
-        assert_eq!(post_conditions.len(), 1);
-        let condition = TransactionPostCondition::from_bytes(post_conditions[0])
-            .unwrap()
-            .1;
-        assert!(condition.is_fungible());
-        let addr = condition.get_principal_address().unwrap();
-        let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
-        assert_eq!(json.post_condition_principal, Some(principal_addr.into()));
-
-        assert!(Transaction::validate(&mut transaction).is_ok());
-    }
-
-    #[test]
-    fn test_sponsored_contract_call_tx() {
-        let input_path = {
-            let mut r = PathBuf::new();
-            r.push(env!("CARGO_MANIFEST_DIR"));
-            r.push("tests");
-            r.push("sponsored_contract_call_testnet.json");
-            r.set_extension("json");
-            r
-        };
-        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
-        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
-        let bytes = hex::decode(&json.raw).unwrap();
-        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
-        transaction.read(&bytes).unwrap();
-
-        assert!(!transaction.transaction_auth.is_standard_auth());
-        assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
-        assert_eq!(json.contract_name, contract_name);
-
-        let function_name =
-            core::str::from_utf8(transaction.payload.function_name().unwrap()).unwrap();
-        assert_eq!(json.function_name, function_name);
-
-        // Test number of cuntion args
-        let num_args = transaction.payload.num_args().unwrap();
-        assert_eq!(json.num_args, num_args);
-
-        let origin = transaction.transaction_auth.origin();
-        let sponsor = transaction.transaction_auth.sponsor().unwrap();
-
-        // test Fee, Nonce of origin
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
-
-        // Test origin and sponsor addresses
-        let origin_addr = origin.signer_address(transaction.version).unwrap();
-        let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
-        assert_eq!(json.sender, origin_addr);
-
-        let sponsor_addrs = sponsor.signer_address(transaction.version).unwrap();
-        let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[..sponsor_addrs.len()]).unwrap();
-        assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
         assert!(Transaction::validate(&mut transaction).is_ok());
     }
 }

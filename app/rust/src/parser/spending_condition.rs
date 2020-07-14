@@ -6,26 +6,11 @@ use nom::{
 
 use arrayvec::ArrayVec;
 
-use crate::check_canary;
 use crate::parser::parser_common::{
-    Hash160, HashMode, ParserError, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, SIGNATURE_LEN,
+    HashMode, ParserError, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, SIGNATURE_LEN,
 };
 use crate::parser::{c32, ffi::fp_uint64_to_str};
-use crate::zxformat;
-
-// Signature
-// should by 65-bytes length
-#[repr(C)]
-#[derive(PartialEq, Debug)]
-pub struct MessageSignature<'a>(&'a [u8]);
-
-impl<'a> MessageSignature<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let signature = take(SIGNATURE_LEN)(bytes)?;
-        Ok((signature.0, Self(signature.1)))
-    }
-}
+use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -62,86 +47,78 @@ pub enum TransactionAuthFieldID {
     SignatureUncompressed = 0x03,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct TransactionAuthField<'a>(TransactionAuthFieldID, &'a [u8]);
-//{
-//PublicKey(StacksPublicKey),
-//Signature(TransactionPublicKeyEncoding, MessageSignature),
-//}
-
 #[repr(C)]
 #[derive(PartialEq, Debug)]
 pub struct SpendingConditionSigner<'a> {
-    pub hash_mode: HashMode,
-    pub signer: Hash160<'a>,
-    pub nonce: u64,    // nth authorization from this account
-    pub fee_rate: u64, // microSTX/compute rate offerred by this account
+    pub data: &'a [u8],
 }
 
 impl<'a> SpendingConditionSigner<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let hash_mode = le_u8(bytes)?;
-        let mode = HashMode::from_u8(hash_mode.1).ok_or(ParserError::parser_invalid_hash_mode)?;
-        let signer = Hash160::from_bytes(hash_mode.0)?;
-        let nonce = be_u64(signer.0)?;
-        let fee = be_u64(nonce.0)?;
-        Ok((
-            fee.0,
-            Self {
-                hash_mode: mode,
-                signer: signer.1,
-                nonce: nonce.1,
-                fee_rate: fee.1,
-            },
-        ))
+        let len = 1 + HASH160_LEN as usize + 8 + 8;
+        let (raw, data) = take(len)(bytes)?;
+        Ok((raw, Self { data }))
+    }
+
+    pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
+        HashMode::from_u8(self.data[0]).ok_or(ParserError::parser_invalid_hash_mode)
+    }
+
+    fn to_mainnet_address(
+        &self,
+        mode: HashMode,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        c32::c32_address(mode.to_version_mainnet(), &self.data[1..21])
+    }
+
+    fn to_testnet_address(
+        &self,
+        mode: HashMode,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        c32::c32_address(mode.to_version_testnet(), &self.data[1..21])
     }
 
     pub fn signer_address(
         &self,
         chain: TransactionVersion,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        let mode = self.hash_mode()?;
         if chain == TransactionVersion::Testnet {
-            self.signer.to_testnet_address(self.hash_mode)
+            self.to_testnet_address(mode)
         } else {
-            self.signer.to_mainnet_address(self.hash_mode)
+            self.to_mainnet_address(mode)
         }
     }
 
+    pub fn nonce(&self) -> Result<u64, ParserError> {
+        be_u64::<'a, ParserError>(&self.data[21..])
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_unexpected_value)
+    }
+
+    pub fn fee(&self) -> Result<u64, ParserError> {
+        be_u64::<'a, ParserError>(&self.data[29..])
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_unexpected_value)
+    }
+
+    #[inline(never)]
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
-        let len = if cfg!(test) {
-            zxformat::u64_to_str(&mut output[..zxformat::MAX_STR_BUFF_LEN], self.nonce)? as usize
-        } else {
-            unsafe {
-                fp_uint64_to_str(
-                    output.as_mut_ptr() as _,
-                    zxformat::MAX_STR_BUFF_LEN as u16,
-                    self.nonce,
-                    0,
-                ) as usize
-            }
-        };
+        let nonce = self.nonce()?;
+        let len = zxformat::u64_to_str(&mut output[..zxformat::MAX_STR_BUFF_LEN], nonce)? as usize;
         unsafe {
             output.set_len(len);
         }
         Ok(output)
     }
 
+    #[inline(never)]
     pub fn fee_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
-        let len = if cfg!(test) {
-            zxformat::fpu64_to_str(output.as_mut(), self.fee_rate, 0)? as usize
-        } else {
-            unsafe {
-                fp_uint64_to_str(
-                    output.as_mut_ptr() as _,
-                    zxformat::MAX_STR_BUFF_LEN as u16,
-                    self.fee_rate,
-                    0,
-                ) as usize
-            }
-        };
+        let fee = self.fee()?;
+        let len = zxformat::u64_to_str(output.as_mut(), fee)? as usize;
         unsafe {
             output.set_len(len);
         }
@@ -151,10 +128,9 @@ impl<'a> SpendingConditionSigner<'a> {
 
 #[repr(C)]
 #[derive(PartialEq, Debug)]
-pub struct SinglesigSpendingCondition<'a> {
-    pub key_encoding: TransactionPublicKeyEncoding,
-    pub signature: MessageSignature<'a>,
-}
+pub struct SinglesigSpendingCondition<'a>(&'a [u8]);
+// pub key_encoding: TransactionPublicKeyEncoding,
+// pub signature: MessageSignature<'a>,
 
 /// A structure that encodes enough state to authenticate
 /// a transaction's execution against a Stacks address.
@@ -162,11 +138,7 @@ pub struct SinglesigSpendingCondition<'a> {
 /// nonce is the "check number" for the Principal.
 #[repr(C)]
 #[derive(Debug, PartialEq)]
-pub struct MultisigSpendingCondition<'a> {
-    pub num_fields: u32,
-    pub fields: &'a [u8], //Vec<TransactionAuthField>,
-    pub signatures_required: u16,
-}
+pub struct MultisigSpendingCondition<'a>(&'a [u8]);
 
 #[repr(C)]
 #[derive(Debug, PartialEq)]
@@ -185,25 +157,22 @@ pub struct TransactionSpendingCondition<'a> {
 impl<'a> SinglesigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let key = le_u8(bytes)?;
-        let key_encoding = match key.1 {
-            0 => TransactionPublicKeyEncoding::Compressed,
-            1 => TransactionPublicKeyEncoding::Uncompressed,
-            _ => return Err(nom::Err::Error(ParserError::parser_invalid_pubkey_encoding)),
-        };
-
-        let signature = MessageSignature::from_bytes(key.0)
-            .map_err(|_| ParserError::parser_invalid_signature)?;
-        let condition = Self {
-            key_encoding,
-            signature: signature.1,
-        };
+        let len = SIGNATURE_LEN as usize + 1;
+        let (raw, data) = take(len)(bytes)?;
         check_canary!();
-        Ok((signature.0, condition))
+        Ok((raw, Self(data)))
     }
 
-    pub fn key_encoding(&self) -> TransactionPublicKeyEncoding {
-        self.key_encoding
+    pub fn key_encoding(&self) -> Result<TransactionPublicKeyEncoding, ParserError> {
+        match self.0[0] {
+            x if x == TransactionPublicKeyEncoding::Compressed as u8 => {
+                Ok(TransactionPublicKeyEncoding::Compressed)
+            }
+            x if x == TransactionPublicKeyEncoding::Uncompressed as u8 => {
+                Ok(TransactionPublicKeyEncoding::Uncompressed)
+            }
+            _ => Err(ParserError::parser_invalid_pubkey_encoding),
+        }
     }
 }
 
@@ -211,10 +180,10 @@ impl<'a> MultisigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         // first get the number of auth-fields
-        let (raw, num_fields) = be_u32(bytes)?;
-        let mut bytes_count = 0usize;
+        let (_, num_fields) = be_u32(bytes)?;
+        let mut bytes_count = 4usize;
         for _ in 0..num_fields {
-            match raw[bytes_count] {
+            match bytes[bytes_count] {
                 0x00 | 0x01 => {
                     bytes_count += 33 + 1;
                 }
@@ -224,25 +193,26 @@ impl<'a> MultisigSpendingCondition<'a> {
                 _ => return Err(nom::Err::Error(ParserError::parser_unexpected_value)),
             }
         }
-
-        let (raw1, fields) = take(bytes_count)(raw)?;
-        let (raw2, signatures_required) = be_u16(raw1)?;
-        Ok((
-            raw2,
-            Self {
-                num_fields,
-                fields,
-                signatures_required,
-            },
-        ))
+        // plus two bytes for the required_signatures count
+        bytes_count += 2;
+        let (raw, fields) = take(bytes_count)(bytes)?;
+        Ok((raw, Self(fields)))
     }
 
-    pub fn required_signatures(&self) -> u16 {
-        self.signatures_required
+    pub fn required_signatures(&self) -> Result<u16, ParserError> {
+        if self.0.len() < 2 {
+            return Err(ParserError::parser_unexpected_buffer_end);
+        }
+        let idx = self.0.len() - 2;
+        be_u16::<'a, ParserError>((self.0[idx..]).as_ref())
+            .map(|num| num.1)
+            .map_err(|_| ParserError::parser_unexpected_value)
     }
 
-    pub fn num_fields(&self) -> u32 {
-        self.num_fields
+    pub fn num_fields(&self) -> Result<u32, ParserError> {
+        be_u32::<'a, ParserError>((self.0[..4]).as_ref())
+            .map(|num| num.1)
+            .map_err(|_| ParserError::parser_unexpected_value)
     }
 }
 
@@ -250,10 +220,14 @@ impl<'a> TransactionSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (raw, signer) = SpendingConditionSigner::from_bytes(bytes)?;
-        let (leftover, signature) = match signer.hash_mode {
+        let hash_mode = signer.hash_mode()?;
+        let (leftover, signature) = match hash_mode {
             HashMode::P2PKH | HashMode::P2WPKH => {
-                let sig = SinglesigSpendingCondition::from_bytes(raw)?;
-                (sig.0, SpendingConditionSignature::Singlesig(sig.1))
+                let (raw, sig) = SinglesigSpendingCondition::from_bytes(raw)?;
+                if !sig.key_encoding()?.is_valid_hash_mode(hash_mode) {
+                    return Err(nom::Err::Error(ParserError::parser_invalid_pubkey_encoding));
+                }
+                (raw, SpendingConditionSignature::Singlesig(sig))
             }
             HashMode::P2WSH | HashMode::P2SH => {
                 let sig = MultisigSpendingCondition::from_bytes(raw)?;
@@ -263,6 +237,7 @@ impl<'a> TransactionSpendingCondition<'a> {
         Ok((leftover, Self { signer, signature }))
     }
 
+    #[inline(never)]
     pub fn signer_address(
         &self,
         chain: TransactionVersion,
@@ -270,20 +245,22 @@ impl<'a> TransactionSpendingCondition<'a> {
         self.signer.signer_address(chain)
     }
 
+    #[inline(never)]
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         self.signer.nonce_str()
     }
 
+    #[inline(never)]
     pub fn fee_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         self.signer.fee_str()
     }
 
     pub fn nonce(&self) -> u64 {
-        self.signer.nonce
+        self.signer.nonce().unwrap_or(0)
     }
 
     pub fn fee(&self) -> u64 {
-        self.signer.fee_rate
+        self.signer.fee().unwrap_or(0)
     }
 
     pub fn is_single_signature(&self) -> bool {
@@ -302,14 +279,14 @@ impl<'a> TransactionSpendingCondition<'a> {
 
     pub fn num_auth_fields(&self) -> Option<u32> {
         match self.signature {
-            SpendingConditionSignature::Multisig(ref sig) => Some(sig.num_fields()),
+            SpendingConditionSignature::Multisig(ref sig) => sig.num_fields().ok(),
             _ => None,
         }
     }
 
     pub fn required_signatures(&self) -> Option<u16> {
         match self.signature {
-            SpendingConditionSignature::Multisig(ref sig) => Some(sig.required_signatures()),
+            SpendingConditionSignature::Multisig(ref sig) => sig.required_signatures().ok(),
             _ => None,
         }
     }
@@ -334,18 +311,28 @@ mod test {
         let sign_uncompressed = [0xff; 65];
         let sign_compressed = [0xfe; 65];
         //let spending_condition_p2pkh_uncompressed = TransactionSpendingCondition {
-        let spending_condition_signer = SpendingConditionSigner {
+        /*let spending_condition_signer = SpendingConditionSigner {
             signer: Hash160(hash.as_ref()),
             hash_mode: HashMode::P2PKH,
             nonce: 123,
             fee_rate: 456,
-        };
+        }*/
+
+        let mut spending_condition_signer = vec![HashMode::P2PKH as u8];
+        spending_condition_signer.extend_from_slice(hash.as_ref());
+        spending_condition_signer.extend_from_slice(123usize.to_be_bytes().as_ref());
+        spending_condition_signer.extend_from_slice(456usize.to_be_bytes().as_ref());
+
+        let mut signature = vec![TransactionPublicKeyEncoding::Uncompressed as u8];
+        signature.extend_from_slice(sign_uncompressed.as_ref());
+
         let spending_condition_p2pkh_uncompressed = TransactionSpendingCondition {
-            signer: spending_condition_signer,
-            signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition {
-                key_encoding: TransactionPublicKeyEncoding::Uncompressed,
-                signature: MessageSignature(sign_uncompressed.as_ref()),
-            }),
+            signer: SpendingConditionSigner {
+                data: spending_condition_signer.as_ref(),
+            },
+            signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition(
+                signature.as_ref(),
+            )),
         };
 
         let spending_condition_p2pkh_uncompressed_bytes = vec![
@@ -460,7 +447,7 @@ mod test {
             0xff,
         ];
 
-        let spending_condition_signer = SpendingConditionSigner {
+        /*let spending_condition_signer = SpendingConditionSigner {
             signer: Hash160(hash.as_ref()),
             hash_mode: HashMode::P2PKH,
             nonce: 345,
@@ -472,6 +459,23 @@ mod test {
                 key_encoding: TransactionPublicKeyEncoding::Compressed,
                 signature: MessageSignature(sign_compressed.as_ref()),
             }),
+        };*/
+
+        let mut spending_condition_signer = vec![HashMode::P2PKH as u8];
+        spending_condition_signer.extend_from_slice(hash.as_ref());
+        spending_condition_signer.extend_from_slice(345usize.to_be_bytes().as_ref());
+        spending_condition_signer.extend_from_slice(456usize.to_be_bytes().as_ref());
+
+        let mut signature = vec![TransactionPublicKeyEncoding::Compressed as u8];
+        signature.extend_from_slice(sign_compressed.as_ref());
+
+        let spending_condition_p2pkh_compressed = TransactionSpendingCondition {
+            signer: SpendingConditionSigner {
+                data: spending_condition_signer.as_ref(),
+            },
+            signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition(
+                signature.as_ref(),
+            )),
         };
 
         let spending_condition_p2pkh_compressed_bytes = vec![
@@ -604,7 +608,7 @@ mod test {
         let hash = [0x11; 20];
         let sign_compressed = [0xfe; 65];
 
-        let spending_condition_signer = SpendingConditionSigner {
+        /* let spending_condition_signer = SpendingConditionSigner {
             signer: Hash160(hash.as_ref()),
             hash_mode: HashMode::P2WPKH,
             nonce: 345,
@@ -616,6 +620,23 @@ mod test {
                 key_encoding: TransactionPublicKeyEncoding::Compressed,
                 signature: MessageSignature(sign_compressed.as_ref()),
             }),
+        };*/
+
+        let mut spending_condition_signer = vec![HashMode::P2WPKH as u8];
+        spending_condition_signer.extend_from_slice(hash.as_ref());
+        spending_condition_signer.extend_from_slice(345usize.to_be_bytes().as_ref());
+        spending_condition_signer.extend_from_slice(567usize.to_be_bytes().as_ref());
+
+        let mut signature = vec![TransactionPublicKeyEncoding::Compressed as u8];
+        signature.extend_from_slice(sign_compressed.as_ref());
+
+        let spending_condition_p2wpkh_compressed = TransactionSpendingCondition {
+            signer: SpendingConditionSigner {
+                data: spending_condition_signer.as_ref(),
+            },
+            signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition(
+                signature.as_ref(),
+            )),
         };
 
         let spending_condition_p2wpkh_compressed_bytes = vec![
@@ -734,7 +755,7 @@ mod test {
             TransactionSpendingCondition::from_bytes(&spending_condition_p2wpkh_compressed_bytes)
                 .unwrap();
         assert_eq!(bytes.len(), 0);
-        assert_eq!(spending_condition_p2pwkh_compressed, decoded);
+        assert_eq!(spending_condition_p2wpkh_compressed, decoded);
     }
 
     #[test]

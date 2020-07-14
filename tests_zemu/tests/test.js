@@ -26,7 +26,7 @@ const simOptions = {
     logging: true,
     start_delay: 3000,
     custom: `-s "${APP_SEED}"`
-    , X11: true
+    //, X11: true
 };
 
 jest.setTimeout(15000)
@@ -186,6 +186,8 @@ describe('Basic checks', function () {
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickBoth();
 
             let signature = await signatureRequest;
@@ -199,7 +201,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign sponsored_smart_contract_tx', async function () {
+    test.skip('sign sponsored_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -228,7 +230,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign standard_smart_contract_tx', async function () {
+    test.skip('sign standard_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -258,7 +260,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign standard_contract_call_tx', async function () {
+    test.skip('sign standard_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -290,7 +292,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign sponsored_contract_call_tx', async function () {
+    test.skip('sign sponsored_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
