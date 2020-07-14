@@ -53,6 +53,7 @@ impl<'a> StxTokenTransfer<'a> {
             TokenTranferPrincipal::Standard => PrincipalData::standard_from_bytes(id.0)?,
             TokenTranferPrincipal::Contract => PrincipalData::contract_principal_from_bytes(id.0)?,
         };
+        // Besides principal we take 34-bytes being the MEMO message + 8-bytes amount of stx
         let (raw, data) = take(34usize + 8)(principal.0)?;
         Ok((
             raw,
@@ -176,6 +177,8 @@ impl<'a> Arguments<'a> {
                 ParserError::parser_invalid_transaction_payload,
             ));
         }
+        // here we take the leftover bytes after reading the args len
+        // because they are meant to be the argument values and nothing else
         let args = take(len.0.len())(len.0)?;
         check_canary!();
         Ok((
@@ -191,20 +194,24 @@ impl<'a> Arguments<'a> {
 /// A transaction that instantiates a smart contract
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
-pub struct TransactionSmartContract<'a> {
-    pub name: ContractName<'a>,
-    pub code_body: StacksString<'a>,
-}
+pub struct TransactionSmartContract<'a>(&'a [u8]);
 
 impl<'a> TransactionSmartContract<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (leftover, (name, code_body)) =
-            permutation((ContractName::from_bytes, StacksString::from_bytes))(bytes)?;
         check_canary!();
-        Ok((leftover, Self { name, code_body }))
+        // we take "ownership" of bytes here because
+        // it should only contain the contract information and body
+        Ok((Default::default(), Self(bytes)))
     }
 
+    pub fn contract_name(&self) -> Result<&[u8], ParserError> {
+        ContractName::from_bytes(self.0)
+            .map(|res| (res.1).0)
+            .map_err(|_| ParserError::parser_invalid_contract_name)
+    }
+
+    #[inline(never)]
     fn get_contract_items(
         &self,
         display_idx: u8,
@@ -215,15 +222,15 @@ impl<'a> TransactionSmartContract<'a> {
         let mut writer_key = zxformat::Writer::new(out_key);
 
         match display_idx {
-            // Fomatting the amount in stx
             0 => {
                 writer_key
                     .write_str("Contract Name")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                // TODO: chck if contract name is encoded in somehow
-                zxformat::pageString(out_value, self.name.0, page_idx)
+                check_canary!();
+                let name = self.contract_name()?;
+                zxformat::pageString(out_value, name, page_idx)
             }
-            _ => unimplemented!(),
+            _ => Err(ParserError::parser_value_out_of_range),
         }
     }
 }
@@ -295,6 +302,20 @@ impl<'a> TransactionPayload<'a> {
         match self {
             Self::TokenTransfer(ref token) => token.principal.encoded_address().ok(),
             _ => None,
+        }
+    }
+
+    pub fn contract_name(&self) -> Option<&[u8]> {
+        match self {
+            Self::SmartContract(ref contract) => contract.contract_name().ok(),
+            _ => None,
+        }
+    }
+
+    pub fn is_smart_contract_payload(&self) -> bool {
+        match self {
+            Self::SmartContract(_) => true,
+            _ => false,
         }
     }
 

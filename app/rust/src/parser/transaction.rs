@@ -180,7 +180,6 @@ impl<'a> PostConditions<'a> {
             .sum()
     }
 
-    #[inline(never)]
     fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
         TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
             .map_err(|_| ParserError::parser_post_condition_failed)
@@ -470,6 +469,16 @@ mod test {
         post_condition_principal: Option<String>,
     }
 
+    #[derive(Serialize, Deserialize)]
+    struct SmartContractTx {
+        raw: String,
+        sender: String,
+        sponsor_addrs: Option<String>,
+        fee: u64,
+        nonce: u64,
+        contract_name: String,
+    }
+
     #[test]
     fn test_token_stx_transfer() {
         let input_path = {
@@ -591,6 +600,83 @@ mod test {
         let stx_condition_amount = post_condition.amount_stx().unwrap();
         assert_eq!(0, stx_condition_amount);
         assert!(post_condition.is_origin_principal());
+        assert!(Transaction::validate(&mut transaction).is_ok());
+    }
+
+    #[test]
+    fn test_standard_smart_contract_tx() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("standard_smart_contract");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: SmartContractTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_smart_contract_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let spending_condition = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(json.sender, origin);
+        assert!(Transaction::validate(&mut transaction).is_ok());
+    }
+
+    #[test]
+    fn test_sponsored_smart_contract_tx() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("sponsored_smart_contract");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: SmartContractTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(!transaction.transaction_auth.is_standard_auth());
+        assert!(transaction.payload.is_smart_contract_payload());
+        let contract_name =
+            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        assert_eq!(json.contract_name, contract_name);
+
+        let spending_condition = transaction.transaction_auth.origin();
+        let spending_condition_s = transaction.transaction_auth.sponsor().unwrap();
+
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(json.sender, origin);
+
+        let sponsor_addrs = spending_condition_s
+            .signer_address(transaction.version)
+            .unwrap();
+        let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[0..sponsor_addrs.len()]).unwrap();
+        assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
         assert!(Transaction::validate(&mut transaction).is_ok());
     }
 }

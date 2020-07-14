@@ -129,8 +129,6 @@ impl<'a> SpendingConditionSigner<'a> {
 #[repr(C)]
 #[derive(PartialEq, Debug)]
 pub struct SinglesigSpendingCondition<'a>(&'a [u8]);
-// pub key_encoding: TransactionPublicKeyEncoding,
-// pub signature: MessageSignature<'a>,
 
 /// A structure that encodes enough state to authenticate
 /// a transaction's execution against a Stacks address.
@@ -157,6 +155,7 @@ pub struct TransactionSpendingCondition<'a> {
 impl<'a> SinglesigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        // we take 65-byte signature + 1-byte signature public-key encoding type
         let len = SIGNATURE_LEN as usize + 1;
         let (raw, data) = take(len)(bytes)?;
         check_canary!();
