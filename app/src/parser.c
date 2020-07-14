@@ -46,13 +46,11 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
 }
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
-    CHECK_PARSER_ERR(_validate(ctx, &parser_state))
-
     uint8_t numItems = 0;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems));
 
-    char tmpKey[40];
-    char tmpVal[40];
+    char tmpKey[30];
+    char tmpVal[30];
 
     for (uint8_t idx = 0; idx < numItems; idx++) {
         uint8_t pageCount = 0;

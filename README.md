@@ -1,6 +1,7 @@
 # Ledger Blockstack app
 ![stability-wip](https://img.shields.io/badge/stability-work_in_progress-lightgrey.svg)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![npm version](https://badge.fury.io/js/%40zondax%2Fledger-blockstack.svg)](https://badge.fury.io/js/%40zondax%2Fledger-blockstack)
 [![CircleCI](https://circleci.com/gh/Zondax/ledger-blockstack.svg?style=shield&circle-token=c7334bf71c8d6a7f752916c23a25a3176b0eaa89)](https://circleci.com/gh/Zondax/ledger-blockstack)
 
 **This app is still work in progress!**
