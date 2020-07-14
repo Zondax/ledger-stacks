@@ -288,7 +288,6 @@ impl<'a> TransactionPostCondition<'a> {
         Ok((leftover, bytes))
     }
 
-    #[inline(never)]
     pub fn is_origin_principal(&self) -> bool {
         match self {
             Self::STX(ref principal, _, _)
@@ -313,7 +312,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn get_principal_address(
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
@@ -353,7 +351,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn tokens_amount_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
 
@@ -375,8 +372,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    // Move the content of this function to its own
-    #[inline(never)]
     pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
         let amount = match self {
             Self::STX(_, _, amount) => *amount,
@@ -405,7 +400,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn num_items(&self) -> u8 {
         match self {
             Self::STX(..) | Self::Nonfungible(..) => 3,
@@ -413,7 +407,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn write_principal_address(
         &self,
         out_key: &mut [u8],
@@ -430,7 +423,6 @@ impl<'a> TransactionPostCondition<'a> {
         zxformat::pageString(out_value, &addr[..addr.len()], page_idx)
     }
 
-    #[inline(never)]
     pub fn get_items(
         &self,
         display_idx: u8,
@@ -452,7 +444,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn get_stx_items(
         &self,
         display_idx: u8,
@@ -486,7 +477,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn get_fungible_items(
         &self,
         display_idx: u8,
@@ -529,7 +519,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn get_non_fungible_items(
         &self,
         display_idx: u8,
@@ -537,7 +526,6 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        crate::bolos::c_zemu_log_stack(b"nonfungible\0");
         let mut writer_key = zxformat::Writer::new(out_key);
         match self {
             Self::Nonfungible(_, ref asset, _, code) => {
