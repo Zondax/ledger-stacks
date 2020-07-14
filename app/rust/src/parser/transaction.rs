@@ -10,15 +10,14 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::{
-    parser_common::*, post_condition::TransactionPostCondition, transaction_auth::TransactionAuth,
-    transaction_payload::TransactionPayload, value::Value,
+    parser_common::{ParserError, TransactionVersion, NUM_SUPPORTED_POST_CONDITIONS
+, C32_ENCODED_ADDRS_LENGTH}, post_condition::TransactionPostCondition, 
+    transaction_auth::TransactionAuth, transaction_payload::TransactionPayload, value::Value,
 };
 
 use crate::parser::ffi::fp_uint64_to_str;
 
-use crate::zxformat;
-
-use crate::check_canary;
+use crate::{zxformat, check_canary};
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -79,6 +78,8 @@ impl TransactionAnchorMode {
 pub struct PostConditions<'a> {
     pub len: usize, // Number of post-conditions
     conditions: [&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS],
+    num_items: u8,
+    current_idx: u8,
 }
 
 impl<'a> PostConditions<'a> {
@@ -95,27 +96,91 @@ impl<'a> PostConditions<'a> {
                 *i.1 = (i.0).1;
             });
         let res = iter.finish()?;
+        let num_items = Self::get_num_items(&conditions[..len as usize]);
         check_canary!();
         Ok((
             res.0,
             Self {
                 len: len as usize,
                 conditions,
+                num_items,
+                current_idx: 0,
             },
         ))
     }
 
-    fn num_items(&self) -> u8 {
-        let mut num = 0;
-        // Iterates over valid values
-        for p in self.conditions[..self.len].iter() {
-            if let Ok(items) =
-                TransactionPostCondition::from_bytes(p).and_then(|res| Ok(res.1.num_items()))
-            {
-                num += items;
+    #[inline(never)]
+    fn get_num_items(conditions: &[&[u8]]) -> u8 {
+        conditions
+            .iter()
+            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
+            .map(|condition| (condition.1).num_items())
+            .sum()
+    }
+
+    pub fn get_postconditions(&self) -> &[&[u8]] {
+        &self.conditions[..self.len]
+    }
+
+    pub fn num_items(&self) -> u8 {
+        self.num_items
+    }
+
+    pub fn get_items(
+        &mut self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+        num_items: u8,
+    ) -> Result<u8, ParserError> {
+        // map display_idx to our range of items
+        let in_start = num_items - self.num_items;
+        let idx = self.map_idx(display_idx, in_start, num_items);
+
+        let limit = self.get_current_limit();
+
+        // get the current postcondition which is used to
+        // check if it is time to change to the next/previous postconditions in our list
+        // and if that is not the case, we use it to get its items
+        let mut current_condition = self.current_post_condition()?;
+
+        // before continuing we need to check if the current display_idx
+        // correspond to the current, next or previous postcondition
+        // if so, update it
+        if idx >= (limit + current_condition.num_items()) {
+            self.current_idx += 1;
+            // this should not happen
+            if self.current_idx > self.num_items {
+                return Err(ParserError::parser_unexpected_error);
             }
+            current_condition = self.current_post_condition()?;
+        } else if idx < limit && idx > 0 {
+            self.current_idx -= 1;
+            current_condition = self.current_post_condition()?;
         }
-        num
+        check_canary!();
+        current_condition.get_items(idx, out_key, out_value, page_idx)
+    }
+
+    fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
+        let slope = self.num_items / (in_end - in_start);
+        slope * (display_idx - in_start)
+    }
+
+    #[inline(never)]
+    fn get_current_limit(&self) -> u8 {
+        self.conditions[..(self.current_idx as usize)]
+            .iter()
+            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
+            .map(|condition| (condition.1).num_items())
+            .sum()
+    }
+
+    fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
+        TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
+            .map_err(|_| ParserError::parser_post_condition_failed)
+            .map(|res| res.1)
     }
 }
 
@@ -272,7 +337,7 @@ impl<'a> Transaction<'a> {
 
     pub fn num_items(&self) -> u8 {
         // nonce + origin + fee-rate + payload + post-conditions
-        3 + self.payload.num_items() + self.post_conditions.num_items()
+        3 + self.payload.num_items() + self.post_conditions.num_items
     }
 
     fn get_origin_items(
@@ -316,7 +381,7 @@ impl<'a> Transaction<'a> {
     }
 
     fn get_other_items(
-        &self,
+        &mut self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
@@ -333,7 +398,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn get_item(
-        &self,
+        &mut self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
@@ -348,6 +413,29 @@ impl<'a> Transaction<'a> {
         } else {
             self.get_other_items(display_idx, out_key, out_value, page_idx)
         }
+    }
+
+    #[inline(never)]
+    pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
+        let mut key = [0u8; 30];
+        let mut value = [0u8; 30];
+        let mut page_idx = 0;
+        let mut display_idx = 0;
+
+        let num_items = tx.num_items();
+        while display_idx < num_items {
+            let pages = match tx.get_item(display_idx, &mut key, &mut value, page_idx) {
+                Ok(pages) => pages,
+                Err(e) => return Err(e),
+            };
+
+            page_idx += 1;
+            if page_idx >= pages {
+                page_idx = 0;
+                display_idx += 1;
+            }
+        }
+        Ok(())
     }
 }
 
