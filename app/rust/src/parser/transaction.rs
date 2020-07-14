@@ -415,7 +415,7 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    #[inline(never)]
+    #[cfg(test)]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
         let mut key = [0u8; 30];
         let mut value = [0u8; 30];
@@ -424,10 +424,7 @@ impl<'a> Transaction<'a> {
 
         let num_items = tx.num_items();
         while display_idx < num_items {
-            let pages = match tx.get_item(display_idx, &mut key, &mut value, page_idx) {
-                Ok(pages) => pages,
-                Err(e) => return Err(e),
-            };
+            let pages = tx.get_item(display_idx, &mut key, &mut value, page_idx)?;
 
             page_idx += 1;
             if page_idx >= pages {
