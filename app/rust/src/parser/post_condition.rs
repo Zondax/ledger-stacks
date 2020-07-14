@@ -427,7 +427,6 @@ impl<'a> TransactionPostCondition<'a> {
             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
         let addr = self.get_principal_address()?;
         crate::check_canary!();
-        crate::bolos::c_zemu_log_stack(b"**2\0");
         zxformat::pageString(out_value, &addr[..addr.len()], page_idx)
     }
 
@@ -439,7 +438,6 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        crate::bolos::c_zemu_log_stack(b"**1\0");
         let index = display_idx % self.num_items();
         if index == 0 {
             self.write_principal_address(out_key, out_value, page_idx)
