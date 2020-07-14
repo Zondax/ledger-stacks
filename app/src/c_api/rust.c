@@ -14,3 +14,7 @@ uint16_t fp_uint64_to_str(char *out, uint16_t outLen, const uint64_t value, uint
 void check_canary() {
     zb_check_canary();
 }
+
+void _zemu_log_stack(uint8_t *buffer) {
+    zemu_log_stack(buffer);
+}
