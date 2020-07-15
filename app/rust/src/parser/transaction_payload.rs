@@ -134,38 +134,44 @@ impl<'a> StxTokenTransfer<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransactionContractCall<'a> {
     address: StacksAddress<'a>,
-    contract_name: ContractName<'a>,
-    function_name: ClarityName<'a>,
+    contract_info: &'a [u8],
     function_args: Arguments<'a>,
 }
 
 impl<'a> TransactionContractCall<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (leftover, (address, contract_name, function_name, function_args)) = permutation((
-            StacksAddress::from_bytes,
-            ContractName::from_bytes,
-            ClarityName::from_bytes,
-            Arguments::from_bytes,
-        ))(bytes)?;
+        let (raw, address) = StacksAddress::from_bytes(bytes)?;
+        let (raw2, _) = permutation((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
+        let (leftover, function_args) = Arguments::from_bytes(raw2)?;
         check_canary!();
         Ok((
             leftover,
             Self {
                 address,
-                contract_name,
-                function_name,
+                contract_info: raw,
                 function_args,
             },
         ))
     }
 
     pub fn contract_name(&self) -> &[u8] {
-        self.contract_name.0
+        if let Ok(name) = ContractName::from_bytes(self.contract_info).map(|res| res.1) {
+            name.0
+        } else {
+            Default::default()
+        }
     }
 
     pub fn function_name(&self) -> &[u8] {
-        self.function_name.0
+        if let Ok(name) = ContractName::from_bytes(self.contract_info)
+            .and_then(|b| ClarityName::from_bytes(b.0))
+            .map(|res| res.1)
+        {
+            name.0
+        } else {
+            Default::default()
+        }
     }
 
     pub fn num_args(&self) -> u32 {
