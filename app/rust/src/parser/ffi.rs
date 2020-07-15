@@ -82,12 +82,6 @@ pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut par
 }
 
 #[no_mangle]
-pub extern "C" fn _validate(_ctx: *const parser_context_t, _tx_t: *const parse_tx_t) -> u32 {
-    // TODO
-    ParserError::parser_ok as u32
-}
-
-#[no_mangle]
 pub extern "C" fn _getNumItems(_ctx: *const parser_context_t, tx_t: *const parse_tx_t) -> u8 {
     unsafe {
         if tx_t.is_null() || (*tx_t).state.is_null() {
@@ -123,13 +117,14 @@ pub extern "C" fn _getItem(
         (page_count, key, value)
     };
     if let Some(tx) = transaction_from(tx_t as _) {
-        return match tx.get_item(displayIdx, key, value, pageIdx) {
+        match tx.get_item(displayIdx, key, value, pageIdx) {
             Ok(page) => {
                 *page_count = page;
                 ParserError::parser_ok as _
             }
             Err(e) => e as _,
-        };
+        }
+    } else {
+        ParserError::parser_context_mismatch as _
     }
-    ParserError::parser_context_mismatch as _
 }
