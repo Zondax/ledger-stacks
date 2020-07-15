@@ -8,8 +8,8 @@ use nom::{
 
 use crate::parser::fp_uint64_to_str;
 use crate::parser::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, ParserError,
-    StacksAddress, C32_ENCODED_ADDRS_LENGTH, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
+    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, ParserError, StacksAddress,
+    C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
     STX_DECIMALS,
 };
 use crate::parser::value::Value;
@@ -57,8 +57,30 @@ impl<'a> PostConditionPrincipal<'a> {
             PostConditionPrincipalId::Contract => {
                 let addrs = StacksAddress::from_bytes(id.0)?;
                 let contract_name = ContractName::from_bytes(addrs.0)?;
-                let condition = PostConditionPrincipal::Contract(addrs.1, contract_name.1);
-                Ok((contract_name.0, condition))
+                Ok((
+                    contract_name.0,
+                    PostConditionPrincipal::Contract(addrs.1, contract_name.1),
+                ))
+            }
+        }
+    }
+
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+        let id = le_u8(bytes)?;
+        let principal_id = PostConditionPrincipalId::from_u8(id.1)
+            .ok_or(ParserError::parser_invalid_post_condition_principal)?;
+        match principal_id {
+            PostConditionPrincipalId::Origin => Ok((id.0, bytes)),
+            PostConditionPrincipalId::Standard => {
+                let (raw, addr) = take(HASH160_LEN + 2usize)(bytes)?;
+                Ok((raw, addr))
+            }
+            PostConditionPrincipalId::Contract => {
+                let (raw, _) = StacksAddress::from_bytes(id.0)?;
+                let (raw2, name) = ContractName::from_bytes(raw)?;
+                let total_len = HASH160_LEN + 1 + name.0.len() + 1 + 1;
+                let (_, contract_bytes) = take(total_len)(bytes)?;
+                Ok((raw2, contract_bytes))
             }
         }
     }
@@ -84,15 +106,13 @@ impl<'a> PostConditionPrincipal<'a> {
         }
     }
 
-    #[inline(never)]
     pub fn origin_address(
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         let mut output: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = ArrayVec::new();
-        output.try_extend_from_slice(b"Origin").unwrap();
+        output.try_extend_from_slice(b"Origin".as_ref()).unwrap();
         Ok(output)
     }
 
-    #[inline(never)]
     pub fn get_principal_address(
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
@@ -134,16 +154,6 @@ impl FungibleConditionCode {
         }
     }
 
-    pub fn check(self, amount_sent_condition: u128, amount_sent: u128) -> bool {
-        match self {
-            FungibleConditionCode::SentEq => amount_sent == amount_sent_condition,
-            FungibleConditionCode::SentGt => amount_sent > amount_sent_condition,
-            FungibleConditionCode::SentGe => amount_sent >= amount_sent_condition,
-            FungibleConditionCode::SentLt => amount_sent < amount_sent_condition,
-            FungibleConditionCode::SentLe => amount_sent <= amount_sent_condition,
-        }
-    }
-
     pub fn to_str(&self) -> &str {
         match self {
             FungibleConditionCode::SentEq => "SentEq",
@@ -181,13 +191,6 @@ impl NonfungibleConditionCode {
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
-pub enum TransactionPostConditionMode {
-    Allow = 0x01, // allow any other changes not specified
-    Deny = 0x02,  // deny any other changes not specified
-}
-
-#[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
 pub enum PostConditionType {
     STX = 0,
     FungibleToken = 1,
@@ -209,17 +212,21 @@ impl PostConditionType {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TransactionPostCondition<'a> {
-    STX(PostConditionPrincipal<'a>, FungibleConditionCode, u64),
+    STX(&'a [u8], FungibleConditionCode, u64),
     Fungible(
-        PostConditionPrincipal<'a>,
-        AssetInfo<'a>,
+        &'a [u8], // PostConditionPrincipal as bytes,
+        // It should be an AssetInfo but we are not using the other fields
+        // so that, we put here the only one we need
+        ClarityName<'a>,
         FungibleConditionCode,
         u64,
     ),
     Nonfungible(
-        PostConditionPrincipal<'a>,
-        AssetInfo<'a>,
-        Value<'a>, // BlockStacks uses  Value, but the documentation says it is an asset-name
+        &'a [u8], // PostConditionPrincipal as bytes,
+        // It should be an AssetInfo but we are not using the other fields
+        // so that, we put here the only one we need
+        ClarityName<'a>,
+        Value<'a>,
         NonfungibleConditionCode,
     ),
 }
@@ -228,7 +235,8 @@ impl<'a> TransactionPostCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let cond_type = le_u8(bytes)?;
-        let principal = PostConditionPrincipal::from_bytes(cond_type.0)?;
+        let principal = PostConditionPrincipal::read_as_bytes(cond_type.0)?;
+
         match PostConditionType::from_u8(cond_type.1)
             .ok_or(ParserError::parser_invalid_post_condition)?
         {
@@ -246,7 +254,7 @@ impl<'a> TransactionPostCondition<'a> {
                 let fungible = FungibleConditionCode::from_u8(code.1)
                     .ok_or(ParserError::parser_invalid_fungible_code)?;
                 let amount = be_u64(code.0)?;
-                let condition = Self::Fungible(principal.1, asset.1, fungible, amount.1);
+                let condition = Self::Fungible(principal.1, asset.1.asset_name, fungible, amount.1);
                 Ok((amount.0, condition))
             }
             PostConditionType::NonFungibleToken => {
@@ -255,7 +263,8 @@ impl<'a> TransactionPostCondition<'a> {
                 let code = le_u8(name.0)?;
                 let non_fungible = NonfungibleConditionCode::from_u8(code.1)
                     .ok_or(ParserError::parser_invalid_non_fungible_code)?;
-                let condition = Self::Nonfungible(principal.1, asset.1, name.1, non_fungible);
+                let condition =
+                    Self::Nonfungible(principal.1, asset.1.asset_name, name.1, non_fungible);
                 Ok((code.0, condition))
             }
         }
@@ -264,16 +273,18 @@ impl<'a> TransactionPostCondition<'a> {
     #[inline(never)]
     pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
         let cond_type = le_u8(bytes)?;
-        let (raw, _) = PostConditionPrincipal::from_bytes(cond_type.0)?;
+        let (raw, _) = PostConditionPrincipal::read_as_bytes(cond_type.0)?;
         let leftover = match PostConditionType::from_u8(cond_type.1)
             .ok_or(ParserError::parser_invalid_post_condition)?
         {
             PostConditionType::STX => {
+                // We take 9-bytes which containf the 8-byte amount + 1-byte fungible code
                 let (bytes, _) = take(9usize)(raw)?;
                 bytes
             }
             PostConditionType::FungibleToken => {
                 let (asset_raw, _) = AssetInfo::read_as_bytes(raw)?;
+                // We take 9-bytes which containf the 8-byte amount + 1-byte fungible code
                 let (bytes, _) = take(9usize)(asset_raw)?;
                 bytes
             }
@@ -292,7 +303,9 @@ impl<'a> TransactionPostCondition<'a> {
         match self {
             Self::STX(ref principal, _, _)
             | Self::Fungible(ref principal, _, _, _)
-            | Self::Nonfungible(ref principal, _, _, _) => principal.is_origin(),
+            | Self::Nonfungible(ref principal, _, _, _) => {
+                principal[0] == PostConditionPrincipalId::Origin as u8
+            }
         }
     }
 
@@ -300,25 +313,39 @@ impl<'a> TransactionPostCondition<'a> {
         match self {
             Self::STX(ref principal, _, _)
             | Self::Fungible(ref principal, _, _, _)
-            | Self::Nonfungible(ref principal, _, _, _) => principal.is_standard(),
+            | Self::Nonfungible(ref principal, _, _, _) => {
+                principal[0] == PostConditionPrincipalId::Standard as u8
+            }
         }
     }
 
+    #[inline(never)]
     pub fn is_contract_principal(&self) -> bool {
         match self {
             Self::STX(ref principal, _, _)
             | Self::Fungible(ref principal, _, _, _)
-            | Self::Nonfungible(ref principal, _, _, _) => principal.is_contract(),
+            | Self::Nonfungible(ref principal, _, _, _) => {
+                principal[0] == PostConditionPrincipalId::Origin as u8
+            }
         }
     }
 
+    #[inline(never)]
     pub fn get_principal_address(
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         match self {
             Self::STX(ref principal, _, _)
             | Self::Fungible(ref principal, _, _, _)
-            | Self::Nonfungible(ref principal, _, _, _) => principal.get_principal_address(),
+            | Self::Nonfungible(ref principal, _, _, _) => {
+                if principal[0] == PostConditionPrincipalId::Origin as u8 {
+                    PostConditionPrincipal::origin_address()
+                } else {
+                    StacksAddress::from_bytes(&principal[1..])
+                        .map(|res| res.1.encoded_address())
+                        .map_err(|_| ParserError::parser_invalid_address)?
+                }
+            }
         }
     }
 
@@ -420,7 +447,7 @@ impl<'a> TransactionPostCondition<'a> {
             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
         let addr = self.get_principal_address()?;
         crate::check_canary!();
-        zxformat::pageString(out_value, &addr[..addr.len()], page_idx)
+        zxformat::pageString(out_value, addr.as_ref(), page_idx)
     }
 
     pub fn get_items(
@@ -431,9 +458,11 @@ impl<'a> TransactionPostCondition<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let index = display_idx % self.num_items();
+        crate::bolos::c_zemu_log_stack(b"**\0");
         if index == 0 {
             self.write_principal_address(out_key, out_value, page_idx)
         } else {
+            // TODO: remove this until allpass
             match self {
                 Self::STX(..) => self.get_stx_items(index, out_key, out_value, page_idx),
                 Self::Fungible(..) => self.get_fungible_items(index, out_key, out_value, page_idx),
@@ -459,7 +488,6 @@ impl<'a> TransactionPostCondition<'a> {
                     writer_key
                         .write_str("Fungi. Code")
                         .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                    crate::check_canary!();
                     zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
                 }
                 // Amount in stx
@@ -468,7 +496,6 @@ impl<'a> TransactionPostCondition<'a> {
                         .write_str("STX amount")
                         .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                     let amount = self.amount_stx_str().unwrap();
-                    crate::check_canary!();
                     zxformat::pageString(out_value, &amount[..amount.len()], page_idx)
                 }
                 _ => Err(ParserError::parser_display_idx_out_of_range),
@@ -494,13 +521,14 @@ impl<'a> TransactionPostCondition<'a> {
                             .write_str("Asset name")
                             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                         crate::check_canary!();
-                        zxformat::pageString(out_value, asset.asset_name(), page_idx)
+                        zxformat::pageString(out_value, asset.0, page_idx)
                     }
                     // Fungible code
                     2 => {
                         writer_key
                             .write_str("Fungi. Code")
                             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        crate::check_canary!();
                         zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
                     }
                     // Amount of tokens
@@ -508,7 +536,9 @@ impl<'a> TransactionPostCondition<'a> {
                         writer_key
                             .write_str("Token amount")
                             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                        let token = self.tokens_amount_str().unwrap();
+                        let token = self
+                            .tokens_amount_str()
+                            .ok_or(ParserError::parser_unexpected_value)?;
                         crate::check_canary!();
                         zxformat::pageString(out_value, &token[..token.len()], page_idx)
                     }
@@ -535,15 +565,13 @@ impl<'a> TransactionPostCondition<'a> {
                         writer_key
                             .write_str("Asset name")
                             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                        crate::check_canary!();
-                        zxformat::pageString(out_value, asset.asset_name(), page_idx)
+                        zxformat::pageString(out_value, asset.0, page_idx)
                     }
                     // Fungible code
                     2 => {
                         writer_key
                             .write_str("NonFungi. Code")
                             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                        crate::check_canary!();
                         zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
                     }
                     _ => Err(ParserError::parser_display_idx_out_of_range),
@@ -570,13 +598,16 @@ mod test {
     #[test]
     fn test_stx_postcondition() {
         let hash = [1u8; 20];
+        let contract_name = b"hello-world";
 
         let mut address = vec![1u8];
         address.extend_from_slice(hash.as_ref());
 
-        let principal1 = PostConditionPrincipal::Standard(StacksAddress(address.as_ref()));
+        let mut principal = vec![2];
+        principal.extend_from_slice(address.as_ref());
+
         let stx_pc1 =
-            TransactionPostCondition::STX(principal1, FungibleConditionCode::SentGt, 12345);
+            TransactionPostCondition::STX(principal.as_ref(), FungibleConditionCode::SentGt, 12345);
         let bytes: Vec<u8> = vec![
             0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0,
             0, 48, 57,
@@ -587,12 +618,12 @@ mod test {
         let mut address = vec![2u8];
         address.extend_from_slice([2u8; 20].as_ref());
 
-        let principal2 = PostConditionPrincipal::Contract(
-            StacksAddress(address.as_ref()),
-            ContractName(b"hello-world".as_ref()),
-        );
+        let mut principal = vec![3u8];
+        principal.extend_from_slice(address.as_ref());
+        principal.push(contract_name.len() as u8);
+        principal.extend_from_slice(contract_name.as_ref());
         let stx_pc2 =
-            TransactionPostCondition::STX(principal2, FungibleConditionCode::SentGt, 12345);
+            TransactionPostCondition::STX(principal.as_ref(), FungibleConditionCode::SentGt, 12345);
         let bytes2: Vec<u8> = vec![
             0, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 11, 104, 101, 108,
             108, 111, 45, 119, 111, 114, 108, 100, 2, 0, 0, 0, 0, 0, 0, 48, 57,
@@ -611,7 +642,8 @@ mod test {
         let addr = StacksAddress(address.as_ref());
         let contract_name = ContractName(b"contract-name".as_ref());
         let asset_name = ClarityName(b"hello-asset".as_ref());
-        let principal = PostConditionPrincipal::Standard(addr);
+        let mut principal = vec![2];
+        principal.extend_from_slice(addr.0);
 
         let mut address2 = vec![1u8];
         address2.extend_from_slice([0xff; 20].as_ref());
@@ -622,8 +654,8 @@ mod test {
             asset_name,
         };
         let fungible_pc = TransactionPostCondition::Fungible(
-            principal,
-            asset_info,
+            principal.as_ref(),
+            asset_info.asset_name,
             FungibleConditionCode::SentGt,
             23456,
         );
@@ -641,11 +673,13 @@ mod test {
         address.extend_from_slice([2u8; 20].as_ref());
 
         let addr = StacksAddress(address.as_ref());
-        let principal2 =
-            PostConditionPrincipal::Contract(addr, ContractName(b"hello-world".as_ref()));
+        let mut principal = vec![3u8];
+        principal.extend_from_slice(addr.0);
+        principal.push(11u8); // contract_name len
+        principal.extend_from_slice(b"hello-world".as_ref());
         let fungible_pc2 = TransactionPostCondition::Fungible(
-            principal2,
-            asset_info,
+            principal.as_ref(),
+            asset_info.asset_name,
             FungibleConditionCode::SentGt,
             23456,
         );
@@ -659,7 +693,4 @@ mod test {
         let parsed2 = TransactionPostCondition::from_bytes(&bytes2).unwrap().1;
         assert_eq!(fungible_pc2, parsed2);
     }
-
-    #[test]
-    fn test_nonfungible_postcondition() {}
 }

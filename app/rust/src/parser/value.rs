@@ -13,22 +13,20 @@ pub const BIG_INT_SIZE: usize = 16;
 pub const MAX_BUFFER_LEN: usize = 256;
 // The max number of tuple elements
 pub const MAX_TUPLE_ELEMENTS: usize = 4;
-// The max number of elements in a list
-pub const MAX_LIST_ELEMENTS: usize = 4;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum Value<'a> {
     Int(&'a [u8]),
     UInt(&'a [u8]),
     Bool(bool),
-    Buffer(u32, &'a [u8]),
+    Buffer(&'a [u8]),
+    List(&'a [u8]),
     StandardPrincipal(StacksAddress<'a>),
-    ContractPrincipal(ContractPrincipal<'a>),
-    Response(&'a [u8]),
+    ContractPrincipal(&'a [u8]),
+    Tuple(&'a [u8]),
     Optional(&'a [u8]),
-    List(u32, &'a [u8]),
-    Tuple(u32, &'a [u8]),
+    Response(&'a [u8]),
 }
 
 #[repr(u8)]
@@ -78,11 +76,8 @@ impl<'a> Value<'a> {
             }
             ValueId::Buffer => {
                 let len = be_u32(value_id.0)?;
-                if len.1 as usize > MAX_BUFFER_LEN {
-                    return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
-                }
                 let buff = take(len.1)(len.0)?;
-                (buff.0, Self::Buffer(len.1, buff.1))
+                (buff.0, Self::Buffer(buff.1))
             }
             ValueId::BoolTrue => (value_id.0, Self::Bool(true)),
             ValueId::BoolFalse => (value_id.0, Self::Bool(false)),
@@ -91,28 +86,22 @@ impl<'a> Value<'a> {
                 (address.0, Self::StandardPrincipal(address.1))
             }
             ValueId::ContractPrincipal => {
-                let contract = ContractPrincipal::from_bytes(value_id.0)?;
+                let contract = ContractPrincipal::read_as_bytes(value_id.0)?;
                 (contract.0, Self::ContractPrincipal(contract.1))
+            }
+            ValueId::Tuple => {
+                let len = be_u32(value_id.0)?;
+                let tuple = take(len.1)(len.0)?;
+                (tuple.0, Self::Tuple(value_id.0))
+            }
+            ValueId::List => {
+                let len = be_u32(value_id.0)?;
+                let list = take(len.1)(value_id.0)?;
+                (list.0, Self::List(list.1))
             }
             ValueId::ResponseOk | ValueId::ResponseErr => (value_id.0, Self::Response(value_id.0)),
             ValueId::OptionalSome | ValueId::OptionalNone => {
                 (value_id.0, Self::Optional(value_id.0))
-            }
-            ValueId::List => {
-                let len = be_u32(value_id.0)?;
-                if len.1 as usize > MAX_LIST_ELEMENTS {
-                    return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
-                }
-                let list = take(len.1)(value_id.0)?;
-                (list.0, Self::List(len.1, list.1))
-            }
-            ValueId::Tuple => {
-                let len = be_u32(value_id.0)?;
-                if len.1 as usize > MAX_TUPLE_ELEMENTS {
-                    return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
-                }
-                let tuple = take(len.1)(len.0)?;
-                (tuple.0, Self::Tuple(len.1, tuple.1))
             }
         };
         Ok(res)

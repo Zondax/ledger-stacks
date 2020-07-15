@@ -280,24 +280,6 @@ impl<'a> ClarityName<'a> {
     }
 }
 
-// An Asset name
-// ^[a-zA-Z]([a-zA-Z0-9]|[-_!?])*$
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct AssetName<'a>(pub &'a [u8]);
-
-impl<'a> AssetName<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let len = u8_with_limits(MAX_STRING_LEN, bytes)
-            .map_err(|_| ParserError::parser_invalid_asset_name)?;
-        let nameLen = len.1;
-        let name = take(nameLen as usize)(len.0)?;
-        // TODO: Verify if the name has valid characters
-        Ok((name.0, Self(name.1)))
-    }
-}
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StacksAddress<'a>(pub &'a [u8]);
@@ -305,6 +287,7 @@ pub struct StacksAddress<'a>(pub &'a [u8]);
 impl<'a> StacksAddress<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        // we take HASH160_LEN + 1-byte hash mode
         let (raw, address) = take(HASH160_LEN + 1usize)(bytes)?;
         Ok((raw, Self(address)))
     }
@@ -318,6 +301,18 @@ impl<'a> StacksAddress<'a> {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct StandardPrincipal<'a>(pub &'a [u8]);
+
+impl<'a> StandardPrincipal<'a> {
+    #[inline(never)]
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        let (raw, address) = take(HASH160_LEN + 1usize)(bytes)?;
+        Ok((raw, Self(address)))
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ContractPrincipal<'a>(StandardPrincipal<'a>, ContractName<'a>);
 impl<'a> ContractPrincipal<'a> {
     #[inline(never)]
@@ -326,17 +321,15 @@ impl<'a> ContractPrincipal<'a> {
         let name = ContractName::from_bytes(address.0)?;
         Ok((name.0, Self(address.1, name.1)))
     }
-}
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct StandardPrincipal<'a>(pub &'a [u8]);
-
-impl<'a> StandardPrincipal<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, address) = take(HASH160_LEN + 1usize)(bytes)?;
-        Ok((raw, Self(address)))
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+        if bytes.len() > HASH160_LEN + 1 {
+            let name_len = bytes[HASH160_LEN + 1];
+            let (raw, principal) = take(HASH160_LEN + 1 + name_len as usize)(bytes)?;
+            Ok((raw, principal))
+        } else {
+            Err(nom::Err::Error(ParserError::parser_value_out_of_range))
+        }
     }
 }
 
