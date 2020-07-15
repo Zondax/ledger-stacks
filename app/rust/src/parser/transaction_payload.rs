@@ -10,8 +10,8 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, AssetName, ClarityName, ContractName, ParserError,
-    PrincipalData, StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH,
+    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, ParserError, PrincipalData,
+    StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH,
     MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
 
@@ -169,7 +169,9 @@ impl<'a> TransactionContractCall<'a> {
     }
 
     pub fn num_args(&self) -> u32 {
-        self.function_args.len
+        be_u32::<'a, ParserError>(self.function_args.0)
+            .map(|res| res.1)
+            .unwrap_or(0)
     }
 
     #[inline(never)]
@@ -228,10 +230,7 @@ impl<'a> TransactionContractCall<'a> {
 
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
-pub struct Arguments<'a> {
-    len: u32,
-    args: &'a [u8],
-}
+pub struct Arguments<'a>(&'a [u8]);
 
 impl<'a> Arguments<'a> {
     #[inline(never)]
@@ -244,15 +243,9 @@ impl<'a> Arguments<'a> {
         }
         // here we take the leftover bytes after reading the args len
         // because they are meant to be the argument values and nothing else
-        let args = take(len.0.len())(len.0)?;
+        let (raw, args) = take(bytes.len())(bytes)?;
         check_canary!();
-        Ok((
-            args.0,
-            Self {
-                len: len.1,
-                args: args.1,
-            },
-        ))
+        Ok((raw, Self(args)))
     }
 }
 
