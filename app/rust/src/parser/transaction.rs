@@ -124,24 +124,21 @@ impl<'a> PostConditions<'a> {
     }
 
     #[inline(never)]
-    pub fn get_items(
+    fn update_postcondition(
         &mut self,
+        total_items: u8,
         display_idx: u8,
-        out_key: &mut [u8],
-        out_value: &mut [u8],
-        page_idx: u8,
-        num_items: u8,
     ) -> Result<u8, ParserError> {
         // map display_idx to our range of items
-        let in_start = num_items - self.num_items;
-        let idx = self.map_idx(display_idx, in_start, num_items);
+        let in_start = total_items - self.num_items;
+        let idx = self.map_idx(display_idx, in_start, total_items);
 
         let limit = self.get_current_limit();
 
         // get the current postcondition which is used to
         // check if it is time to change to the next/previous postconditions in our list
         // and if that is not the case, we use it to get its items
-        let mut current_condition = self.current_post_condition()?;
+        let current_condition = self.current_post_condition()?;
 
         // before continuing we need to check if the current display_idx
         // correspond to the current, next or previous postcondition
@@ -152,13 +149,24 @@ impl<'a> PostConditions<'a> {
             if self.current_idx > self.num_items {
                 return Err(ParserError::parser_unexpected_error);
             }
-            current_condition = self.current_post_condition()?;
         } else if idx < limit && idx > 0 {
             self.current_idx -= 1;
-            current_condition = self.current_post_condition()?;
         }
-        check_canary!();
-        current_condition.get_items(idx, out_key, out_value, page_idx)
+        Ok(idx)
+    }
+
+    #[inline(never)]
+    pub fn get_items(
+        &mut self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+        num_items: u8,
+    ) -> Result<u8, ParserError> {
+        let idx = self.update_postcondition(num_items, display_idx)?;
+        let current_postcondition = self.current_post_condition()?;
+        current_postcondition.get_items(idx, out_key, out_value, page_idx)
     }
 
     fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
@@ -843,7 +851,6 @@ mod test {
         let bytes = hex::decode(&json.raw).unwrap();
         let mut transaction = Transaction::from_bytes(&bytes).unwrap();
         transaction.read(&bytes).unwrap();
-        println!("transaction {:?}", transaction);
 
         assert!(transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_contract_call_payload());

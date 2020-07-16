@@ -434,6 +434,7 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
+    #[inline(never)]
     pub fn write_principal_address(
         &self,
         out_key: &mut [u8],
@@ -458,7 +459,6 @@ impl<'a> TransactionPostCondition<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let index = display_idx % self.num_items();
-        crate::bolos::c_zemu_log_stack(b"**\0");
         if index == 0 {
             self.write_principal_address(out_key, out_value, page_idx)
         } else {
