@@ -43,18 +43,14 @@ pub extern "C" fn rs_c32_address(
 
 #[inline(never)]
 fn double_sha256_checksum(data: &[u8]) -> [u8; 4] {
-    let mut sha2 = Sha256::new();
-    let mut tmp = [0u8; 32];
     let mut sum = [0u8; 4];
-
-    sha2.update(data);
-    tmp.copy_from_slice(sha2.finalize().as_slice());
-
-    let mut sha2_2 = Sha256::new();
-    sha2_2.update(&tmp);
-    tmp.copy_from_slice(sha2_2.finalize().as_slice());
-
-    sum.copy_from_slice(&tmp[..4]);
+    {
+        let mut sha2 = Sha256::new();
+        sha2.update(data);
+        let mut sha2_2 = Sha256::new();
+        sha2_2.update(sha2.finalize().as_slice());
+        sum.copy_from_slice(&sha2_2.finalize()[..4]);
+    }
     sum
 }
 
@@ -102,8 +98,7 @@ fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
             break;
         }
     }
-    let result: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = result.drain(..).rev().collect();
-    result
+    result.drain(..).rev().collect()
 }
 
 #[inline(never)]
