@@ -11,9 +11,11 @@ use arrayvec::ArrayVec;
 
 use crate::parser::parser_common::{
     u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, ParserError, PrincipalData,
-    StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH,
+    StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
     MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
+
+use crate::parser::c32;
 
 use crate::parser::ffi::fp_uint64_to_str;
 use crate::parser::value::{Value, BIG_INT_SIZE};
@@ -40,42 +42,46 @@ impl TokenTranferPrincipal {
 
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
-pub struct StxTokenTransfer<'a> {
-    pub principal: PrincipalData<'a>,
-    pub data: &'a [u8],
-}
+pub struct StxTokenTransfer<'a>(&'a [u8]);
 
 impl<'a> StxTokenTransfer<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let id = le_u8(bytes)?;
-        let principal = match TokenTranferPrincipal::from_u8(id.1)? {
+        let (raw, _) = match TokenTranferPrincipal::from_u8(id.1)? {
             TokenTranferPrincipal::Standard => PrincipalData::standard_from_bytes(id.0)?,
             TokenTranferPrincipal::Contract => PrincipalData::contract_principal_from_bytes(id.0)?,
         };
         // Besides principal we take 34-bytes being the MEMO message + 8-bytes amount of stx
-        let (raw, data) = take(34usize + 8)(principal.0)?;
-        Ok((
-            raw,
-            Self {
-                principal: principal.1,
-                data,
-            },
-        ))
+        let len = bytes.len() - raw.len() + 34 + 8;
+        let (raw, data) = take(len)(bytes)?;
+        Ok((raw, Self(data)))
     }
 
     pub fn memo(&self) -> &[u8] {
-        &self.data[8..]
+        let at = self.0.len() - 34;
+        &self.0[at..]
     }
 
     pub fn amount(&self) -> Result<u64, ParserError> {
-        be_u64::<'a, ParserError>(self.data)
+        let at = self.0.len() - 34 - 8;
+        be_u64::<'a, ParserError>(&self.0[at..])
             .map(|res| res.1)
             .map_err(|_| ParserError::parser_unexpected_buffer_end)
     }
 
     pub fn raw_address(&self) -> &[u8] {
-        self.principal.raw_address()
+        //self.principal.raw_address()
+        // Skips the principal-id and hash_mode
+        &self.0[2..22]
+    }
+
+    //#[inline(never)]
+    pub fn encoded_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        let version = self.0[1];
+        c32::c32_address(version, self.raw_address())
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
@@ -113,7 +119,7 @@ impl<'a> StxTokenTransfer<'a> {
                 writer_key
                     .write_str("To")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                let recipient = self.principal.encoded_address()?;
+                let recipient = self.encoded_address()?;
                 check_canary!();
                 zxformat::pageString(out_value, recipient.as_ref(), page_idx)
             }
@@ -125,111 +131,6 @@ impl<'a> StxTokenTransfer<'a> {
                 zxformat::pageString(out_value, self.memo(), page_idx)
             }
             _ => Err(ParserError::parser_display_idx_out_of_range),
-        }
-    }
-}
-
-/// A transaction that calls into a smart contract
-#[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
-pub struct TransactionContractCall<'a> {
-    address: StacksAddress<'a>,
-    contract_info: &'a [u8],
-    function_args: Arguments<'a>,
-}
-
-impl<'a> TransactionContractCall<'a> {
-    #[inline(never)]
-    fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, address) = StacksAddress::from_bytes(bytes)?;
-        let (raw2, _) = permutation((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
-        let (leftover, function_args) = Arguments::from_bytes(raw2)?;
-        check_canary!();
-        Ok((
-            leftover,
-            Self {
-                address,
-                contract_info: raw,
-                function_args,
-            },
-        ))
-    }
-
-    pub fn contract_name(&self) -> &[u8] {
-        if let Ok(name) = ContractName::from_bytes(self.contract_info).map(|res| res.1) {
-            name.0
-        } else {
-            Default::default()
-        }
-    }
-
-    pub fn function_name(&self) -> &[u8] {
-        if let Ok(name) = ContractName::from_bytes(self.contract_info)
-            .and_then(|b| ClarityName::from_bytes(b.0))
-            .map(|res| res.1)
-        {
-            name.0
-        } else {
-            Default::default()
-        }
-    }
-
-    pub fn num_args(&self) -> u32 {
-        be_u32::<'a, ParserError>(self.function_args.0)
-            .map(|res| res.1)
-            .unwrap_or(0)
-    }
-
-    #[inline(never)]
-    pub fn contract_address(
-        &self,
-    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
-        self.address.encoded_address()
-    }
-
-    pub fn num_items(&self) -> u8 {
-        // contract-address, contract-name, function-name
-        3
-    }
-
-    fn get_contract_call_items(
-        &self,
-        display_idx: u8,
-        out_key: &mut [u8],
-        out_value: &mut [u8],
-        page_idx: u8,
-    ) -> Result<u8, ParserError> {
-        let mut writer_key = zxformat::Writer::new(out_key);
-
-        match display_idx {
-            // Contract-address
-            0 => {
-                writer_key
-                    .write_str("Contract address")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                let address = self.address.encoded_address()?;
-                check_canary!();
-                zxformat::pageString(out_value, &address[..address.len()], page_idx)
-            }
-            // Contract.name
-            1 => {
-                writer_key
-                    .write_str("Contract name")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                let name = self.contract_name();
-                check_canary!();
-                zxformat::pageString(out_value, name, page_idx)
-            }
-            // Function-name
-            2 => {
-                writer_key
-                    .write_str("Function name")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                let name = self.function_name();
-                check_canary!();
-                zxformat::pageString(out_value, name, page_idx)
-            }
-            _ => Err(ParserError::parser_value_out_of_range),
         }
     }
 }
@@ -252,6 +153,110 @@ impl<'a> Arguments<'a> {
         let (raw, args) = take(bytes.len())(bytes)?;
         check_canary!();
         Ok((raw, Self(args)))
+    }
+
+    pub fn num_args(&self) -> Result<u32, ParserError> {
+        be_u32::<'a, ParserError>(self.0)
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_unexpected_error)
+    }
+}
+
+/// A transaction that calls into a smart contract
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransactionContractCall<'a>(&'a [u8]);
+
+impl<'a> TransactionContractCall<'a> {
+    #[inline(never)]
+    fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        let (raw, _) = StacksAddress::from_bytes(bytes)?;
+        let (raw2, _) = permutation((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
+        let (leftover, _) = Arguments::from_bytes(raw2)?;
+        let len = bytes.len() - leftover.len();
+        let (_, data) = take(len)(bytes)?;
+        check_canary!();
+        Ok((leftover, Self(data)))
+    }
+
+    pub fn contract_name(&self) -> Result<&[u8], ParserError> {
+        let at = HASH160_LEN + 1;
+        ContractName::from_bytes(&self.0[at..])
+            .map(|res| (res.1).0)
+            .map_err(|_| ParserError::parser_invalid_contract_name)
+    }
+
+    pub fn function_name(&self) -> Result<&[u8], ParserError> {
+        ContractName::from_bytes(&self.0[(HASH160_LEN + 1)..])
+            .and_then(|b| ClarityName::from_bytes(b.0))
+            .map(|res| (res.1).0)
+            .map_err(|_| ParserError::parser_unexpected_error)
+    }
+
+    pub fn function_args(&self) -> Result<Arguments, ParserError> {
+        ContractName::from_bytes(&self.0[(HASH160_LEN + 1)..])
+            .and_then(|b| ClarityName::from_bytes(b.0))
+            .and_then(|c| Arguments::from_bytes(c.0))
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_invalid_argument_id)
+    }
+
+    pub fn num_args(&self) -> Result<u32, ParserError> {
+        self.function_args().and_then(|args| args.num_args())
+    }
+
+    #[inline(never)]
+    pub fn contract_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        let version = self.0[0];
+        c32::c32_address(version, &self.0[1..21])
+    }
+
+    pub fn num_items(&self) -> u8 {
+        // contract-address, contract-name, function-name
+        3
+    }
+
+    fn get_contract_call_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+
+        match display_idx {
+            // Contract-address
+            0 => {
+                writer_key
+                    .write_str("Contract address")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let address = self.contract_address()?;
+                check_canary!();
+                zxformat::pageString(out_value, &address[..address.len()], page_idx)
+            }
+            // Contract.name
+            1 => {
+                writer_key
+                    .write_str("Contract name")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let name = self.contract_name()?;
+                check_canary!();
+                zxformat::pageString(out_value, name, page_idx)
+            }
+            // Function-name
+            2 => {
+                writer_key
+                    .write_str("Function name")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                let name = self.function_name()?;
+                check_canary!();
+                zxformat::pageString(out_value, name, page_idx)
+            }
+            _ => Err(ParserError::parser_value_out_of_range),
+        }
     }
 }
 
@@ -370,21 +375,21 @@ impl<'a> TransactionPayload<'a> {
     pub fn contract_name(&self) -> Option<&[u8]> {
         match self {
             Self::SmartContract(ref contract) => contract.contract_name().ok(),
-            Self::ContractCall(ref contract) => Some(contract.contract_name()),
+            Self::ContractCall(ref contract) => contract.contract_name().ok(),
             _ => None,
         }
     }
 
     pub fn function_name(&self) -> Option<&[u8]> {
         match self {
-            Self::ContractCall(ref contract) => Some(contract.function_name()),
+            Self::ContractCall(ref contract) => contract.function_name().ok(),
             _ => None,
         }
     }
 
     pub fn num_args(&self) -> Option<u32> {
         match self {
-            Self::ContractCall(ref contract) => Some(contract.num_args()),
+            Self::ContractCall(ref contract) => contract.num_args().ok(),
             _ => None,
         }
     }
@@ -405,7 +410,7 @@ impl<'a> TransactionPayload<'a> {
 
     pub fn recipient_address(&self) -> Option<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>> {
         match self {
-            Self::TokenTransfer(ref token) => token.principal.encoded_address().ok(),
+            Self::TokenTransfer(ref token) => token.encoded_address().ok(),
             _ => None,
         }
     }
@@ -450,32 +455,23 @@ impl<'a> TransactionPayload<'a> {
 #[cfg(test)]
 mod test {
     extern crate std;
-    use serde::{Deserialize, Serialize};
-    use serde_json::{Result, Value};
-
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::string::String;
-    use std::string::ToString;
     use std::vec::Vec;
 
     #[test]
     fn test_transaction_payload_tokens() {
-        let hash = [0xff; 20];
-        let memo = [0x00; 34];
-        let mut vec = 123usize.to_be_bytes().to_vec();
-        let mut principal = vec![1u8];
-        principal.extend_from_slice(hash.as_ref());
-        vec.extend_from_slice(memo.as_ref());
-
-        let token = StxTokenTransfer {
-            principal: PrincipalData {
-                data: (StandardPrincipal(principal.as_ref()), None),
-            },
-            data: vec.as_ref(),
-        };
-        let tt_stx = TransactionPayload::TokenTransfer(token);
+        println!(
+            "StxTransfer size {}",
+            core::mem::size_of::<StxTokenTransfer>()
+        );
+        println!(
+            "SmartContract size {}",
+            core::mem::size_of::<TransactionSmartContract>()
+        );
+        println!(
+            "ContractCall size {}",
+            core::mem::size_of::<TransactionContractCall>()
+        );
 
         let bytes: Vec<u8> = vec![
             0, 5, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -484,6 +480,6 @@ mod test {
         ];
 
         let parsed = TransactionPayload::from_bytes(&bytes).unwrap().1;
-        assert_eq!(tt_stx, parsed);
+        assert_eq!(parsed.amount(), Some(123));
     }
 }
