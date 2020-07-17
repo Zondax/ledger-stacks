@@ -460,19 +460,6 @@ mod test {
 
     #[test]
     fn test_transaction_payload_tokens() {
-        println!(
-            "StxTransfer size {}",
-            core::mem::size_of::<StxTokenTransfer>()
-        );
-        println!(
-            "SmartContract size {}",
-            core::mem::size_of::<TransactionSmartContract>()
-        );
-        println!(
-            "ContractCall size {}",
-            core::mem::size_of::<TransactionContractCall>()
-        );
-
         let bytes: Vec<u8> = vec![
             0, 5, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
