@@ -68,7 +68,6 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
     for (uint8_t idx = 0; idx < numItems; idx++) {
         uint8_t pageCount = 0;
         CHECK_PARSER_ERR(parser_getItem(ctx, idx, tmpKey, sizeof(tmpKey), tmpVal, sizeof(tmpVal), 0, &pageCount))
-        zemu_log_stack("parser_getItem");
     }
 
     zemu_log_stack("parser_validate done");
@@ -90,6 +89,8 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
     snprintf(outKey, outKeyLen, "?");
     snprintf(outVal, outValLen, "?");
     *pageCount = 0;
+
+    zemu_log_stack("parser_getItem");
 
     uint8_t numItems;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems))

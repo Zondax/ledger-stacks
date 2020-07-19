@@ -13,6 +13,7 @@ use crate::parser::parser_common::{
 };
 use crate::parser::{c32, fp_uint64_to_str, value::Value};
 use crate::zxformat;
+use crate::bolos::c_zemu_log_stack;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -441,6 +442,7 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("PC get_items\x00".as_ref());
         let index = display_idx % self.num_items();
         if index == 0 {
             self.write_principal_address(out_key, out_value, page_idx)

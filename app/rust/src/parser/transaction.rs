@@ -22,6 +22,7 @@ use crate::parser::{
 use crate::parser::ffi::fp_uint64_to_str;
 
 use crate::{check_canary, zxformat};
+use crate::bolos::c_zemu_log_stack;
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -129,6 +130,7 @@ impl<'a> PostConditions<'a> {
         total_items: u8,
         display_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("update_postcondition\x00".as_ref());
         // map display_idx to our range of items
         let in_start = total_items - self.num_items;
         let idx = self.map_idx(display_idx, in_start, total_items);
@@ -138,11 +140,13 @@ impl<'a> PostConditions<'a> {
         // get the current postcondition which is used to
         // check if it is time to change to the next/previous postconditions in our list
         // and if that is not the case, we use it to get its items
+        c_zemu_log_stack("current_post_condition\x00".as_ref());
         let current_condition = self.current_post_condition()?;
 
         // before continuing we need to check if the current display_idx
         // correspond to the current, next or previous postcondition
         // if so, update it
+        c_zemu_log_stack("update_postcondition loop\x00".as_ref());
         if idx >= (limit + current_condition.num_items()) {
             self.current_idx += 1;
             // this should not happen
@@ -164,6 +168,7 @@ impl<'a> PostConditions<'a> {
         page_idx: u8,
         num_items: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("PC get_items\x00".as_ref());
         let idx = self.update_postcondition(num_items, display_idx)?;
         let current_postcondition = self.current_post_condition()?;
         current_postcondition.get_items(idx, out_key, out_value, page_idx)
@@ -175,6 +180,7 @@ impl<'a> PostConditions<'a> {
     }
 
     fn get_current_limit(&self) -> u8 {
+        c_zemu_log_stack("get_current_limit\x00".as_ref());
         self.conditions[..(self.current_idx as usize)]
             .iter()
             .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
@@ -183,6 +189,7 @@ impl<'a> PostConditions<'a> {
     }
 
     fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
+        c_zemu_log_stack("current_post_condition\x00".as_ref());
         TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
             .map_err(|_| ParserError::parser_post_condition_failed)
             .map(|res| res.1)
@@ -385,6 +392,7 @@ impl<'a> Transaction<'a> {
         }
     }
 
+    #[inline(always)]
     fn get_other_items(
         &mut self,
         display_idx: u8,
@@ -392,6 +400,8 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("get_other_items\x00".as_ref());
+
         let num_items = self.num_items();
         let post_conditions_items = self.post_conditions.num_items;
 
@@ -417,6 +427,8 @@ impl<'a> Transaction<'a> {
         if display_idx >= self.num_items() {
             return Err(ParserError::parser_display_idx_out_of_range);
         }
+
+        c_zemu_log_stack("rs_get_item\x00".as_ref());
 
         if display_idx < 3 {
             self.get_origin_items(display_idx, out_key, out_value, page_idx)
