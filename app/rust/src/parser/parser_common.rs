@@ -20,7 +20,7 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 
 // The amount of post_conditions we can
 // handle
-pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
+pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 8;
 pub const SIGNATURE_LEN: usize = 65;
 pub const MAX_STACKS_STRING_LEN: usize = 256;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
@@ -84,13 +84,13 @@ impl<'a> AssetInfo<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let address = StacksAddress::from_bytes(bytes)?;
-        let contract_name = ContractName::from_bytes(address.0)?;
-        let asset_name = ClarityName::from_bytes(contract_name.0)?;
+        let (raw, contract_name) = ContractName::from_bytes(address.0)?;
+        let asset_name = ClarityName::from_bytes(raw)?;
         Ok((
             asset_name.0,
             Self {
                 address: address.1,
-                contract_name: contract_name.1,
+                contract_name,
                 asset_name: asset_name.1,
             },
         ))
@@ -101,7 +101,9 @@ impl<'a> AssetInfo<'a> {
         let (raw, _) = StacksAddress::from_bytes(bytes)?;
         let (raw1, _) = ContractName::from_bytes(raw)?;
         let (raw2, _) = ClarityName::from_bytes(raw1)?;
-        Ok((raw2, bytes))
+        let len = bytes.len() - raw2.len();
+        let (left, inner) = take(len)(bytes)?;
+        Ok((left, inner))
     }
 
     pub fn asset_name(&self) -> &[u8] {

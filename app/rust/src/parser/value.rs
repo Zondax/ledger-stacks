@@ -20,7 +20,7 @@ pub const DEPTH_LIMIT: u8 = 3;
 
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Copy)]
-pub struct Value<'a>(&'a [u8]);
+pub struct Value<'a>(pub &'a [u8]);
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -62,7 +62,7 @@ impl<'a> Value<'a> {
         Ok((leftover, Self(inner)))
     }
 
-    fn value_len(bytes: &'a [u8]) -> Result<usize, ParserError> {
+    pub fn value_len(bytes: &'a [u8]) -> Result<usize, ParserError> {
         if bytes.len() == 0 {
             return Ok(0);
         }

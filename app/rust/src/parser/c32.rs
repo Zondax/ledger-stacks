@@ -9,7 +9,7 @@ pub const C32_ADDRESS_VERSION_MAINNET_MULTISIG: u8 = 20;
 pub const C32_ADDRESS_VERSION_TESTNET_SINGLESIG: u8 = 26;
 pub const C32_ADDRESS_VERSION_TESTNET_MULTISIG: u8 = 21;
 
-const C32_CHARACTERS: &str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const C32_CHARACTERS: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 #[allow(non_snake_case)]
 #[no_mangle]
@@ -41,7 +41,6 @@ pub extern "C" fn rs_c32_address(
     0
 }
 
-#[inline(never)]
 fn double_sha256_checksum(data: &[u8]) -> [u8; 4] {
     let mut sum = [0u8; 4];
     {
@@ -56,8 +55,6 @@ fn double_sha256_checksum(data: &[u8]) -> [u8; 4] {
 
 #[inline(never)]
 fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
-    let c32_chars: &[u8] = C32_CHARACTERS.as_bytes();
-
     let mut result = ArrayVec::<[_; C32_ENCODED_ADDRS_LENGTH]>::new();
     let mut carry = 0;
     let mut carry_bits = 0;
@@ -66,25 +63,25 @@ fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
         let low_bits_to_take = 5 - carry_bits;
         let low_bits = current_value & ((1 << low_bits_to_take) - 1);
         let c32_value = (low_bits << carry_bits) + carry;
-        result.push(c32_chars[c32_value as usize]);
+        result.push(C32_CHARACTERS[c32_value as usize]);
         carry_bits = (8 + carry_bits) - 5;
         carry = current_value >> (8 - carry_bits);
 
         if carry_bits >= 5 {
             let c32_value = carry & ((1 << 5) - 1);
-            result.push(c32_chars[c32_value as usize]);
+            result.push(C32_CHARACTERS[c32_value as usize]);
             carry_bits -= 5;
             carry >>= 5;
         }
     }
 
     if carry_bits > 0 {
-        result.push(c32_chars[carry as usize]);
+        result.push(C32_CHARACTERS[carry as usize]);
     }
 
     // remove leading zeros from c32 encoding
     while let Some(v) = result.pop() {
-        if v != c32_chars[0] {
+        if v != C32_CHARACTERS[0] {
             result.push(v);
             break;
         }
@@ -93,7 +90,7 @@ fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
     // add leading zeros from input.
     for current_value in input_bytes.iter() {
         if *current_value == 0 {
-            result.push(c32_chars[0]);
+            result.push(C32_CHARACTERS[0]);
         } else {
             break;
         }
@@ -120,7 +117,7 @@ fn c32_check_encode(
 
     // working with ascii strings is awful.
     let mut c32_string = c32_encode(&check_data);
-    let version_char = C32_CHARACTERS.as_bytes()[version as usize];
+    let version_char = C32_CHARACTERS[version as usize];
     c32_string.insert(0, version_char);
 
     Ok(c32_string)

@@ -71,17 +71,16 @@ impl<'a> StxTokenTransfer<'a> {
     }
 
     pub fn raw_address(&self) -> &[u8] {
-        //self.principal.raw_address()
         // Skips the principal-id and hash_mode
         &self.0[2..22]
     }
 
-    //#[inline(never)]
     pub fn encoded_address(
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        // Skips the principal-id at [0] and uses hash_mode and the follow 20-bytes
         let version = self.0[1];
-        c32::c32_address(version, self.raw_address())
+        c32::c32_address(version, &self.0[2..22])
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {

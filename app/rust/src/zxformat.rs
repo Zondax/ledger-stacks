@@ -181,6 +181,7 @@ pub(crate) fn fpstr_to_str(
         .map_err(|_| ParserError::parser_unexpected_buffer_end)
 }
 
+#[inline(never)]
 pub fn pageString(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result<u8, ParserError> {
     // Just ensure the buffer is clear
     for i in out_value.iter_mut() {
