@@ -431,7 +431,7 @@ impl<'a> TransactionPostCondition<'a> {
         }
         let addr = self.get_principal_address()?;
         let rs = zxformat::pageString(out_value, addr.as_ref(), page_idx);
-        //crate::check_canary!();
+        crate::check_canary!();
         rs
     }
 
