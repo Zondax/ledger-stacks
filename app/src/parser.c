@@ -32,12 +32,9 @@ void __assert_fail(const char * assertion, const char * file, unsigned int line,
 parser_tx_t parser_state;
 
 parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {
-    zemu_log_stack("parser_parse");
-
     parser_state.state = NULL;
     parser_state.len = 0;
     CHECK_PARSER_ERR(_parser_init(ctx, data, dataLen, &parser_state.len))
-    zemu_log_stack("parser_init");
 
     if (parser_state.len == 0) {
         return parser_context_unexpected_size;
@@ -48,29 +45,22 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
     }
 
     parser_error_t err = _read(ctx, &parser_state);
-    zemu_log_stack("parser_read done");
     return err;
 }
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
-    zemu_log_stack("parser_validate start");
 
     uint8_t numItems = 0;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems));
-    zemu_log_stack("parser_getNumItems done");
-
 
     char tmpKey[30];
     char tmpVal[30];
-
-    zemu_log_stack("parser_getItem loop");
 
     for (uint8_t idx = 0; idx < numItems; idx++) {
         uint8_t pageCount = 0;
         CHECK_PARSER_ERR(parser_getItem(ctx, idx, tmpKey, sizeof(tmpKey), tmpVal, sizeof(tmpVal), 0, &pageCount))
     }
 
-    zemu_log_stack("parser_validate done");
     return parser_ok;
 }
 
@@ -89,8 +79,6 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
     snprintf(outKey, outKeyLen, "?");
     snprintf(outVal, outValLen, "?");
     *pageCount = 0;
-
-    zemu_log_stack("parser_getItem");
 
     uint8_t numItems;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems))
