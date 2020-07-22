@@ -48,13 +48,13 @@ endif
 
 APPVERSION_M=0
 APPVERSION_N=5
-APPVERSION_P=0
+APPVERSION_P=1
 
 $(info COIN      = [$(COIN)])
 ifeq ($(COIN),STX)
 # Main app configuration
 DEFINES += APP_STANDARD
-APPNAME = "Blockstack"
+APPNAME = "Stacks"
 APPPATH = "44'/5757'"
 
 else ifeq ($(COIN),STX_variant1)
