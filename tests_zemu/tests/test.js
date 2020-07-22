@@ -26,12 +26,21 @@ const simOptions = {
     logging: true,
     start_delay: 3000,
     custom: `-s "${APP_SEED}"`
-//    , X11: true
+    , X11: true
 };
 
 jest.setTimeout(15000)
 
-function compareSnapshots(snapshotPrefixTmp, snapshotPrefixGolden, snapshotCount) {
+async function logSnapshotsAndAccept(sim, testcaseName, snapshotCount) {
+    const snapshotPrefixGolden = `snapshots/${testcaseName}/`;
+    const snapshotPrefixTmp = `snapshots-tmp/${testcaseName}/`;
+    await sim.snapshot(`${snapshotPrefixTmp}0.png`);
+    let i = 1;
+    for (; i < snapshotCount; i++) {
+        await sim.clickRight(`${snapshotPrefixTmp}${i}.png`);
+    }
+    await sim.clickBoth(`${snapshotPrefixTmp}${i++}.png`);
+
     for (let i = 0; i < snapshotCount; i++) {
         const img1 = Zemu.LoadPng2RGB(`${snapshotPrefixTmp}${i}.png`);
         const img2 = Zemu.LoadPng2RGB(`${snapshotPrefixGolden}${i}.png`);
@@ -106,16 +115,10 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            // Now navigate the address / path
-            await sim.snapshot(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickBoth(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await logSnapshotsAndAccept(sim, "show-address", 3);
 
             const resp = await respRequest;
             console.log(resp);
-
-            compareSnapshots(snapshotPrefixTmp, snapshotPrefixGolden, snapshotCount);
 
             expect(resp.returnCode).toEqual(0x9000);
             expect(resp.errorMessage).toEqual("No errors");
@@ -143,15 +146,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -177,18 +172,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_stx_token_transfer_with_postcondition", 12);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -213,12 +197,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_sponsored_smart_contract_tx", 6);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -242,12 +221,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_standard_smart_contract_tx", 6);
 
             let signature = await signatureRequest;
             console.log("Signature: ")
@@ -272,15 +246,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_standard_contract_call_tx", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -304,15 +270,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_sponsored_contract_call_tx", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -337,20 +295,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_contract_call_with_postcondition_tx", 14);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -362,8 +307,7 @@ describe('Basic checks', function () {
         }
     });
 
-
-    test.skip('sign sponsored_contract_call_tx_with_7_postconditions', async function () {
+    test('sign sponsored_contract_call_tx_with_7_postconditions', async function () {
         // Update the timeout limit because this transaction is huge
         // so It does take time showing all the items them signing it
         jest.setTimeout(40000)
@@ -378,43 +322,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_sponsored_contract_call_tx_with_7_postconditions", 37);
 
             let signature = await signatureRequest;
             console.log(signature)

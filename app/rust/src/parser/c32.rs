@@ -1,7 +1,5 @@
 use crate::parser::parser_common::{ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
 use arrayvec::ArrayVec;
-use sha2::Digest;
-use sha2::Sha256;
 
 pub const C32_ADDRESS_VERSION_MAINNET_SINGLESIG: u8 = 22;
 pub const C32_ADDRESS_VERSION_MAINNET_MULTISIG: u8 = 20;
