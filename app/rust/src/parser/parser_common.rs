@@ -20,7 +20,7 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 
 // The amount of post_conditions we can
 // handle
-pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 8;
+pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
 pub const MAX_STACKS_STRING_LEN: usize = 256;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;

@@ -63,7 +63,7 @@ impl<'a> Value<'a> {
     }
 
     pub fn value_len(bytes: &'a [u8]) -> Result<usize, ParserError> {
-        if bytes.len() == 0 {
+        if bytes.is_empty() {
             return Ok(0);
         }
         let mut depth = 0;
@@ -78,7 +78,7 @@ impl<'a> Value<'a> {
         if *depth > DEPTH_LIMIT {
             return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
         }
-        if bytes.len() == 0 {
+        if bytes.is_empty() {
             return Ok(((), 0));
         }
 
@@ -102,7 +102,7 @@ impl<'a> Value<'a> {
             ValueId::List => Self::list_len(depth, raw).map(|res| res.1)?,
             ValueId::Tuple => Self::tuple_len(depth, raw).map(|res| res.1)?,
             x => {
-                if raw.len() < 1 {
+                if raw.is_empty() {
                     return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
                 }
                 if x as u8 == raw[0] || raw[0] == ValueId::OptionalNone as u8 {
@@ -152,7 +152,7 @@ impl<'a> Value<'a> {
         if *depth > DEPTH_LIMIT {
             return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
         }
-        if bytes.len() == 0 {
+        if bytes.is_empty() {
             return Ok(((), 0));
         }
 

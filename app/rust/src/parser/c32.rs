@@ -1,8 +1,7 @@
+use crate::parser::parser_common::{ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
 use arrayvec::ArrayVec;
 use sha2::Digest;
 use sha2::Sha256;
-
-use crate::parser::parser_common::{ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
 
 pub const C32_ADDRESS_VERSION_MAINNET_SINGLESIG: u8 = 22;
 pub const C32_ADDRESS_VERSION_MAINNET_MULTISIG: u8 = 20;
@@ -41,21 +40,31 @@ pub extern "C" fn rs_c32_address(
     0
 }
 
-fn double_sha256_checksum(data: &[u8]) -> [u8; 4] {
-    let mut sum = [0u8; 4];
-    {
-        let mut sha2 = Sha256::new();
-        sha2.update(data);
-        let mut sha2_2 = Sha256::new();
-        sha2_2.update(sha2.finalize().as_slice());
-        sum.copy_from_slice(&sha2_2.finalize()[..4]);
+// extern c function for formatting to fixed point number
+extern "C" {
+    pub fn hash_sha256(in_data: *const u8, in_len: u16, out: *mut u8);
+}
+
+#[cfg(test)]
+fn double_sha256_checksum(data: &mut [u8]) {
+    data.copy_from_slice(Sha256::digest(&data[..21]).as_slice());
+    let sha2_2 = Sha256::digest(&data);
+    data[20..24].copy_from_slice(&sha2_2.as_slice()[..4]);
+}
+
+#[cfg(not(test))]
+fn double_sha256_checksum(data: &mut [u8]) {
+    let mut output = [0u8; 32];
+    unsafe {
+        hash_sha256(data.as_ptr(), 21, output.as_mut_ptr());
+        data.copy_from_slice(output.as_ref());
+        hash_sha256(data.as_ptr(), 32, output.as_mut_ptr());
     }
-    sum
+    data[20..24].copy_from_slice(&output[..4])
 }
 
 #[inline(never)]
-fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
-    let mut result = ArrayVec::<[_; C32_ENCODED_ADDRS_LENGTH]>::new();
+fn c32_encode(input_bytes: &[u8], result: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>) {
     let mut carry = 0;
     let mut carry_bits = 0;
 
@@ -95,39 +104,44 @@ fn c32_encode(input_bytes: &[u8]) -> ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]> {
             break;
         }
     }
-    result.drain(..).rev().collect()
+    result.reverse();
 }
 
 #[inline(never)]
 fn c32_check_encode(
     version: u8,
     data: &[u8],
-) -> Result<ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+    c32_string: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>,
+) -> Result<(), ParserError> {
     if version >= 32 {
         return Err(ParserError::parser_invalid_address_version);
     }
 
-    let mut check_data = [0u8; 24];
+    // check_data will contain our initial version + signature hash
+    // but will also be used as a temp buffer in the checksum function
+    let mut check_data = [0u8; 32];
     check_data[0] = version;
     check_data[1..21].copy_from_slice(data);
-    let checksum = double_sha256_checksum(&check_data[..21]);
+    double_sha256_checksum(&mut check_data);
 
+    // the first 20 bytes correspond to our initial signature hash
+    // the next 4-bytes were filled by the double_sha256_checksum
     check_data[..20].copy_from_slice(data);
-    check_data[20..].copy_from_slice(&checksum);
 
-    // working with ascii strings is awful.
-    let mut c32_string = c32_encode(&check_data);
+    // here we use only the 24-bytes
+    c32_encode(&check_data[..24], c32_string);
     let version_char = C32_CHARACTERS[version as usize];
     c32_string.insert(0, version_char);
-
-    Ok(c32_string)
+    Ok(())
 }
 
+//#[inline(never)]
 pub fn c32_address(
     version: u8,
     data: &[u8],
 ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
-    let mut c32_string = c32_check_encode(version, data)?;
+    let mut c32_string = ArrayVec::<[_; C32_ENCODED_ADDRS_LENGTH]>::new();
+    c32_check_encode(version, data, &mut c32_string)?;
     c32_string.insert(0, b'S');
     Ok(c32_string)
 }

@@ -13,7 +13,6 @@ use crate::parser::parser_common::{
 };
 use crate::parser::{c32, fp_uint64_to_str, value::Value};
 use crate::zxformat;
-use crate::bolos::c_zemu_log_stack;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -423,12 +422,10 @@ impl<'a> TransactionPostCondition<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         // The post condition principal address
-        {
-            let mut writer_key = zxformat::Writer::new(out_key);
-            writer_key
-                .write_str("Principal")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-        }
+        let mut writer_key = zxformat::Writer::new(out_key);
+        writer_key
+            .write_str("Principal")
+            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
         let addr = self.get_principal_address()?;
         let rs = zxformat::pageString(out_value, addr.as_ref(), page_idx);
         crate::check_canary!();
@@ -442,7 +439,6 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        c_zemu_log_stack("PC get_items\x00".as_ref());
         let index = display_idx % self.num_items();
         if index == 0 {
             self.write_principal_address(out_key, out_value, page_idx)
