@@ -46,9 +46,9 @@ typedef enum {
 #define VIEW_ADDRESS_ITEM_COUNT             2
 #define VIEW_ADDRESS_LAST_PAGE_DEFAULT      255
 
-#define MENU_MAIN_APP_LINE1             "Blockstack"
+#define MENU_MAIN_APP_LINE1             "Stacks"
 #define MENU_MAIN_APP_LINE2             "DO NOT USE!"
-#define APPVERSION_LINE1                "Blockstack"
+#define APPVERSION_LINE1                "Stacks"
 #define APPVERSION_LINE2                ("v" APPVERSION)
 
 #define COIN_AMOUNT_DECIMAL_PLACES          18                       // FIXME: Check this
