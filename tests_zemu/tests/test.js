@@ -89,7 +89,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('show address', async function () {
+    test('show address', async function () {
         const snapshotPrefixGolden = "snapshots/show-address/";
         const snapshotPrefixTmp = "snapshots-tmp/show-address/";
         let snapshotCount = 0;
@@ -130,7 +130,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign', async function () {
+    test('sign', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -201,7 +201,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign sponsored_smart_contract_tx', async function () {
+    test('sign sponsored_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -230,7 +230,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign standard_smart_contract_tx', async function () {
+    test('sign standard_smart_contract_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -292,7 +292,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign sponsored_contract_call_tx', async function () {
+    test('sign sponsored_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -325,6 +325,7 @@ describe('Basic checks', function () {
     });
 
     test('sign contract_call_with_postcondition_tx', async function () {
+        jest.setTimeout(30000)
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -336,6 +337,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
+            await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
@@ -360,7 +362,11 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign sponsored_contract_call_tx_with_7_postconditions', async function () {
+
+    test.skip('sign sponsored_contract_call_tx_with_7_postconditions', async function () {
+        // Update the timeout limit because this transaction is huge
+        // so It does take time showing all the items them signing it
+        jest.setTimeout(40000)
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -372,6 +378,11 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
+            await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
             await sim.clickRight();
