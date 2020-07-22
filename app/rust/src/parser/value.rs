@@ -4,7 +4,9 @@ use nom::{
     number::complete::{be_u32, le_u8},
 };
 
-use crate::parser::parser_common::{ContractName, ContractPrincipal, ParserError, StacksAddress};
+use crate::parser::parser_common::{
+    ClarityName, ContractName, ContractPrincipal, ParserError, StacksAddress, HASH160_LEN,
+};
 
 // Big ints size in bytes
 pub const BIG_INT_SIZE: usize = 16;
@@ -13,23 +15,12 @@ pub const BIG_INT_SIZE: usize = 16;
 pub const MAX_BUFFER_LEN: usize = 256;
 // The max number of tuple elements
 pub const MAX_TUPLE_ELEMENTS: usize = 4;
-// The max number of elements in a list
-pub const MAX_LIST_ELEMENTS: usize = 4;
+
+pub const DEPTH_LIMIT: u8 = 3;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Value<'a> {
-    Int(&'a [u8]),
-    UInt(&'a [u8]),
-    Bool(bool),
-    Buffer(u32, &'a [u8]),
-    StandardPrincipal(StacksAddress<'a>),
-    ContractPrincipal(ContractPrincipal<'a>),
-    Response(&'a [u8]),
-    Optional(&'a [u8]),
-    List(u32, &'a [u8]),
-    Tuple(u32, &'a [u8]),
-}
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub struct Value<'a>(pub &'a [u8]);
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -66,55 +57,201 @@ impl ValueId {
 
 impl<'a> Value<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let value_id = ValueId::from_bytes(bytes)?;
-        let res = match value_id.1 {
-            ValueId::Int => {
-                let int = take(BIG_INT_SIZE)(value_id.0)?;
-                (int.0, Self::Int(int.1))
-            }
-            ValueId::UInt => {
-                let int = take(BIG_INT_SIZE)(value_id.0)?;
-                (int.0, Self::UInt(int.1))
-            }
+        let len = Self::value_len(bytes)?;
+        let (leftover, inner) = take(len)(bytes)?;
+        Ok((leftover, Self(inner)))
+    }
+
+    pub fn value_len(bytes: &'a [u8]) -> Result<usize, ParserError> {
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+        let mut depth = 0;
+
+        let len = Self::simple_value_len(&mut depth, bytes)
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_value_out_of_range)?;
+        Ok(len)
+    }
+
+    fn simple_value_len(depth: &mut u8, bytes: &'a [u8]) -> nom::IResult<(), usize, ParserError> {
+        if *depth > DEPTH_LIMIT {
+            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+        }
+        if bytes.is_empty() {
+            return Ok(((), 0));
+        }
+
+        let (raw, id) =
+            ValueId::from_bytes(bytes).map_err(|_| ParserError::parser_unexpected_value)?;
+        let len = match id {
+            ValueId::Int | ValueId::UInt => BIG_INT_SIZE,
             ValueId::Buffer => {
-                let len = be_u32(value_id.0)?;
-                if len.1 as usize > MAX_BUFFER_LEN {
-                    return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
-                }
-                let buff = take(len.1)(len.0)?;
-                (buff.0, Self::Buffer(len.1, buff.1))
+                let len = be_u32::<'a, ParserError>(raw)
+                    .map_err(|_| ParserError::parser_unexpected_value)?;
+                len.1 as usize + 4
             }
-            ValueId::BoolTrue => (value_id.0, Self::Bool(true)),
-            ValueId::BoolFalse => (value_id.0, Self::Bool(false)),
-            ValueId::StandardPrincipal => {
-                let address = StacksAddress::from_bytes(value_id.0)?;
-                (address.0, Self::StandardPrincipal(address.1))
-            }
+            ValueId::BoolTrue | ValueId::BoolFalse => 0,
+            ValueId::StandardPrincipal => HASH160_LEN as usize + 1,
             ValueId::ContractPrincipal => {
-                let contract = ContractPrincipal::from_bytes(value_id.0)?;
-                (contract.0, Self::ContractPrincipal(contract.1))
+                let contract = ContractPrincipal::read_as_bytes(raw)
+                    .map_err(|_| ParserError::parser_unexpected_value)?;
+                contract.0.len()
             }
-            ValueId::ResponseOk | ValueId::ResponseErr => (value_id.0, Self::Response(value_id.0)),
-            ValueId::OptionalSome | ValueId::OptionalNone => {
-                (value_id.0, Self::Optional(value_id.0))
-            }
-            ValueId::List => {
-                let len = be_u32(value_id.0)?;
-                if len.1 as usize > MAX_LIST_ELEMENTS {
-                    return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+            ValueId::OptionalNone => 0,
+            ValueId::List => Self::list_len(depth, raw).map(|res| res.1)?,
+            ValueId::Tuple => Self::tuple_len(depth, raw).map(|res| res.1)?,
+            x => {
+                if raw.is_empty() {
+                    return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
                 }
-                let list = take(len.1)(value_id.0)?;
-                (list.0, Self::List(len.1, list.1))
-            }
-            ValueId::Tuple => {
-                let len = be_u32(value_id.0)?;
-                if len.1 as usize > MAX_TUPLE_ELEMENTS {
-                    return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+                if x as u8 == raw[0] || raw[0] == ValueId::OptionalNone as u8 {
+                    *depth += 1;
                 }
-                let tuple = take(len.1)(len.0)?;
-                (tuple.0, Self::Tuple(len.1, tuple.1))
+                Self::simple_value_len(depth, raw).map(|res| res.1)?
             }
         };
-        Ok(res)
+        Ok(((), len + 1))
+    }
+
+    fn tuple_len(depth: &mut u8, bytes: &'a [u8]) -> nom::IResult<(), usize, ParserError> {
+        if *depth > DEPTH_LIMIT {
+            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+        }
+        if bytes.len() <= 1 {
+            return Ok(((), 0));
+        }
+        let (left, num_pairs) = be_u32::<'_, ParserError>(bytes)?;
+        let mut len = 0;
+        let mut raw: &[u8] = left;
+        for _ in 0..num_pairs {
+            let (inner, clarity) = ClarityName::from_bytes(raw)?;
+            // 1-byte length prefix + name_length
+            let mut item_len = 1 + clarity.0.len();
+
+            let (_, item_id) = ValueId::from_bytes(inner)?;
+            if item_id == ValueId::Tuple {
+                *depth += 1;
+            }
+            item_len += Self::simple_value_len(depth, inner).map(|res| res.1)?;
+            // update the raw data so, we parse the next tuple pair
+            let (leftover, _) = take(item_len)(raw)?;
+            raw = leftover;
+
+            // update our global byte-counter for this Tuple
+            len += item_len;
+        }
+
+        // The total bytes for this tuple is 1-byte valueId + 4-byte tuple len + total_len inner
+        // pairs
+        let len = 4 + len;
+        Ok(((), len))
+    }
+
+    fn list_len(depth: &mut u8, bytes: &'a [u8]) -> nom::IResult<(), usize, ParserError> {
+        if *depth > DEPTH_LIMIT {
+            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+        }
+        if bytes.is_empty() {
+            return Ok(((), 0));
+        }
+
+        let (rem, num_items) = be_u32::<'_, ParserError>(bytes)?;
+        let mut len = 0;
+        let mut raw: &[u8] = rem;
+        for _ in 0..num_items {
+            let (_, item_id) = ValueId::from_bytes(raw)?;
+            if item_id == ValueId::List {
+                *depth += 1;
+            }
+            let item_len = Self::simple_value_len(depth, raw).map(|res| res.1)?;
+            // update the raw data so, we parse the next tuple pair
+            let (leftover, _) = take(item_len)(raw)?;
+            raw = leftover;
+
+            // update our global byte-counter for this Tuple
+            len += item_len;
+        }
+
+        // The total bytes for this list are 1-byte valueId + 4-byte list_len + total_len inner
+        // pairs
+        let len = 4 + len;
+        Ok(((), len))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_tuple_value() {
+        let encoded = "0c0000000201610000000000000000000000000000000001016303";
+        let bytes = hex::decode(encoded).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        let encoded2 = "0c0000000d016100000000000000000000000000000000010162000000000000000000000000000000000101630000000000000000000000000000000001016400000000000000000000000000000000010165000000000000000000000000000000000101660000000000000000000000000000000001016700000000000000000000000000000000010168000000000000000000000000000000000101690000000000000000000000000000000001016a0000000000000000000000000000000001016b00000000000000000000000000000000010171000000000000000000000000000000000101760000000000000000000000000000000001";
+        let bytes = hex::decode(encoded2).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        // Tuple containing 3 tuples inside
+        let encoded3 = "0c0000000401610c00000002016100000000000000000000000000000000010162000000000000000000000000000000000101620c000000020161000000000000000000000000000000000101620301630c000000020161000000000000000000000000000000000101620301760000000000000000000000000000000001";
+        let bytes = hex::decode(encoded3).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        // this should fail because there are more than DEPTH_LIMIT nested tuples
+        let encoded4 = "0c0000000501610c00000002016100000000000000000000000000000000010162000000000000000000000000000000000101620c000000020161000000000000000000000000000000000101620301630c000000020161000000000000000000000000000000000101620301760000000000000000000000000000000001017a0c0000000201610000000000000000000000000000000001016303";
+        let bytes = hex::decode(encoded4).unwrap();
+        Value::value_len(&bytes).unwrap_err();
+    }
+
+    #[test]
+    fn test_list_value() {
+        // simple list with 3-ints
+        let encoded = "0b00000003000000000000000000000000000000000100000000000000000000000000000000020000000000000000000000000000000003";
+        let bytes = hex::decode(encoded).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        let three_nested_list = "0b000000030b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b00000003000000000000000000000000000000000100000000000000000000000000000000020000000000000000000000000000000003";
+        let bytes = hex::decode(three_nested_list).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        // should fail, too depth value(4-recursion levels)
+        let four_nested_list = "0b000000040b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b00000003000000000000000000000000000000000100000000000000000000000000000000020000000000000000000000000000000003";
+        let bytes = hex::decode(four_nested_list).unwrap();
+        Value::value_len(&bytes).unwrap_err();
+    }
+
+    #[test]
+    fn test_optional_value() {
+        // simple list with 3-Options
+        let encoded =
+            "0b000000030a000000000000000000000000000000000f090a000000000000000000000000000000000f";
+        let bytes = hex::decode(encoded).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        let three_depth = "0a0a0a0100000000000000000000000000000001";
+        let bytes = hex::decode(three_depth).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
+
+        let five_depth = "0a0a0a0a0a0100000000000000000000000000000001";
+        let bytes = hex::decode(five_depth).unwrap();
+        Value::value_len(&bytes).unwrap_err();
+    }
+
+    #[test]
+    fn test_buff_value() {
+        // simple list with 3-Options
+        let encoded = "020000001600deadbeef00080919558081fa240400010204080907";
+        let bytes = hex::decode(encoded).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(bytes.len(), value.0.len());
     }
 }

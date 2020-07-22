@@ -8,15 +8,6 @@ use crate::check_canary;
 use crate::parser::parser_common::ParserError;
 use crate::parser::spending_condition::TransactionSpendingCondition;
 
-const MAX_ADDRESS_BUFFER_LEN: usize = 40;
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Address {
-    addr: [u8; MAX_ADDRESS_BUFFER_LEN],
-    pub len: usize,
-}
-
 #[repr(C)]
 #[derive(Debug)]
 /// A Transaction's Authorization structure

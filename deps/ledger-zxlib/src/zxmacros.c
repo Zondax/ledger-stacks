@@ -64,6 +64,7 @@ void zemu_log_stack(char *ctx) {
             (uint32_t)((void*)&p)+STACK_SHIFT - (uint32_t)&app_stack_canary,
             ctx);
     zemu_log(buf);
+    CHECK_APP_CANARY()
 #endif
 #endif
 }
