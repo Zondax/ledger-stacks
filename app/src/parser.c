@@ -35,17 +35,21 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
     parser_state.state = NULL;
     parser_state.len = 0;
     CHECK_PARSER_ERR(_parser_init(ctx, data, dataLen, &parser_state.len))
+
     if (parser_state.len == 0) {
         return parser_context_unexpected_size;
     }
-    if (zb_allocate(parser_state.len) == zb_no_error &&
-            zb_get(&parser_state.state) == zb_no_error ) {
-        return _read(ctx, &parser_state);
+
+    if (zb_allocate(parser_state.len) != zb_no_error || zb_get(&parser_state.state) != zb_no_error ) {
+        return parser_init_context_empty ;
     }
-    return parser_init_context_empty ;
+
+    parser_error_t err = _read(ctx, &parser_state);
+    return err;
 }
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
+
     uint8_t numItems = 0;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems));
 

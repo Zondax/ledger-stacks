@@ -26,12 +26,21 @@ const simOptions = {
     logging: true,
     start_delay: 3000,
     custom: `-s "${APP_SEED}"`
-    //, X11: true
+    , X11: true
 };
 
 jest.setTimeout(15000)
 
-function compareSnapshots(snapshotPrefixTmp, snapshotPrefixGolden, snapshotCount) {
+async function logSnapshotsAndAccept(sim, testcaseName, snapshotCount) {
+    const snapshotPrefixGolden = `snapshots/${testcaseName}/`;
+    const snapshotPrefixTmp = `snapshots-tmp/${testcaseName}/`;
+    await sim.snapshot(`${snapshotPrefixTmp}0.png`);
+    let i = 1;
+    for (; i < snapshotCount; i++) {
+        await sim.clickRight(`${snapshotPrefixTmp}${i}.png`);
+    }
+    await sim.clickBoth(`${snapshotPrefixTmp}${i++}.png`);
+
     for (let i = 0; i < snapshotCount; i++) {
         const img1 = Zemu.LoadPng2RGB(`${snapshotPrefixTmp}${i}.png`);
         const img2 = Zemu.LoadPng2RGB(`${snapshotPrefixGolden}${i}.png`);
@@ -106,16 +115,10 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            // Now navigate the address / path
-            await sim.snapshot(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickRight(`${snapshotPrefixTmp}${snapshotCount++}.png`);
-            await sim.clickBoth(`${snapshotPrefixTmp}${snapshotCount++}.png`);
+            await logSnapshotsAndAccept(sim, "show-address", 3);
 
             const resp = await respRequest;
             console.log(resp);
-
-            compareSnapshots(snapshotPrefixTmp, snapshotPrefixGolden, snapshotCount);
 
             expect(resp.returnCode).toEqual(0x9000);
             expect(resp.errorMessage).toEqual("No errors");
@@ -143,15 +146,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -177,18 +172,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_stx_token_transfer_with_postcondition", 12);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -213,12 +197,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_sponsored_smart_contract_tx", 6);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -242,12 +221,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_standard_smart_contract_tx", 6);
 
             let signature = await signatureRequest;
             console.log("Signature: ")
@@ -260,7 +234,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign standard_contract_call_tx', async function () {
+    test('sign standard_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -272,15 +246,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_standard_contract_call_tx", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -292,7 +258,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test.skip('sign sponsored_contract_call_tx', async function () {
+    test('sign sponsored_contract_call_tx', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -304,15 +270,59 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickRight();
-            await sim.clickBoth();
+            await logSnapshotsAndAccept(sim, "sign_sponsored_contract_call_tx", 9);
+
+            let signature = await signatureRequest;
+            console.log(signature)
+
+            expect(signature.returnCode).toEqual(0x9000);
+            // TODO: Verify signature
+        } finally {
+            await sim.close();
+        }
+    });
+
+    test('sign contract_call_with_postcondition_tx', async function () {
+        jest.setTimeout(30000)
+        const sim = new Zemu(APP_PATH);
+        try {
+            await sim.start(simOptions);
+            const app = new BlockstackApp(sim.getTransport());
+
+            const blob = Buffer.from("808000000004003b471808467d33eec688b7a7a75f06aad921ba6e000000000000000100000000000000000000134ab418c3422c600bfeffb1a322b78edab12961fdea48f34cbbb4eae42a4a53401bf2a0d680e819028276cfa13c672a8031ddd17b46fda70a037fefb20e9e9203020000000101021a3b471808467d33eec688b7a7a75f06aad921ba6e1a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c640a737461636b61726f6f73030000000000000064021a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c6414757365722d73656e642d737461636b61726f6f7300000001051a2d89de56fd4db19741957831926e9ba96cf04158", "hex");
+            const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
+
+            // Wait until we are not in the main menu
+            await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
+
+            await logSnapshotsAndAccept(sim, "sign_contract_call_with_postcondition_tx", 14);
+
+            let signature = await signatureRequest;
+            console.log(signature)
+
+            expect(signature.returnCode).toEqual(0x9000);
+            // TODO: Verify signature
+        } finally {
+            await sim.close();
+        }
+    });
+
+    test('sign sponsored_contract_call_tx_with_7_postconditions', async function () {
+        // Update the timeout limit because this transaction is huge
+        // so It does take time showing all the items them signing it
+        jest.setTimeout(40000)
+        const sim = new Zemu(APP_PATH);
+        try {
+            await sim.start(simOptions);
+            const app = new BlockstackApp(sim.getTransport());
+
+            const blob = Buffer.from("808000000004002d89de56fd4db19741957831926e9ba96cf04158000000000000000300000000000000000001b019126ffa434bd7c816b3e1daa3163e322aae6cde06585d22d46286570e4a491eecc2dcd214a42eae62584ddbe8a96382ff1f34edb4ecedeab0a6b6b1e07d2003020000000701031a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c641a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c640a737461636b61726f6f73010000000000000064000103000000000000007c01031a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c641a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c640a737461636b61726f6f7303000000000000006400010300000000000000f701031a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c641a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c640a737461636b61726f6f73050000000000000064000103000000000000017202031a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c641a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c64056e616d657302000000040000006410021a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c640f73656e642d737461636b61726f6f7300000001051a3b471808467d33eec688b7a7a75f06aad921ba6e", "hex");
+            const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
+
+            // Wait until we are not in the main menu
+            await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
+
+            await logSnapshotsAndAccept(sim, "sign_sponsored_contract_call_tx_with_7_postconditions", 37);
 
             let signature = await signatureRequest;
             console.log(signature)
