@@ -14,8 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  ******************************************************************************* */
-
-import { serializePathv1, signSendChunkv1 } from "./helperV1";
+import Transport from '@ledgerhq/hw-transport';
+import { serializePathv1, signSendChunkv1 } from './helperV1';
+import { ErrorCode } from './common';
+import { ResponseAppInfo, ResponseVersion, ResponseAddress } from './types';
 import {
   APP_KEY,
   CHUNK_SIZE,
@@ -27,13 +29,13 @@ import {
   P1_VALUES,
   PKLEN,
   processErrorResponse,
-} from "./common";
+} from './common';
 
-function processGetAddrResponse(response) {
+function processGetAddrResponse(response: Buffer) {
   let partialResponse = response;
 
   const errorCodeData = partialResponse.slice(-2);
-  const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
+  const returnCode = (errorCodeData[0] * 256 + errorCodeData[1]) as ErrorCode;
 
   const publicKey = Buffer.from(partialResponse.slice(0, PKLEN));
   partialResponse = partialResponse.slice(PKLEN);
@@ -49,14 +51,13 @@ function processGetAddrResponse(response) {
 }
 
 export default class BlockstackApp {
-  constructor(transport) {
+  constructor(public transport: Transport) {
     if (!transport) {
-      throw new Error("Transport has not been defined");
+      throw new Error('Transport has not been defined');
     }
-    this.transport = transport;
   }
 
-  static prepareChunks(serializedPathBuffer, message) {
+  static prepareChunks(serializedPathBuffer: Buffer, message: Buffer) {
     const chunks = [];
 
     // First chunk (only path)
@@ -76,41 +77,37 @@ export default class BlockstackApp {
     return chunks;
   }
 
-  async signGetChunks(path, message) {
+  async signGetChunks(path: string, message: Buffer) {
     return BlockstackApp.prepareChunks(serializePathv1(path), message);
   }
 
-  async getVersion() {
-    return getVersion(this.transport)
-      .then((response) => {
-        return response;
-      })
-      .catch((err) => processErrorResponse(err));
+  async getVersion(): Promise<ResponseVersion> {
+    return getVersion(this.transport).catch(err => processErrorResponse(err));
   }
 
-  async appInfo() {
-    return this.transport.send(0xb0, 0x01, 0, 0).then((response) => {
+  async getAppInfo(): Promise<ResponseAppInfo> {
+    return this.transport.send(0xb0, 0x01, 0, 0).then(response => {
       const errorCodeData = response.slice(-2);
       const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
 
-      const result = {};
+      const result: { errorMessage?: string; returnCode?: ErrorCode } = {};
 
-      let appName = "err";
-      let appVersion = "err";
+      let appName = 'err';
+      let appVersion = 'err';
       let flagLen = 0;
       let flagsValue = 0;
 
       if (response[0] !== 1) {
         // Ledger responds with format ID 1. There is no spec for any format != 1
-        result.errorMessage = "response format ID not recognized";
+        result.errorMessage = 'response format ID not recognized';
         result.returnCode = 0x9001;
       } else {
         const appNameLen = response[1];
-        appName = response.slice(2, 2 + appNameLen).toString("ascii");
+        appName = response.slice(2, 2 + appNameLen).toString('ascii');
         let idx = 2 + appNameLen;
         const appVersionLen = response[idx];
         idx += 1;
-        appVersion = response.slice(idx, idx + appVersionLen).toString("ascii");
+        appVersion = response.slice(idx, idx + appVersionLen).toString('ascii');
         idx += appVersionLen;
         const appFlagsLen = response[idx];
         idx += 1;
@@ -120,7 +117,7 @@ export default class BlockstackApp {
 
       return {
         returnCode,
-        errorMessage: errorCodeToString(returnCode),
+        errorMessage: errorCodeToString(returnCode as ErrorCode),
         // //
         appName,
         appVersion,
@@ -138,7 +135,7 @@ export default class BlockstackApp {
     }, processErrorResponse);
   }
 
-  async getAddressAndPubKey(path) {
+  async getAddressAndPubKey(path: string): Promise<ResponseAddress> {
     const serializedPath = serializePathv1(path);
     console.log(serializedPath);
 
@@ -147,28 +144,30 @@ export default class BlockstackApp {
       .then(processGetAddrResponse, processErrorResponse);
   }
 
-  async showAddressAndPubKey(path) {
+  async showAddressAndPubKey(path: string): Promise<ResponseAddress> {
     const serializedPath = serializePathv1(path);
 
     return this.transport
-      .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.SHOW_ADDRESS_IN_DEVICE, 0, serializedPath, [0x9000])
+      .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.SHOW_ADDRESS_IN_DEVICE, 0, serializedPath, [
+        0x9000,
+      ])
       .then(processGetAddrResponse, processErrorResponse);
   }
 
-  async signSendChunk(chunkIdx, chunkNum, chunk) {
+  async signSendChunk(chunkIdx: number, chunkNum: number, chunk: Buffer) {
     return signSendChunkv1(this, chunkIdx, chunkNum, chunk);
   }
 
-  async sign(path, message) {
-    return this.signGetChunks(path, message).then((chunks) => {
-      return this.signSendChunk(1, chunks.length, chunks[0], [ERROR_CODE.NoError]).then(async (response) => {
+
+  async sign(path: string, message: Buffer) {
+    return this.signGetChunks(path, message).then(chunks => {
+      return this.signSendChunk(1, chunks.length, chunks[0]).then(async response => {
         let result = {
           returnCode: response.returnCode,
           errorMessage: response.errorMessage,
-          signatureCompact: null,
-          signatureDER: null,
+          signatureCompact: null as null | Buffer,
+          signatureDER: null as null | Buffer,
         };
-
         for (let i = 1; i < chunks.length; i += 1) {
           // eslint-disable-next-line no-await-in-loop
           result = await this.signSendChunk(1 + i, chunks.length, chunks[i]);
@@ -176,14 +175,7 @@ export default class BlockstackApp {
             break;
           }
         }
-
-        return {
-          returnCode: result.returnCode,
-          errorMessage: result.errorMessage,
-          // ///
-          signatureCompact: result.signatureCompact,
-          signatureDER: result.signatureDER,
-        };
+        return result;
       }, processErrorResponse);
     }, processErrorResponse);
   }
