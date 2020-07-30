@@ -1,20 +1,22 @@
-import { CLA, errorCodeToString, INS, PAYLOAD_TYPE, processErrorResponse } from "./common";
+import { CLA, errorCodeToString, INS, PAYLOAD_TYPE, processErrorResponse, ErrorCode } from './common';
+import BlockstackApp from '.';
+import { ResponseSign } from './types';
 
 const HARDENED = 0x80000000;
 
-export function serializePathv1(path) {
-  if (typeof path !== "string") {
-    throw new Error("Path should be a string (e.g \"m/44'/461'/5'/0/3\")");
+export function serializePathv1(path: string) {
+  if (typeof path !== 'string') {
+    throw new Error("Path should be a string (e.g \"m/44'/5757'/5'/0/3\")");
   }
 
-  if (!path.startsWith("m")) {
-    throw new Error('Path should start with "m" (e.g "m/44\'/461\'/5\'/0/3")');
+  if (!path.startsWith('m')) {
+    throw new Error('Path should start with "m" (e.g "m/44\'/5757\'/5\'/0/3")');
   }
 
-  const pathArray = path.split("/");
+  const pathArray = path.split('/');
 
   if (pathArray.length !== 6) {
-    throw new Error("Invalid path. (e.g \"m/44'/461'/5'/0/3\")");
+    throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\")");
   }
 
   const buf = Buffer.alloc(20);
@@ -34,7 +36,7 @@ export function serializePathv1(path) {
     }
 
     if (childNumber >= HARDENED) {
-      throw new Error("Incorrect child value (bigger or equal to 0x80000000)");
+      throw new Error('Incorrect child value (bigger or equal to 0x80000000)');
     }
 
     value += childNumber;
@@ -45,7 +47,12 @@ export function serializePathv1(path) {
   return buf;
 }
 
-export async function signSendChunkv1(app, chunkIdx, chunkNum, chunk) {
+export async function signSendChunkv1(
+  app: BlockstackApp,
+  chunkIdx: number,
+  chunkNum: number,
+  chunk: Buffer
+): Promise<ResponseSign> {
   let payloadType = PAYLOAD_TYPE.ADD;
   if (chunkIdx === 1) {
     payloadType = PAYLOAD_TYPE.INIT;
@@ -58,18 +65,19 @@ export async function signSendChunkv1(app, chunkIdx, chunkNum, chunk) {
     .then(response => {
       const errorCodeData = response.slice(-2);
       const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
-      let errorMessage = errorCodeToString(returnCode);
+      let errorMessage = errorCodeToString(returnCode as ErrorCode);
 
       if (returnCode === 0x6a80 || returnCode === 0x6984) {
-        errorMessage = `${errorMessage} : ${response.slice(0, response.length - 2).toString("ascii")}`;
+        errorMessage = `${errorMessage} : ${response
+          .slice(0, response.length - 2)
+          .toString('ascii')}`;
       }
 
-      let signatureCompact = null;
-      let signatureDER = null;
-      if (response.length > 2) {
-        signatureCompact = response.slice(0, 65);
-        signatureDER = response.slice(65, response.length - 2);
-      }
+      if (response.length <= 2) throw new Error('Must have a length of 2')
+
+      const  signatureCompact = response.slice(0, 65);
+      const  signatureDER = response.slice(65, response.length - 2);
+
 
       return {
         signatureCompact,
