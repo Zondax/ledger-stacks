@@ -73,15 +73,19 @@ export async function signSendChunkv1(
           .toString('ascii')}`;
       }
 
-      if (response.length <= 2) throw new Error('Must have a length of 2')
+      if (response.length > 2) {
+          const  signatureCompact = response.slice(0, 65);
+          const  signatureDER = response.slice(65, response.length - 2);
 
-      const  signatureCompact = response.slice(0, 65);
-      const  signatureDER = response.slice(65, response.length - 2);
-
+          return {
+              signatureCompact,
+              signatureDER,
+              returnCode: returnCode,
+              errorMessage: errorMessage,
+          };
+      }
 
       return {
-        signatureCompact,
-        signatureDER,
         returnCode: returnCode,
         errorMessage: errorMessage,
       };
