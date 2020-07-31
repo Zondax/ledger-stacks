@@ -26,6 +26,7 @@
     "ts-jest": "^26.1.4"
   },
   "devDependencies": {
+    "typescript": "^3.9.7",
     "@babel/cli": "^7.10.3",
     "@babel/core": "^7.10.3",
     "@babel/node": "^7.10.3",
