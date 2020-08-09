@@ -21,14 +21,18 @@
   "homepage": "https://github.com/zondax/ledger-blockstack",
   "dependencies": {
     "@babel/runtime": "^7.10.3",
-    "@ledgerhq/hw-transport": "^5.17.0"
+    "@ledgerhq/hw-transport": "^5.17.0",
+    "@types/ledgerhq__hw-transport": "^4.21.2",
+    "ts-jest": "^26.1.4"
   },
   "devDependencies": {
+    "typescript": "^3.9.7",
     "@babel/cli": "^7.10.3",
     "@babel/core": "^7.10.3",
     "@babel/node": "^7.10.3",
     "@babel/plugin-transform-runtime": "^7.10.3",
     "@babel/preset-env": "^7.10.3",
+    "@blockstack/prettier-config": "^0.0.6",
     "@ledgerhq/hw-transport-node-hid": "^5.13.0",
     "@ledgerhq/hw-transport-webusb": "^5.17.0",
     "@vue/cli-plugin-babel": "^4.4.4",
@@ -57,7 +61,7 @@
     "vue-template-compiler": "^2.6.11"
   },
   "scripts": {
-    "build": "babel src  --copy-files --out-dir dist",
+    "build": "tsc",
     "certificate": "openssl req -nodes -config certs/openssl.cnf  -new -x509 -keyout certs/server.key -out certs/server.cert; openssl x509 -in certs/server.cert -out certs/cert.pem -outform PEM",
     "test:unit": "jest -c jest.config.unit.js",
     "test:integration": "jest -c jest.config.integration.js --runInBand --detectOpenHandles",
