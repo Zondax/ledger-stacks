@@ -16,26 +16,27 @@
  ******************************************************************************* */
 import Transport from '@ledgerhq/hw-transport';
 import { serializePathv1, signSendChunkv1 } from './helperV1';
-import { ErrorCode } from './common';
 import { ResponseAppInfo, ResponseVersion, ResponseAddress } from './types';
 import {
-  APP_KEY,
   CHUNK_SIZE,
   CLA,
-  ERROR_CODE,
   errorCodeToString,
   getVersion,
   INS,
   P1_VALUES,
   PKLEN,
   processErrorResponse,
+  LedgerError,
 } from './common';
+
+export { LedgerError };
+export * from './types';
 
 function processGetAddrResponse(response: Buffer) {
   let partialResponse = response;
 
   const errorCodeData = partialResponse.slice(-2);
-  const returnCode = (errorCodeData[0] * 256 + errorCodeData[1]) as ErrorCode;
+  const returnCode = (errorCodeData[0] * 256 + errorCodeData[1]) as LedgerError;
 
   const publicKey = Buffer.from(partialResponse.slice(0, PKLEN));
   partialResponse = partialResponse.slice(PKLEN);
@@ -90,7 +91,7 @@ export default class BlockstackApp {
       const errorCodeData = response.slice(-2);
       const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
 
-      const result: { errorMessage?: string; returnCode?: ErrorCode } = {};
+      const result: { errorMessage?: string; returnCode?: LedgerError } = {};
 
       let appName = 'err';
       let appVersion = 'err';
@@ -100,7 +101,7 @@ export default class BlockstackApp {
       if (response[0] !== 1) {
         // Ledger responds with format ID 1. There is no spec for any format != 1
         result.errorMessage = 'response format ID not recognized';
-        result.returnCode = 0x9001;
+        result.returnCode = LedgerError.DeviceIsBusy;
       } else {
         const appNameLen = response[1];
         appName = response.slice(2, 2 + appNameLen).toString('ascii');
@@ -117,7 +118,7 @@ export default class BlockstackApp {
 
       return {
         returnCode,
-        errorMessage: errorCodeToString(returnCode as ErrorCode),
+        errorMessage: errorCodeToString(returnCode as LedgerError),
         // //
         appName,
         appVersion,
@@ -149,7 +150,7 @@ export default class BlockstackApp {
 
     return this.transport
       .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.SHOW_ADDRESS_IN_DEVICE, 0, serializedPath, [
-        0x9000,
+        LedgerError.NoErrors,
       ])
       .then(processGetAddrResponse, processErrorResponse);
   }
@@ -171,7 +172,7 @@ export default class BlockstackApp {
         for (let i = 1; i < chunks.length; i += 1) {
           // eslint-disable-next-line no-await-in-loop
           result = await this.signSendChunk(1 + i, chunks.length, chunks[i]);
-          if (result.returnCode !== ERROR_CODE.NoError) {
+          if (result.returnCode !== LedgerError.NoErrors) {
             break;
           }
         }

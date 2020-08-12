@@ -36,8 +36,8 @@
 <script>
 import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
 import BlockstackApp from "../../src";
-import { ERROR_CODE } from "../../src/common";
-const EXAMPLE_PATH = "m/44'/5757'/0/0/0";
+import { LedgerError } from "../../src/common";
+const EXAMPLE_PATH = "m/44'/5757'/0'/0/0";
 
 export default {
   name: "Ledger",
@@ -81,7 +81,7 @@ export default {
         const response = await app.getVersion();
         this.log(`${JSON.stringify(response)}`);
 
-        if (response.returnCode !== ERROR_CODE.NoError) {
+        if (response.returnCode !== LedgerError.NoErrors) {
           this.log(`Error`);
           // this.log(`Error [${response.returnCode}] ${response.errorMessage}`);
           return;
@@ -131,7 +131,7 @@ export default {
         response = await app.getAddressAndPubKey(EXAMPLE_PATH);
         this.log(response);
 
-        if (response.returnCode !== ERROR_CODE.NoError) {
+        if (response.returnCode !== LedgerError.NoErrors) {
           this.log(`Error [${response.returnCode}] ${response.errorMessage}`);
           return;
         }
@@ -157,7 +157,7 @@ export default {
         // now it is possible to access all commands in the app
         this.log("Please click in the device");
         response = await app.showAddressAndPubKey(EXAMPLE_PATH);
-        if (response.returnCode !== ERROR_CODE.NoError) {
+        if (response.returnCode !== LedgerError.NoErrors) {
           this.log(`Error [${response.returnCode}] ${response.errorMessage}`);
           return;
         }
