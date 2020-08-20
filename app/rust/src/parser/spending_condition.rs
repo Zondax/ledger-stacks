@@ -7,10 +7,23 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::parser_common::{
-    HashMode, ParserError, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, SIGNATURE_LEN,
+    HashMode, ParserError, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+    SIGNATURE_LEN,
 };
 use crate::parser::{c32, ffi::fp_uint64_to_str};
 use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
+
+// this includes:
+// 16-byte origin fee and nonce
+// 66-byte origin signature
+const STANDARD_SINGLESIG_AUTH_LEN: usize = 82;
+
+// according to the docs, de vector of fields should be cleared
+// so:
+// 16-byte origin fee and nonce
+// 4-byte num auth fields
+// 2-byte num signatures required
+const STANDARD_MULTISIG_AUTH_LEN: usize = 22;
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -56,6 +69,11 @@ pub struct SpendingConditionSigner<'a> {
 impl<'a> SpendingConditionSigner<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+        // This includes:
+        // - 1-byte hash mode
+        // - 20-byte public key hash
+        // - 8-byte nonce.
+        // - 8-byte fee rate.
         let len = 1 + HASH160_LEN as usize + 8 + 8;
         let (raw, data) = take(len)(bytes)?;
         Ok((raw, Self { data }))
@@ -91,6 +109,10 @@ impl<'a> SpendingConditionSigner<'a> {
         }
     }
 
+    pub fn pub_key_hash(&self) -> &[u8] {
+        &self.data[1..21]
+    }
+
     pub fn nonce(&self) -> Result<u64, ParserError> {
         be_u64::<'a, ParserError>(&self.data[21..])
             .map(|res| res.1)
@@ -101,6 +123,50 @@ impl<'a> SpendingConditionSigner<'a> {
         be_u64::<'a, ParserError>(&self.data[29..])
             .map(|res| res.1)
             .map_err(|_| ParserError::parser_unexpected_value)
+    }
+
+    // Before hashing the transaction for signing, the nonce
+    // and fee should be zeroize
+    fn clear(&mut self) {
+        // skips the hash-mode and public-key hash
+        let to_clear = &self.data[21..];
+        let len = to_clear.len();
+        let ptr = to_clear.as_ptr();
+        // It is not possible to get mut access to the inner array
+        // nom does not allow it, so that ptr manipulation inside
+        // an unsafe block seems to be the easiest way to modify the
+        // inner slice for clearing the nonce and fee
+        // indicated by:
+        // https://github.com/blockstack/stacks-blockchain/blob/master/sip/sip-005-blocks-and-transactions.md
+        // #transaction-signing-and-verifying
+        // step 1:
+        unsafe {
+            let ptr_mut = ptr as *mut u8;
+            let mut_slice = core::slice::from_raw_parts_mut(ptr_mut, len);
+            mut_slice.iter_mut().for_each(|x| *x = 0u8);
+            // 8-byte nonce and 8-byte fee = 16-bytes
+            //core::ptr::write_bytes(ptr_mut, 0u8, len);
+        }
+    }
+
+    // In case the signer is the origin and the transaction is sponsored, then,
+    // all of the sponsor's fields must be zeroize
+    // before hashing all of the transaction
+    fn clear_all(&mut self) {
+        let ptr = self.data.as_ptr();
+        // It is not possible to get mut access to the inner array
+        // nom does not allow it, so that ptr manipulation inside
+        // an unsafe block seems to be the easiest way to modify the
+        // inner slice for clearing the nonce and fee
+        // indicated by:
+        // https://github.com/blockstack/stacks-blockchain/blob/master/sip/sip-005-blocks-and-transactions.md
+        // #transaction-signing-and-verifying
+        // step 1:
+        unsafe {
+            let ptr = ptr as *mut u8;
+            // fills with 0 all of it
+            ptr.write_bytes(0, self.data.len());
+        }
     }
 
     #[inline(never)]
@@ -145,6 +211,22 @@ pub enum SpendingConditionSignature<'a> {
     Multisig(MultisigSpendingCondition<'a>),
 }
 
+impl<'a> SpendingConditionSignature<'a> {
+    fn clear_signature(&mut self) {
+        match self {
+            Self::Singlesig(ref mut singlesig) => singlesig.clear_signature(),
+            Self::Multisig(ref mut multisig) => multisig.clear_signature(),
+        }
+    }
+
+    pub fn required_signatures(self) -> Option<u16> {
+        match self {
+            Self::Multisig(ref multisig) => multisig.required_signatures().ok(),
+            _ => None,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub struct TransactionSpendingCondition<'a> {
@@ -171,6 +253,17 @@ impl<'a> SinglesigSpendingCondition<'a> {
                 Ok(TransactionPublicKeyEncoding::Uncompressed)
             }
             _ => Err(ParserError::parser_invalid_pubkey_encoding),
+        }
+    }
+
+    fn clear_signature(&mut self) {
+        let ptr = self.0.as_ptr();
+        unsafe {
+            let ptr = ptr as *mut u8;
+            // Set the signature encoding type to Compressed
+            ptr.write_bytes(TransactionPublicKeyEncoding::Compressed as u8, 1);
+            // zeroize the signature
+            ptr.write_bytes(0, SIGNATURE_LEN);
         }
     }
 }
@@ -213,6 +306,26 @@ impl<'a> MultisigSpendingCondition<'a> {
             .map(|num| num.1)
             .map_err(|_| ParserError::parser_unexpected_value)
     }
+
+    fn clear_signature(&mut self) {
+        let ptr = self.0.as_ptr();
+        // clear all the multisig data except for the last 2-bytes
+        // which are the signature count
+        let len = self.0.len() - 2;
+        unsafe {
+            let ptr = ptr as *mut u8;
+            // zeroize the auth fields
+            ptr.write_bytes(0, len);
+        }
+    }
+
+    // If it is a multisig sponsor
+    // then clear it as a singlesig spending condition
+    fn clear_as_singlesig(&mut self) {
+        // TODO: check if it involves shrinking
+        // the general transaction buffer
+        todo!();
+    }
 }
 
 impl<'a> TransactionSpendingCondition<'a> {
@@ -244,6 +357,10 @@ impl<'a> TransactionSpendingCondition<'a> {
         self.signer.signer_address(chain)
     }
 
+    pub fn signer_pub_key_hash(&self) -> &[u8] {
+        self.signer.pub_key_hash()
+    }
+
     #[inline(never)]
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         self.signer.nonce_str()
@@ -262,14 +379,14 @@ impl<'a> TransactionSpendingCondition<'a> {
         self.signer.fee().unwrap_or(0)
     }
 
-    pub fn is_single_signature(&self) -> bool {
+    pub fn is_singlesig(&self) -> bool {
         match self.signature {
             SpendingConditionSignature::Singlesig(..) => true,
             _ => false,
         }
     }
 
-    pub fn is_multi_signature(&self) -> bool {
+    pub fn is_multisig(&self) -> bool {
         match self.signature {
             SpendingConditionSignature::Multisig(..) => true,
             _ => false,
@@ -288,6 +405,33 @@ impl<'a> TransactionSpendingCondition<'a> {
             SpendingConditionSignature::Multisig(ref sig) => sig.required_signatures().ok(),
             _ => None,
         }
+    }
+
+    pub fn init_sighash(&self, buf: &mut [u8]) -> Result<usize, ()> {
+        let buf_len = buf.len();
+
+        if self.is_singlesig() && buf_len >= STANDARD_SINGLESIG_AUTH_LEN {
+            // fills:
+            // 16-byte origins fee and nonce
+            // 66-byte origins signature and key encoding
+            buf.iter_mut()
+                .take(STANDARD_SINGLESIG_AUTH_LEN)
+                .for_each(|v| *v = 0);
+
+            return Ok(STANDARD_SINGLESIG_AUTH_LEN);
+        } else if self.is_multisig() && buf_len >= STANDARD_MULTISIG_AUTH_LEN {
+            // fills with zeroes
+            // 16-byte fee and nonce
+            // 4-byte signature fields count
+            buf.iter_mut().take(20).for_each(|v| *v = 0);
+
+            // append the signatures count at the end
+            if let Some(count) = self.required_signatures() {
+                buf[20..STANDARD_MULTISIG_AUTH_LEN].copy_from_slice(&count.to_be_bytes());
+                return Ok(STANDARD_MULTISIG_AUTH_LEN);
+            }
+        }
+        Err(())
     }
 }
 

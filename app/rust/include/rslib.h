@@ -26,3 +26,15 @@ parser_error_t _getItem(const parser_context_t *ctx,
                               uint8_t pageIdx, uint8_t *pageCount,
                               const parser_tx_t *v);
 
+/****************************** Getters for the required information for signing*******************/
+
+parser_error_t _auth_flag(const parser_tx_t *v, uint8_t *auth_flag);
+
+uint8_t _fee_bytes(const parser_tx_t *v, uint8_t *fee, uint16_t fee_len);
+uint8_t _nonce_bytes(const parser_tx_t *v, uint8_t *nonce, uint16_t nonce_len);
+
+parser_error_t _check_pubkey_hash(const parser_tx_t *v, const uint8_t *pubKey, uint16_t pubKeyLen);
+
+uint16_t _presig_hash_data(const parser_tx_t *v, uint8_t *buf, uint16_t bufLen);
+
+uint8_t* _last_block_ptr(const parser_tx_t *v);

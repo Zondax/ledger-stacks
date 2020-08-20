@@ -5,8 +5,14 @@ use nom::{
 };
 
 use crate::check_canary;
-use crate::parser::parser_common::ParserError;
+use crate::parser::parser_common::{ParserError, SignerId};
 use crate::parser::spending_condition::TransactionSpendingCondition;
+
+// The sponsor sentinel length that includes:
+// 21-byte pub_key hash
+// 16-byte fee and nonce
+// 66-byte signature and signature encoding
+const SPONSOR_SENTINEL_LEN: usize = 21 + 16 + 66;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -79,11 +85,71 @@ impl<'a> TransactionAuth<'a> {
             2
         }
     }
-}
 
-#[cfg(test)]
-mod test {
-    extern crate std;
-    use std::println;
-    use std::vec::Vec;
+    pub fn origin_fee(&self) -> u64 {
+        match self {
+            Self::Standard(ref origin) => origin.fee(),
+            Self::Sponsored(ref origin, _) => origin.fee(),
+        }
+    }
+
+    pub fn origin_nonce(&self) -> u64 {
+        match self {
+            Self::Standard(ref origin) => origin.nonce(),
+            Self::Sponsored(ref origin, _) => origin.nonce(),
+        }
+    }
+
+    pub fn sponsor_fee(&self) -> Option<u64> {
+        match self {
+            Self::Standard(_) => None,
+            Self::Sponsored(_, ref sponsor) => Some(sponsor.fee()),
+        }
+    }
+
+    pub fn sponsor_nonce(&self) -> Option<u64> {
+        match self {
+            Self::Standard(_) => None,
+            Self::Sponsored(_, ref sponsor) => Some(sponsor.nonce()),
+        }
+    }
+
+    pub fn check_signer(&self, signer_pk: &[u8]) -> SignerId {
+        match self {
+            Self::Standard(ref origin) => {
+                if signer_pk == origin.signer_pub_key_hash() {
+                    return SignerId::Origin;
+                }
+            }
+            Self::Sponsored(ref origin, ref sponsor) => {
+                if signer_pk == origin.signer_pub_key_hash() {
+                    return SignerId::Origin;
+                } else if signer_pk == sponsor.signer_pub_key_hash() {
+                    return SignerId::Sponsor;
+                }
+            }
+        }
+        SignerId::Invalid
+    }
+
+    pub fn initial_sighash_auth(&self, buf: &mut [u8]) -> Result<usize, ()> {
+        match self {
+            Self::Standard(ref origin) => origin.init_sighash(buf),
+            Self::Sponsored(ref origin, _) => {
+                let len = origin.init_sighash(buf)?;
+                TransactionAuth::write_sponsor_sentinel(&mut buf[len..])
+            }
+        }
+    }
+
+    pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ()> {
+        if buf.len() < SPONSOR_SENTINEL_LEN {
+            return Err(());
+        }
+        buf.iter_mut()
+            .take(SPONSOR_SENTINEL_LEN)
+            .for_each(|v| *v = 0);
+
+        Ok(SPONSOR_SENTINEL_LEN)
+    }
 }

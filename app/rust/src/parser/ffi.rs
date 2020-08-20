@@ -128,3 +128,92 @@ pub extern "C" fn _getItem(
         ParserError::parser_context_mismatch as _
     }
 }
+
+#[no_mangle]
+pub extern "C" fn _auth_flag(tx_t: *const parse_tx_t, auth_flag: *mut u8) -> u32 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        unsafe {
+            *auth_flag = tx.auth_flag() as u8;
+            ParserError::parser_ok as _
+        }
+    } else {
+        ParserError::parser_context_mismatch as _
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn _fee_bytes(tx_t: *const parse_tx_t, fee: *mut u8, fee_len: u16) -> u8 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        unsafe {
+            let fee_bytes = if let Some(fee) = tx.fee() {
+                fee.to_be_bytes()
+            } else {
+                return 0;
+            };
+
+            if fee_bytes.len() <= fee_len as usize {
+                fee.copy_from(fee_bytes.as_ptr(), fee_bytes.len());
+                return fee_bytes.len() as u8;
+            }
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn _nonce_bytes(tx_t: *const parse_tx_t, nonce: *mut u8, nonce_len: u16) -> u8 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        unsafe {
+            let nonce_bytes = if let Some(nonce) = tx.nonce() {
+                nonce.to_be_bytes()
+            } else {
+                return 0;
+            };
+
+            if nonce_bytes.len() <= nonce_len as usize {
+                nonce.copy_from(nonce_bytes.as_ptr(), nonce_bytes.len());
+                return nonce_bytes.len() as u8;
+            }
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn _check_pubkey_hash(
+    tx_t: *const parse_tx_t,
+    pubKey: *const u8,
+    pubKeyLen: u16,
+) -> u8 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        unsafe {
+            if pubKey.is_null() {
+                return ParserError::parser_no_data as _;
+            }
+            let pk = core::slice::from_raw_parts(pubKey, pubKeyLen as _);
+            tx.check_signer_pk_hash(pk) as _
+        }
+    } else {
+        ParserError::parser_context_mismatch as _
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn _presig_hash_data(tx_t: *const parse_tx_t, buf: *mut u8, bufLen: u16) -> u16 {
+    let buffer = unsafe { core::slice::from_raw_parts_mut(buf, bufLen as usize) };
+
+    if let Some(tx) = transaction_from(tx_t as _) {
+        if let Ok(len) = tx.transaction_auth.initial_sighash_auth(buffer) {
+            return len as _;
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn _last_block_ptr(tx_t: *const parse_tx_t) -> *const u8 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        return tx.last_transaction_block();
+    }
+    core::ptr::null()
+}
