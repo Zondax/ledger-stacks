@@ -1,4 +1,4 @@
-import { CLA, errorCodeToString, INS, PAYLOAD_TYPE, processErrorResponse, ErrorCode } from './common';
+import { CLA, errorCodeToString, INS, PAYLOAD_TYPE, processErrorResponse, LedgerError } from './common';
 import BlockstackApp from '.';
 import { ResponseSign } from './types';
 
@@ -61,13 +61,17 @@ export async function signSendChunkv1(
     payloadType = PAYLOAD_TYPE.LAST;
   }
   return app.transport
-    .send(CLA, INS.SIGN_SECP256K1, payloadType, 0, chunk, [0x9000, 0x6984, 0x6a80])
+    .send(CLA, INS.SIGN_SECP256K1, payloadType, 0, chunk, [
+      LedgerError.NoErrors,
+      LedgerError.DataIsInvalid,
+      LedgerError.BadKeyHandle,
+    ])
     .then(response => {
       const errorCodeData = response.slice(-2);
       const returnCode = errorCodeData[0] * 256 + errorCodeData[1];
-      let errorMessage = errorCodeToString(returnCode as ErrorCode);
+      let errorMessage = errorCodeToString(returnCode as LedgerError);
 
-      if (returnCode === 0x6a80 || returnCode === 0x6984) {
+      if (returnCode === LedgerError.BadKeyHandle || returnCode === LedgerError.DataIsInvalid) {
         errorMessage = `${errorMessage} : ${response
           .slice(0, response.length - 2)
           .toString('ascii')}`;
