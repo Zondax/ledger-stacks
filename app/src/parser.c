@@ -50,6 +50,17 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
 
+    // Checks if this device is allowed to sign the transaction,
+    // being either the origin or sponsor
+    // returns parser_ok if so;
+    uint8_t pubKeyHash[CX_RIPEMD160_SIZE];
+
+    crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
+
+    if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
+        return parser_invalid_auth_type;
+
+
     uint8_t numItems = 0;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems));
 
@@ -92,6 +103,25 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
     return parser_ok;
 }
 
+parser_error_t parser_tx_auth_flag(uint8_t *flag) {
+    return _auth_flag(&parser_state, flag);
+}
+
+uint8_t parser_tx_fee(uint8_t *fee, uint16_t fee_len) {
+    return _fee_bytes(&parser_state, fee, fee_len);
+}
+
+uint8_t parser_tx_nonce(uint8_t *nonce, uint16_t nonce_len) {
+    return _nonce_bytes(&parser_state, nonce, nonce_len);
+}
+
+uint16_t parser_presig_hash_data(uint8_t *buf, uint16_t bufLen) {
+    return _presig_hash_data(&parser_state, buf, bufLen);
+}
+
+uint8_t* parser_last_transaction_block() {
+    return _last_block_ptr(&parser_state);
+}
 
 void parser_resetState() {
     zb_deallocate();

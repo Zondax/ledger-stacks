@@ -46,6 +46,25 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
                               char *outValue, uint16_t outValueLen,
                               uint8_t pageIdx, uint8_t *pageCount);
 
+
+/// Gets the transaction authorization type
+parser_error_t parser_tx_auth_flag(uint8_t *flag);
+
+/// Gets the origin fee as bytes
+uint8_t parser_tx_fee(uint8_t *fee, uint16_t fee_len);
+
+/// Gets the origin nonce as bytes
+uint8_t parser_tx_nonce(uint8_t *nonce, uint16_t nonce_len);
+
+// Writes in buf the authorization fields that are zeroize according
+// to the documentation. returns the amount of bytes written
+// the passes_in buffer is the second block for hashing
+uint16_t parser_presig_hash_data(uint8_t *buf, uint16_t bufLen);
+
+// When signing the full transaction, The transaction hash has to be done in blocks.
+// this function returns a pointer to the last transaction block
+uint8_t* parser_last_transaction_block();
+
 void parser_resetState();
 
 #ifdef __cplusplus

@@ -31,6 +31,7 @@ export interface ResponseAppInfo extends ResponseBase {
 }
 
 export interface ResponseSign extends ResponseBase {
+  postSignHash: Buffer;
   signatureCompact: Buffer;
   signatureDER: Buffer;
 }

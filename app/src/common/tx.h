@@ -18,6 +18,7 @@
 #include "os.h"
 #include "coin.h"
 #include "zxerror.h"
+#include "parser_common.h"
 
 void tx_initialize();
 
@@ -54,3 +55,18 @@ zxerr_t tx_getItem(int8_t displayIdx,
                    char *outKey, uint16_t outKeyLen,
                    char *outValue, uint16_t outValueLen,
                    uint8_t pageIdx, uint8_t *pageCount);
+
+/// Gets the transaction authorization type
+zxerr_t tx_auth_flag(uint8_t *flag);
+
+/// Gets the origin fee as bytes
+uint8_t tx_fee(uint8_t *fee, uint16_t fee_len);
+
+/// Gets the origin nonce as bytes
+uint8_t tx_nonce(uint8_t *nonce, uint16_t nonce_len);
+
+// Writes in buf, the auth fields used for the initial transaction hash
+uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen);
+
+// Returns a pointer to the last transaction chunk
+uint8_t* tx_last_tx_block();
