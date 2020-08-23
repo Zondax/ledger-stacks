@@ -125,50 +125,6 @@ impl<'a> SpendingConditionSigner<'a> {
             .map_err(|_| ParserError::parser_unexpected_value)
     }
 
-    // Before hashing the transaction for signing, the nonce
-    // and fee should be zeroize
-    fn clear(&mut self) {
-        // skips the hash-mode and public-key hash
-        let to_clear = &self.data[21..];
-        let len = to_clear.len();
-        let ptr = to_clear.as_ptr();
-        // It is not possible to get mut access to the inner array
-        // nom does not allow it, so that ptr manipulation inside
-        // an unsafe block seems to be the easiest way to modify the
-        // inner slice for clearing the nonce and fee
-        // indicated by:
-        // https://github.com/blockstack/stacks-blockchain/blob/master/sip/sip-005-blocks-and-transactions.md
-        // #transaction-signing-and-verifying
-        // step 1:
-        unsafe {
-            let ptr_mut = ptr as *mut u8;
-            let mut_slice = core::slice::from_raw_parts_mut(ptr_mut, len);
-            mut_slice.iter_mut().for_each(|x| *x = 0u8);
-            // 8-byte nonce and 8-byte fee = 16-bytes
-            //core::ptr::write_bytes(ptr_mut, 0u8, len);
-        }
-    }
-
-    // In case the signer is the origin and the transaction is sponsored, then,
-    // all of the sponsor's fields must be zeroize
-    // before hashing all of the transaction
-    fn clear_all(&mut self) {
-        let ptr = self.data.as_ptr();
-        // It is not possible to get mut access to the inner array
-        // nom does not allow it, so that ptr manipulation inside
-        // an unsafe block seems to be the easiest way to modify the
-        // inner slice for clearing the nonce and fee
-        // indicated by:
-        // https://github.com/blockstack/stacks-blockchain/blob/master/sip/sip-005-blocks-and-transactions.md
-        // #transaction-signing-and-verifying
-        // step 1:
-        unsafe {
-            let ptr = ptr as *mut u8;
-            // fills with 0 all of it
-            ptr.write_bytes(0, self.data.len());
-        }
-    }
-
     #[inline(never)]
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
