@@ -11,7 +11,8 @@ use arrayvec::ArrayVec;
 
 use crate::parser::{
     parser_common::{
-        ParserError, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, NUM_SUPPORTED_POST_CONDITIONS,
+        ParserError, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH,
+        NUM_SUPPORTED_POST_CONDITIONS,
     },
     post_condition::TransactionPostCondition,
     transaction_auth::TransactionAuth,
@@ -22,6 +23,13 @@ use crate::parser::{
 use crate::parser::ffi::fp_uint64_to_str;
 
 use crate::{check_canary, zxformat};
+
+#[repr(u8)]
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum TransactionAuthFlags {
+    Standard = 0x04,
+    Sponsored = 0x05,
+}
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -197,8 +205,7 @@ pub type TxTuple<'a> = (
     TransactionVersion, // version number
     u32,                // chainId
     TransactionAuth<'a>,
-    TransactionAnchorMode,
-    TransactionPostConditionMode, // u8
+    &'a [u8],
     PostConditions<'a>,
     TransactionPayload<'a>,
 );
@@ -209,10 +216,11 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
             version: (raw.1).0,
             chain_id: (raw.1).1,
             transaction_auth: (raw.1).2,
-            anchor_mode: (raw.1).3,
-            post_condition_mode: (raw.1).4,
-            post_conditions: (raw.1).5,
-            payload: (raw.1).6,
+            transaction_modes: (raw.1).3,
+            post_conditions: (raw.1).4,
+            payload: (raw.1).5,
+            // At this point the signer is unknown
+            signer: SignerId::Invalid,
             remainder: raw.0,
         }
     }
@@ -224,10 +232,10 @@ pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
     pub transaction_auth: TransactionAuth<'a>,
-    pub anchor_mode: TransactionAnchorMode,
-    pub post_condition_mode: TransactionPostConditionMode,
+    pub transaction_modes: &'a [u8],
     pub post_conditions: PostConditions<'a>,
     pub payload: TransactionPayload<'a>,
+    signer: SignerId,
     pub remainder: &'a [u8],
 }
 
@@ -251,6 +259,9 @@ impl<'a> Transaction<'a> {
         if is_token_transfer && !is_standard_auth {
             return Err(ParserError::parser_invalid_transaction_payload);
         }
+
+        // At this point we do not know who the signer is
+        self.signer = SignerId::Invalid;
         Ok(())
     }
 
@@ -283,13 +294,12 @@ impl<'a> Transaction<'a> {
 
     #[inline(never)]
     fn read_transaction_modes(&mut self) -> Result<(), ParserError> {
-        let (raw, anchor) = TransactionAnchorMode::from_bytes(self.remainder)
-            .map_err(|_| ParserError::parser_unexpected_value)?;
-        let (raw2, mode) = TransactionPostConditionMode::from_bytes(raw)
-            .map_err(|_| ParserError::parser_post_condition_failed)?;
-        self.anchor_mode = anchor;
-        self.post_condition_mode = mode;
-        self.update_remainder(raw2);
+        // two modes are included here,
+        // anchor mode and postcondition mode
+        let (raw, modes) = take::<_, _, ParserError>(2usize)(self.remainder)
+            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+        self.transaction_modes = modes;
+        self.update_remainder(raw);
         check_canary!();
         Ok(())
     }
@@ -320,8 +330,7 @@ impl<'a> Transaction<'a> {
             TransactionVersion::from_bytes,
             be_u32,
             TransactionAuth::from_bytes,
-            TransactionAnchorMode::from_bytes,
-            TransactionPostConditionMode::from_bytes,
+            take(2usize),
             PostConditions::from_bytes,
             TransactionPayload::from_bytes,
         ))(bytes)
@@ -329,7 +338,7 @@ impl<'a> Transaction<'a> {
             Ok(tx) => {
                 // Note that if a transaction contains a token-transfer payload,
                 // it MUST have only a standard authorization field. It cannot be sponsored.
-                if (tx.1).6.is_token_transfer_payload() && !(tx.1).2.is_standard_auth() {
+                if (tx.1).5.is_token_transfer_payload() && !(tx.1).2.is_standard_auth() {
                     return Err(ParserError::parser_invalid_transaction_payload);
                 }
                 Ok(Self::from(tx))
@@ -357,7 +366,19 @@ impl<'a> Transaction<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let mut writer_key = zxformat::Writer::new(out_key);
+
+        #[cfg(test)]
         let origin = self.transaction_auth.origin();
+
+        #[cfg(not(test))]
+        let origin = match self.signer {
+            SignerId::Origin => self.transaction_auth.origin(),
+            SignerId::Sponsor => self
+                .transaction_auth
+                .sponsor()
+                .ok_or(ParserError::parser_invalid_auth_type)?,
+            _ => return Err(ParserError::parser_invalid_auth_type),
+        };
 
         match display_idx {
             // The address of who signed this transaction
@@ -433,6 +454,67 @@ impl<'a> Transaction<'a> {
         } else {
             self.get_other_items(display_idx, out_key, out_value, page_idx)
         }
+    }
+
+    pub fn origin_fee(&self) -> u64 {
+        self.transaction_auth.origin_fee()
+    }
+
+    pub fn origin_nonce(&self) -> u64 {
+        self.transaction_auth.origin_nonce()
+    }
+
+    pub fn sponsor_fee(&self) -> Option<u64> {
+        self.transaction_auth.sponsor_fee()
+    }
+
+    pub fn sponsor_nonce(&self) -> Option<u64> {
+        self.transaction_auth.sponsor_nonce()
+    }
+
+    // Returns the transaction nonce according to
+    // who the signer is. The signer could be the Origin, a sponsor
+    // or Invalid that happens when its credentials are not present
+    // in the transaction
+    pub fn nonce(&self) -> Option<u64> {
+        match self.signer {
+            SignerId::Origin => Some(self.origin_nonce()),
+            SignerId::Sponsor => self.sponsor_nonce(),
+            SignerId::Invalid => None,
+        }
+    }
+
+    // Returns the transaction fee according to
+    // who the signer is. The signer could be the Origin, Sponsor
+    // or Invalid, the later that happens when its credentials are not present
+    // in the transaction
+    pub fn fee(&self) -> Option<u64> {
+        match self.signer {
+            SignerId::Origin => Some(self.origin_fee()),
+            SignerId::Sponsor => self.sponsor_fee(),
+            SignerId::Invalid => None,
+        }
+    }
+
+    pub fn auth_flag(&self) -> TransactionAuthFlags {
+        if self.transaction_auth.is_standard_auth() {
+            return TransactionAuthFlags::Standard;
+        }
+        TransactionAuthFlags::Sponsored
+    }
+
+    pub fn check_signer_pk_hash(&mut self, signer_pk: &[u8]) -> ParserError {
+        self.signer = self.transaction_auth.check_signer(signer_pk);
+        if self.signer != SignerId::Invalid {
+            return ParserError::parser_ok;
+        }
+        ParserError::parser_invalid_auth_type
+    }
+
+    // returns a pointer to the last transaction block which includes every thing after the
+    // transaction authorization field.
+    pub fn last_transaction_block(&self) -> *const u8 {
+        self.transaction_modes.as_ptr()
     }
 
     #[cfg(test)]
@@ -622,10 +704,10 @@ mod test {
             .1;
         assert!(post_condition.is_stx());
         let condition_code = post_condition.fungible_condition_code().unwrap();
-        assert_eq!(condition_code, FungibleConditionCode::SentGt);
+        assert_eq!(condition_code, FungibleConditionCode::SentGe);
         let stx_condition_amount = post_condition.amount_stx().unwrap();
-        assert_eq!(0, stx_condition_amount);
-        assert!(post_condition.is_origin_principal());
+        assert_eq!(12345, stx_condition_amount);
+        assert!(!post_condition.is_origin_principal());
         assert!(Transaction::validate(&mut transaction).is_ok());
     }
 

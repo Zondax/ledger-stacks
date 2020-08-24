@@ -191,6 +191,16 @@ impl From<ParserError> for nom::Err<ParserError> {
     }
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, PartialEq, Copy)]
+// Flag used to know if the signer is valid and
+// who is
+pub enum SignerId {
+    Origin,
+    Sponsor,
+    Invalid,
+}
+
 // tag address hash modes as "singlesig" or "multisig" so we can't accidentally construct an
 // invalid spending condition
 #[repr(u8)]

@@ -59,8 +59,7 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
 
     address_temp_t address_temp;
 
-    cx_hash_sha256(answer->publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
-    ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, address_temp.hash_ripe);         // RIPEMD-160
+    crypto_extractPublicKeyHash(address_temp.hash_ripe, CX_RIPEMD160_SIZE);
 
     uint8_t version = COIN_VERSION_MAINNET_SINGLESIG;
     if (isTestnet()) {
@@ -112,7 +111,27 @@ void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *p
     memcpy(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
 }
 
+
+void crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
+
+    if (pubKeyLen < CX_RIPEMD160_SIZE || pubKeyHash == NULL)
+        return;
+
+    // gets the raw public key
+    uint8_t publicKey[PK_LEN_SECP256K1];
+
+    crypto_extractPublicKey(hdPath, publicKey, PK_LEN_SECP256K1);
+
+    // calculates the sha256 + ripemd160
+    address_temp_t address_temp;
+
+    cx_hash_sha256(publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
+    ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, pubKeyHash);         // RIPEMD-160
+
+}
+
 typedef struct {
+    uint8_t post_sighash[32];
     uint8_t r[32];
     uint8_t s[32];
     uint8_t v;
@@ -176,8 +195,10 @@ uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *m
     }
 
     // return actual size using value from signatureLength
-    return sizeof_field(signature_t, r) + sizeof_field(signature_t, s) + sizeof_field(signature_t, v) + signatureLength;
+    return sizeof_field(signature_t, r) + sizeof_field(signature_t, s) + sizeof_field(signature_t, v)
+        + sizeof_field(signature_t, post_sighash) + signatureLength;
 }
 
 #endif
+
 

@@ -136,3 +136,25 @@ zxerr_t tx_getItem(int8_t displayIdx,
 
     return zxerr_ok;
 }
+
+zxerr_t tx_auth_flag(uint8_t *flag) {
+    if (parser_tx_auth_flag(flag) != parser_ok)
+        return zxerr_unknown;
+    return zxerr_ok;
+}
+
+uint8_t tx_fee(uint8_t *fee, uint16_t fee_len){
+    return parser_tx_fee(fee, fee_len);
+}
+
+uint8_t tx_nonce(uint8_t *nonce, uint16_t nonce_len) {
+    return parser_tx_nonce(nonce, nonce_len);
+}
+
+uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen) {
+    parser_presig_hash_data(buf, bufLen);
+}
+
+uint8_t* tx_last_tx_block() {
+    return parser_last_transaction_block();
+}
