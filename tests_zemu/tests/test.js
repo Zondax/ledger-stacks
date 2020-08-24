@@ -17,6 +17,8 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
+import { makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
+const BN = require('bn.js');
 
 const Resolve = require("path").resolve;
 const APP_PATH = Resolve("../app/bin/app.elf");
@@ -98,7 +100,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('show address', async function () {
+    test.skip('show address', async function () {
         const snapshotPrefixGolden = "snapshots/show-address/";
         const snapshotPrefixTmp = "snapshots-tmp/show-address/";
         let snapshotCount = 0;
@@ -133,7 +135,59 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign', async function () {
+    test('test signature', async function () {
+        const sim = new Zemu(APP_PATH);
+        const network = new StacksTestnet();
+        const senderKey = '5db4f7bb20960c6b1ceaa599576c3f01ec96448dc33d7894cc187b941f15cd3201';
+        // uses the provided privKey to derive a pubKey using stacks API
+        // we expect the derived publicKey to be same as the ledger-app
+        const expected_publicKey = pubKeyfromPrivKey(senderKey);
+
+        const unsignedTx = await makeUnsignedSTXTokenTransfer({
+            recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
+            network,
+            amount: new BN(1),
+            fee: new BN(0),
+            nonce: new BN(0),
+            publicKey: expected_publicKey,
+        });
+        try {
+            console.log(unsignedTx);
+
+            await sim.start(simOptions);
+            const app = new BlockstackApp(sim.getTransport());
+
+            const blob = Buffer.from(unsignedTx.serialize());
+
+            // First test the public keys
+            const resp = await app.getAddressAndPubKey("m/44'/5757'/0'/0/0");
+
+            expect(resp.returnCode).toEqual(0x9000);
+            expect(resp.errorMessage).toEqual("No errors");
+            console.log(resp);
+            // Check if the pub_keys are the same
+            expect(resp.publicKey.toString('hex')).toEqual(expected_publicKey.data.toString('hex'));
+
+            // Check the signature
+            const signatureRequest = app.sign("m/44'/5757'/0'/0/0", blob);
+
+            // Wait until we are not in the main menu
+            await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
+
+            await logSnapshotsAndAccept(sim, "sign", 9);
+
+            let signature = await signatureRequest;
+            console.log(signature)
+
+            expect(signature.returnCode).toEqual(0x9000);
+
+
+        } finally {
+            await sim.close();
+        }
+    });
+
+    test.skip('sign', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -160,7 +214,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign stx_token_transfer_with_postcondition', async function () {
+    test.skip('sign stx_token_transfer_with_postcondition', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
