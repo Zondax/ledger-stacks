@@ -16,7 +16,7 @@
     "zondax"
   ],
   "dependencies": {
-    "@zondax/ledger-blockstack": "file:../js",
+    "@zondax/ledger-blockstack": "^0.0.1",
     "@zondax/zemu": "^0.5.1"
   },
   "devDependencies": {
