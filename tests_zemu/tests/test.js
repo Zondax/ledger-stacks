@@ -17,7 +17,7 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
-import { makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
+import { makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
 const BN = require('bn.js');
 
 const Resolve = require("path").resolve;
@@ -138,35 +138,32 @@ describe('Basic checks', function () {
     test('test signature', async function () {
         const sim = new Zemu(APP_PATH);
         const network = new StacksTestnet();
-        const senderKey = '5db4f7bb20960c6b1ceaa599576c3f01ec96448dc33d7894cc187b941f15cd3201';
+        const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216';
         // uses the provided privKey to derive a pubKey using stacks API
         // we expect the derived publicKey to be same as the ledger-app
         const expected_publicKey = pubKeyfromPrivKey(senderKey);
+
+        const signedTx = await makeSTXTokenTransfer({
+            senderKey,
+            recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
+            network,
+            amount: new BN(1),
+        });
+
+        const testPublicKey = Buffer.from("02e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f", "hex");
 
         const unsignedTx = await makeUnsignedSTXTokenTransfer({
             recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
             network,
             amount: new BN(1),
-            fee: new BN(0),
-            nonce: new BN(0),
-            publicKey: expected_publicKey,
+            publicKey: testPublicKey,
         });
         try {
-            console.log(unsignedTx);
 
             await sim.start(simOptions);
             const app = new BlockstackApp(sim.getTransport());
 
             const blob = Buffer.from(unsignedTx.serialize());
-
-            // First test the public keys
-            const resp = await app.getAddressAndPubKey("m/44'/5757'/0'/0/0");
-
-            expect(resp.returnCode).toEqual(0x9000);
-            expect(resp.errorMessage).toEqual("No errors");
-            console.log(resp);
-            // Check if the pub_keys are the same
-            expect(resp.publicKey.toString('hex')).toEqual(expected_publicKey.data.toString('hex'));
 
             // Check the signature
             const signatureRequest = app.sign("m/44'/5757'/0'/0/0", blob);
@@ -174,10 +171,16 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "sign", 9);
+            await logSnapshotsAndAccept(sim, "signatureTest", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
+
+            let js_signature = signedTx.auth.spendingCondition?.signature.signature;
+            console.log('js_signature ', js_signature);
+            console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
+            console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
+
 
             expect(signature.returnCode).toEqual(0x9000);
 
