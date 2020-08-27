@@ -31,23 +31,6 @@ const simOptions = {
 
 jest.setTimeout(20000)
 
-async function logSnapshotsAndAccept(sim, testcaseName, snapshotCount) {
-    const snapshotPrefixGolden = `snapshots/${testcaseName}/`;
-    const snapshotPrefixTmp = `snapshots-tmp/${testcaseName}/`;
-    await sim.snapshot(`${snapshotPrefixTmp}0.png`);
-    let i = 1;
-    for (; i < snapshotCount; i++) {
-        await sim.clickRight(`${snapshotPrefixTmp}${i}.png`);
-    }
-    await sim.clickBoth(`${snapshotPrefixTmp}${i++}.png`);
-
-    for (let i = 0; i < snapshotCount; i++) {
-        const img1 = Zemu.LoadPng2RGB(`${snapshotPrefixTmp}${i}.png`);
-        const img2 = Zemu.LoadPng2RGB(`${snapshotPrefixGolden}${i}.png`);
-        expect(img1).toEqual(img2);
-    }
-}
-
 describe('Basic checks', function () {
     it('can start and stop container', async function () {
         const sim = new Zemu(APP_PATH);
@@ -99,10 +82,6 @@ describe('Basic checks', function () {
     });
 
     test('show address', async function () {
-        const snapshotPrefixGolden = "snapshots/show-address/";
-        const snapshotPrefixTmp = "snapshots-tmp/show-address/";
-        let snapshotCount = 0;
-
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -115,7 +94,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "show-address", 3);
+            await sim.compareSnapshotsAndAccept(".", "show-address", 3);
 
             const resp = await respRequest;
             console.log(resp);
@@ -147,7 +126,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "sign", 9);
+            await sim.compareSnapshotsAndAccept(".", "sign", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -173,7 +152,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "sign_stx_token_transfer_with_postcondition", 13);
+            await sim.compareSnapshotsAndAccept(".", "sign_stx_token_transfer_with_postcondition", 13);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -198,7 +177,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "sign_sponsored_smart_contract_tx", 6);
+            await sim.compareSnapshotsAndAccept(".", "sign_sponsored_smart_contract_tx", 6);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -222,7 +201,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "sign_standard_smart_contract_tx", 6);
+            await sim.compareSnapshotsAndAccept(".", "sign_standard_smart_contract_tx", 6);
 
             let signature = await signatureRequest;
             console.log("Signature: ")
@@ -247,7 +226,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "sign_standard_contract_call_tx", 9);
+            await sim.compareSnapshotsAndAccept(".", "sign_standard_contract_call_tx", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -271,7 +250,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await logSnapshotsAndAccept(sim, "sign_sponsored_contract_call_tx", 9);
+            await sim.compareSnapshotsAndAccept(".", "sign_sponsored_contract_call_tx", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -296,7 +275,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await logSnapshotsAndAccept(sim, "sign_contract_call_with_postcondition_tx", 14);
+            await sim.compareSnapshotsAndAccept(".", "sign_contract_call_with_postcondition_tx", 14);
 
             let signature = await signatureRequest;
             console.log(signature)
@@ -323,7 +302,7 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-            await logSnapshotsAndAccept(sim, "sign_sponsored_contract_call_tx_with_7_postconditions", 37);
+            await sim.compareSnapshotsAndAccept(".", "sign_sponsored_contract_call_tx_with_7_postconditions", 37);
 
             let signature = await signatureRequest;
             console.log(signature)
