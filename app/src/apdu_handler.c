@@ -24,6 +24,8 @@
 #include "view.h"
 #include "actions.h"
 #include "tx.h"
+#include "addr.h"
+#include "crypto.h"
 #include "coin.h"
 #include "zxmacros.h"
 
@@ -34,7 +36,10 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
 
     if (requireConfirmation) {
         app_fill_address(addr_secp256k1);
-        view_address_show(addr_secp256k1);
+
+        view_review_init(addr_getItem, addr_getNumItems, app_reply_address);
+        view_review_show();
+
         *flags |= IO_ASYNCH_REPLY;
         return;
     }
@@ -59,7 +64,9 @@ __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t 
 
     zemu_log_stack("tx_parse done");
 
-    view_sign_show();
+    CHECK_APP_CANARY()
+    view_review_init(tx_getItem, tx_getNumItems, app_sign);
+    view_review_show();
     *flags |= IO_ASYNCH_REPLY;
 }
 
