@@ -17,7 +17,7 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
-import { makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
+import { TransactionSigner, makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
 const BN = require('bn.js');
 
 const Resolve = require("path").resolve;
@@ -142,6 +142,7 @@ describe('Basic checks', function () {
         // uses the provided privKey to derive a pubKey using stacks API
         // we expect the derived publicKey to be same as the ledger-app
         const expected_publicKey = pubKeyfromPrivKey(senderKey);
+        const testPublicKey = Buffer.from("02e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f", "hex");
 
         const signedTx = await makeSTXTokenTransfer({
             senderKey,
@@ -150,14 +151,14 @@ describe('Basic checks', function () {
             amount: new BN(1),
         });
 
-        const testPublicKey = Buffer.from("02e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f", "hex");
-
         const unsignedTx = await makeUnsignedSTXTokenTransfer({
             recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
             network,
             amount: new BN(1),
             publicKey: testPublicKey,
         });
+
+        console.log('tx_hash: ', unsignedTx.signBegin());
         try {
 
             await sim.start(simOptions);
