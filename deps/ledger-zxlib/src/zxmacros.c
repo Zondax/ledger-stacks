@@ -28,7 +28,7 @@ size_t asciify_ext(const char *utf8_in, char *ascii_only_out) {
     while (*((char *) p) && utf8valid(p) == 0) {
         utf8_int32_t tmp_codepoint = 0;
         p = utf8codepoint(p, &tmp_codepoint);
-        *q = (tmp_codepoint >= 32 && tmp_codepoint <= 0x7F) ? tmp_codepoint : '.';
+        *q = (char) ((tmp_codepoint >= 32 && tmp_codepoint <= (int32_t) 0x7F) ? tmp_codepoint : '.');
         q++;
     }
 
@@ -64,7 +64,6 @@ void zemu_log_stack(char *ctx) {
             (uint32_t)((void*)&p)+STACK_SHIFT - (uint32_t)&app_stack_canary,
             ctx);
     zemu_log(buf);
-    CHECK_APP_CANARY()
 #endif
 #endif
 }

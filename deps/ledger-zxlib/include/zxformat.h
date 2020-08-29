@@ -19,6 +19,8 @@
 extern "C" {
 #endif
 
+#include "zxmacros.h"
+
 #define NUM_TO_STR(TYPE) __Z_INLINE const char * TYPE##_to_str(char *data, int dataLen, TYPE##_t number) { \
     if (dataLen < 2) return "Buffer too small";     \
     MEMZERO(data, dataLen);                         \
@@ -60,7 +62,7 @@ __Z_INLINE void bip32_to_str(char *s, uint32_t max, const uint32_t *path, uint8_
 
     uint32_t offset = 0;
     for (uint16_t i = 0; i < pathLen; i++) {
-        size_t written = 0;
+        size_t written;
 
         // Warning: overcomplicated because Ledger's snprintf does not return number of written bytes
 
@@ -155,6 +157,8 @@ __Z_INLINE int64_t str_to_int64(const char *start, const char *end, char *error)
     return value * sign;
 }
 
+uint8_t intstr_to_fpstr_inplace(char *number, size_t number_max_size, uint8_t decimalPlaces);
+
 __Z_INLINE uint8_t fpstr_to_str(char *out, uint16_t outLen, const char *number, uint8_t decimals) {
     MEMZERO(out, outLen);
     size_t digits = strlen(number);
@@ -200,7 +204,7 @@ __Z_INLINE uint16_t fpuint64_to_str(char *out, uint16_t outLen, const uint64_t v
     MEMZERO(buffer, sizeof(buffer));
     int64_to_str(buffer, sizeof(buffer), value);
     fpstr_to_str(out, outLen, buffer, decimals);
-    uint16_t len = strlen(out);
+    uint16_t len = (uint16_t) strlen(out);
     return len;
 }
 
@@ -220,7 +224,7 @@ __Z_INLINE void number_inplace_trimming(char *s) {
         return;
     }
 
-    for (int16_t i = (int16_t) len - 1; i > (dec_point + 1) && s[i] == '0'; i--) {
+    for (int16_t i = (int16_t) (len - 1); i > (dec_point + 1) && s[i] == '0'; i--) {
         s[i] = 0;
     }
 }
@@ -247,7 +251,7 @@ __Z_INLINE uint32_t array_to_hexstr(char *dst, uint16_t dstLen, const uint8_t *s
     }
     *dst = 0; // terminate string
 
-    return count * 2;
+    return (uint32_t) (count * 2);
 }
 
 __Z_INLINE void pageStringExt(char *outValue, uint16_t outValueLen,
@@ -265,7 +269,7 @@ __Z_INLINE void pageStringExt(char *outValue, uint16_t outValueLen,
         return;
     }
 
-    *pageCount = (inValueLen / outValueLen);
+    *pageCount = (uint8_t) (inValueLen / outValueLen);
     const uint16_t lastChunkLen = (inValueLen % outValueLen);
 
     if (lastChunkLen > 0) {
@@ -284,7 +288,7 @@ __Z_INLINE void pageStringExt(char *outValue, uint16_t outValueLen,
 __Z_INLINE void pageString(char *outValue, uint16_t outValueLen,
                            const char *inValue,
                            uint8_t pageIdx, uint8_t *pageCount) {
-    pageStringExt(outValue, outValueLen, inValue, strlen(inValue), pageIdx, pageCount);
+    pageStringExt(outValue, outValueLen, inValue, (uint16_t) strlen(inValue), pageIdx, pageCount);
 }
 
 size_t asciify(char *utf8_in);
