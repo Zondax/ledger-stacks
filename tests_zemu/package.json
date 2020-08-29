@@ -36,6 +36,7 @@
     "eslint-plugin-jest": "^23.20.0",
     "eslint-plugin-prettier": "^3.1.4",
     "jest": "26.4.2",
-    "jest-serial-runner": "^1.1.0"
+    "jest-serial-runner": "^1.1.0",
+    "elliptic": "^6.5.3"
   }
 }
