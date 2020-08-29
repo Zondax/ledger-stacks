@@ -47,7 +47,7 @@ COIN=STX
 endif
 
 APPVERSION_M=0
-APPVERSION_N=7
+APPVERSION_N=8
 APPVERSION_P=0
 
 $(info COIN      = [$(COIN)])
@@ -56,6 +56,9 @@ ifeq ($(COIN),STX)
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
 APPPATH = "44'/5757'"
+ifeq ($(TARGET_NAME),TARGET_NANOS)
+SCRIPT_LD:=$(CURDIR)/script.ld
+endif
 
 else ifeq ($(COIN),STX_variant1)
 else
@@ -72,7 +75,6 @@ endif
 APP_LOAD_PARAMS = --appFlags 0x200 --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
 
 ifeq ($(TARGET_NAME),TARGET_NANOS)
-SCRIPT_LD:=$(CURDIR)/script.ld
 ICONNAME:=$(CURDIR)/nanos_icon.gif
 endif
 
@@ -131,6 +133,8 @@ endif
 
 # X specific
 
+# App specific
+
 #Feature temporarily disabled
 DEFINES   += LEDGER_SPECIFIC
 
@@ -174,6 +178,7 @@ APP_SOURCE_PATH += $(MY_DIR)/rust/include
 APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/include
 APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/src
 APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/app/common
+APP_SOURCE_PATH += $(MY_DIR)/../deps/sha512
 
 SDK_SOURCE_PATH += lib_stusb lib_stusb_impl
 SDK_SOURCE_PATH  += lib_ux

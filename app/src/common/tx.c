@@ -152,7 +152,7 @@ uint8_t tx_nonce(uint8_t *nonce, uint16_t nonce_len) {
 }
 
 uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen) {
-    parser_presig_hash_data(buf, bufLen);
+    return parser_presig_hash_data(buf, bufLen);
 }
 
 uint8_t* tx_last_tx_block() {

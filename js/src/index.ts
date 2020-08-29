@@ -166,6 +166,7 @@ export default class BlockstackApp {
         let result = {
           returnCode: response.returnCode,
           errorMessage: response.errorMessage,
+          postSignHash: null as null | Buffer,
           signatureCompact: null as null | Buffer,
           signatureDER: null as null | Buffer,
         };

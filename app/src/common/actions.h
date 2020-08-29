@@ -22,6 +22,8 @@
 #include "apdu_codes.h"
 #include <os_io_seproxyhal.h>
 #include "coin.h"
+#include "zxformat.h"
+#include "sha512.h"
 
 // The initial tx hash is done in 3 blocks
 // this is the length in bytes of the first block
@@ -73,14 +75,14 @@ __Z_INLINE void app_sign() {
     memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
     // set the signing public key's encoding byte, it is compressed
-    post_sighash_data[CX_SHA256_SIZE] = 0x00;
+    post_sighash_data[CX_SHA256_SIZE] = 0x00; // migth be 0x02
     // copy the ECDSA (r,s,v) signature
     memcpy(&post_sighash_data[CX_SHA256_SIZE + 1], &G_io_apdu_buffer[32], 65);
 
     // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
-    cx_sha256_t ctx;
-    cx_sha256_init(&ctx);
-    cx_hash(&ctx.header, CX_LAST, post_sighash_data, POST_SIGNHASH_DATA_LEN, G_io_apdu_buffer, CX_SHA256_SIZE);
+    uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+    SHA512_256(post_sighash_data, POST_SIGNHASH_DATA_LEN, hash_temp);
+    memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
 
     if (replyLen > 0) {
         set_code(G_io_apdu_buffer, replyLen, APDU_CODE_OK);
@@ -127,22 +129,28 @@ __Z_INLINE void app_reply_error() {
 
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     uint8_t tx_auth[INITIAL_SIGHASH_AUTH_LEN];
+    MEMZERO(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
     uint8_t presig_data[PRESIG_DATA_LEN];
+    uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
     // Before hashing the transaction the auth field should be cleared
     // and the sponsor set to signing sentinel.
-    uint16_t auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
+    uint16_t auth_len = 0;
+    auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
 
     // Init the hasher
-    cx_sha256_t ctx;
-    cx_sha256_init(&ctx);
+    //cx_sha256_t ctx;
+    //cx_sha256_init(&ctx);
+    sha512_256_ctx ctx;
+    SHA512_256_init(&ctx);
+    SHA512_256_starts(&ctx);
 
     const uint8_t *message = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
     const uint16_t messageLength = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     // Update the hasher with the first and second block of bytes
-    cx_hash(&ctx.header, 0, message, TRANSACTION_FIRST_BLOCK_LEN, NULL, 0);
-    cx_hash(&ctx.header, 0, tx_auth, auth_len, NULL, 0);
+    SHA512_256_update(&ctx, message, TRANSACTION_FIRST_BLOCK_LEN);
+    SHA512_256_update(&ctx, tx_auth, auth_len);
 
     // prepare the last transaction block to be hashed
     uint8_t* last_block = NULL;
@@ -158,7 +166,16 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
 
     // gets the full transaction hash used for signing and copies the result into the first
     // 32-bytes of presig_data
-    cx_hash(&ctx.header, CX_LAST, last_block, last_block_len, presig_data, CX_SHA256_SIZE);
+    SHA512_256_update(&ctx, last_block, last_block_len);
+    SHA512_256_finish(&ctx, hash_temp);
+    memcpy(presig_data, hash_temp, CX_SHA256_SIZE);
+    {
+        zemu_log("tx_hash: ***");
+        char buffer[65];
+        array_to_hexstr(buffer, 65, presig_data, CX_SHA256_SIZE);
+        zemu_log(buffer);
+        zemu_log("\n");
+    }
 
     // now append the auth-flag, fee and nonce
     uint8_t idx = CX_SHA256_SIZE;
@@ -173,12 +190,16 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     // append the 8-byte transaction nonce
     idx += tx_nonce(&presig_data[idx], 8);
 
-    if (hashLen < CX_SHA256_SIZE)
+    if (hashLen < CX_SHA256_SIZE || idx != PRESIG_DATA_LEN)
         return zxerr_no_data;
 
     // Now get the presig_hash
-    cx_sha256_init(&ctx);
-    cx_hash(&ctx.header, CX_LAST, presig_data, PRESIG_DATA_LEN, hash, CX_SHA256_SIZE);
+    SHA512_256_init(&ctx);
+    SHA512_256_starts(&ctx);
+    SHA512_256_update(&ctx, presig_data, PRESIG_DATA_LEN);
+    SHA512_256_finish(&ctx, hash_temp);
+    memcpy(hash, hash_temp, CX_SHA256_SIZE);
+
     return zxerr_ok;
 }
 

@@ -15,6 +15,7 @@
 ********************************************************************************/
 
 #include "crypto.h"
+#include "sha512.h"
 #include "coin.h"
 #include "zxmacros.h"
 #include "rslib.h"
@@ -143,13 +144,20 @@ typedef struct {
 } __attribute__((packed)) signature_t;
 
 uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *message, uint16_t messageLen) {
-    uint8_t tmp[CX_SHA256_SIZE];
     uint8_t message_digest[CX_SHA256_SIZE];
 
-    // FIXME: Demonstrate double sha256 hashing. During M2 fully compatible signatures will be delivered
-    // This partial process demonstrate we cna overcome memory limitations
-    cx_hash_sha256(message, messageLen, tmp, CX_SHA256_SIZE);
-    cx_hash_sha256(tmp, CX_SHA256_SIZE, message_digest, CX_SHA256_SIZE);
+    if (messageLen != CX_SHA256_SIZE) {
+        return 0;
+    }
+
+    memcpy(message_digest, message, CX_SHA256_SIZE);
+    {
+        zemu_log("digest: ***");
+        char buffer[65];
+        array_to_hexstr(buffer, 65,  message_digest, CX_SHA256_SIZE );
+        zemu_log(buffer);
+        zemu_log("\n");
+    }
 
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[32];
@@ -173,7 +181,7 @@ uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *m
             // Sign
             signatureLength = cx_ecdsa_sign(&cx_privateKey,
                                             CX_RND_RFC6979 | CX_LAST,
-                                            CX_SHA256,
+                                            CX_SHA512,
                                             message_digest,
                                             CX_SHA256_SIZE,
                                             signature->der_signature,

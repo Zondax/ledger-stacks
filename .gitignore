@@ -78,6 +78,7 @@ cmake-build-fuzz/
 /app/obj/
 
 \deps/*
+!/deps/sha512
 !\deps/nanos-secure-sdk
 \deps/nano2-sdk
 !\deps/ledger-zxlib

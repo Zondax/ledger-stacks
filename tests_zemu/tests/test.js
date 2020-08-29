@@ -17,6 +17,10 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
+import { makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, publicKeyToString, StacksTestnet } from '@blockstack/stacks-transactions';
+import { SpendingCondition  } from '@blockstack/stacks-transactions/lib/authorization';
+const BN = require('bn.js');
+import {ec as EC} from "elliptic";
 
 const Resolve = require("path").resolve;
 const APP_PATH = Resolve("../app/bin/app.elf");
@@ -112,7 +116,93 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign', async function () {
+    test('test signature', async function () {
+        const sim = new Zemu(APP_PATH);
+        const network = new StacksTestnet();
+        const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216';
+        const path = "m/44'/5757'/0'/0/0";
+
+        try {
+            await sim.start(simOptions);
+            const app = new BlockstackApp(sim.getTransport());
+
+            // Get pubkey and check
+            const pkResponse = await app.getAddressAndPubKey(path);
+            console.log(pkResponse);
+            expect(pkResponse.returnCode).toEqual(0x9000);
+            expect(pkResponse.errorMessage).toEqual("No errors");
+            const testPublicKey = pkResponse.publicKey.toString("hex");
+            console.log('publicKey ', testPublicKey);
+
+            // uses the provided privKey to derive a pubKey using stacks API
+            // we expect the derived publicKey to be same as the ledger-app
+            const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey))
+
+            expect(testPublicKey).toEqual("02" + expectedPublicKey.slice(2, 2+32*2));
+
+            const signedTx = await makeSTXTokenTransfer({
+                senderKey,
+                recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
+                network,
+                amount: new BN(1),
+            });
+
+            const unsignedTx = await makeUnsignedSTXTokenTransfer({
+                recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
+                network,
+                amount: new BN(1),
+                publicKey: testPublicKey,
+            });
+
+            // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
+            // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
+
+            console.log('tx_hash: ', unsignedTx.signBegin());
+
+            const sigHashPreSign = SpendingCondition.makeSigHashPreSign(
+                unsignedTx.signBegin(),
+                unsignedTx.auth.authType,
+                unsignedTx.auth.spendingCondition?.fee,
+                unsignedTx.auth.spendingCondition?.nonce);
+
+            console.log('sigHashPreSign: ', sigHashPreSign);
+
+            const blob = Buffer.from(unsignedTx.serialize());
+
+            // Check the signature
+            const signatureRequest = app.sign(path, blob);
+
+            // Wait until we are not in the main menu
+            await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
+
+            await sim.compareSnapshotsAndAccept(".", "signatureTest", 9);
+
+            let signature = await signatureRequest;
+            console.log(signature)
+
+            let js_signature = signedTx.auth.spendingCondition?.signature.signature;
+            console.log('js_signature ', js_signature);
+            console.log('ledger-postSignHash: ', signature.postSignHash.toString('hex'))
+            console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
+            console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
+
+            expect(signature.returnCode).toEqual(0x9000);
+
+            const ec = new EC("secp256k1");
+            const sig = signature.signatureDER.toString("hex");
+            const pk = pkResponse.publicKey.toString("hex");
+            console.log(sigHashPreSign);
+            console.log(sig);
+            console.log(pk);
+            const signatureOk = ec.verify(sigHashPreSign, sig, pk, 'hex');
+            expect(signatureOk).toEqual(true);
+
+        } finally {
+            await sim.close();
+        }
+    });
+
+    test.skip('sign', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
@@ -139,7 +229,7 @@ describe('Basic checks', function () {
         }
     });
 
-    test('sign stx_token_transfer_with_postcondition', async function () {
+    test.skip('sign stx_token_transfer_with_postcondition', async function () {
         const sim = new Zemu(APP_PATH);
         try {
             await sim.start(simOptions);
