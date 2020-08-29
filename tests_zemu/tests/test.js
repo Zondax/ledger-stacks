@@ -17,7 +17,8 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
-import { TransactionSigner, makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
+import { makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, StacksTestnet } from '@blockstack/stacks-transactions';
+import { SpendingCondition  } from '@blockstack/stacks-transactions/lib/authorization';
 const BN = require('bn.js');
 
 const Resolve = require("path").resolve;
@@ -141,6 +142,15 @@ describe('Basic checks', function () {
         // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
 
         console.log('tx_hash: ', unsignedTx.signBegin());
+
+        const sigHashPreSign = SpendingCondition.makeSigHashPreSign(
+            unsignedTx.signBegin(),
+            unsignedTx.auth.authType,
+            unsignedTx.auth.spendingCondition?.fee,
+            unsignedTx.auth.spendingCondition?.nonce);
+
+        console.log('sigHashPreSign: ', sigHashPreSign);
+
         try {
 
             await sim.start(simOptions);
