@@ -174,7 +174,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         char buffer[65];
         array_to_hexstr(buffer, 65, presig_data, CX_SHA256_SIZE);
         zemu_log(buffer);
-        zemu_log("*** :tx_hash\n");
+        zemu_log("\n");
     }
 
     // now append the auth-flag, fee and nonce

@@ -137,6 +137,9 @@ describe('Basic checks', function () {
             publicKey: testPublicKey,
         });
 
+        // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
+        // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
+
         console.log('tx_hash: ', unsignedTx.signBegin());
         try {
 
@@ -151,20 +154,18 @@ describe('Basic checks', function () {
             // Wait until we are not in the main menu
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-            await logSnapshotsAndAccept(sim, "signatureTest", 9);
+            await sim.compareSnapshotsAndAccept(".", "signatureTest", 9);
 
             let signature = await signatureRequest;
             console.log(signature)
 
             let js_signature = signedTx.auth.spendingCondition?.signature.signature;
             console.log('js_signature ', js_signature);
+            console.log('ledger-postSignHash: ', signature.postSignHash.toString('hex'))
             console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
             console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
 
-
             expect(signature.returnCode).toEqual(0x9000);
-
-
         } finally {
             await sim.close();
         }
