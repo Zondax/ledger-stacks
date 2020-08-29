@@ -37,7 +37,7 @@ zxerr_t addr_getItem(int8_t displayIdx,
     zemu_log_stack("addr_getItem");
     switch (displayIdx) {
         case 0:
-            snprintf(outKey, outKeyLen, "Your Address");
+            snprintf(outKey, outKeyLen, "Address");
             pageString(outVal, outValLen, (char *) (G_io_apdu_buffer + VIEW_ADDRESS_OFFSET_SECP256K1), pageIdx, pageCount);
             return zxerr_ok;
         case 1: {
@@ -45,7 +45,7 @@ zxerr_t addr_getItem(int8_t displayIdx,
                 return zxerr_no_data;
             }
 
-            snprintf(outKey, outKeyLen, "Your Path");
+            snprintf(outKey, outKeyLen, "Path");
             char buffer[300];
             bip32_to_str(buffer, sizeof(buffer), hdPath, HDPATH_LEN_DEFAULT);
             pageString(outVal, outValLen, buffer, pageIdx, pageCount);
