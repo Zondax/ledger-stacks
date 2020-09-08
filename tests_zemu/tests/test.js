@@ -17,7 +17,7 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
-import { makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, publicKeyToString, StacksTestnet } from '@blockstack/stacks-transactions';
+import { broadcastTransaction, makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, publicKeyToString, StacksTestnet } from '@blockstack/stacks-transactions';
 import { SpendingCondition  } from '@blockstack/stacks-transactions/lib/authorization';
 const BN = require('bn.js');
 import {ec as EC} from "elliptic";
@@ -172,7 +172,7 @@ describe('Basic checks', function () {
             // Check the signature
             const signatureRequest = app.sign(path, blob);
 
-            // Wait until we are not in the main menu
+            // Wait until we are not in the main men
             await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
             await sim.compareSnapshotsAndAccept(".", "signatureTest", 9);
@@ -184,7 +184,17 @@ describe('Basic checks', function () {
             console.log('js_signature ', js_signature);
             console.log('ledger-postSignHash: ', signature.postSignHash.toString('hex'))
             console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
+            console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
             console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
+
+            unsignedTx.auth.spendingCondition.signature.signature = signature.signatureVRS.toString('hex');
+
+            console.log('unsignedTx serialized ', unsignedTx.serialize().toString('hex'));
+
+            const broadcast = await broadcastTransaction(unsignedTx, network);
+            console.log(broadcast);
+
+            expect(broadcast.reason).not.toBe('SignatureValidation')
 
             expect(signature.returnCode).toEqual(0x9000);
 

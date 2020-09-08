@@ -48,9 +48,9 @@
 
 // The data required to calculate the post_sighash hash
 // 32-byte presig_hash calculated above
-// 1-byte publik ky encoding.It is 0x00(compressed)
-// 65-byte ECDSA signature
-#define POST_SIGNHASH_DATA_LEN 32 + 1 + 65
+// 1-byte publicKey encoding. It seems to be 0x00(compressed)
+// according to the blockstack's rust implementation
+#define POST_SIGNHASH_DATA_LEN CX_SHA256_SIZE + 1
 
 extern uint8_t action_addr_len;
 
@@ -75,13 +75,24 @@ __Z_INLINE void app_sign() {
     memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
     // set the signing public key's encoding byte, it is compressed
-    post_sighash_data[CX_SHA256_SIZE] = 0x00; // migth be 0x02
-    // copy the ECDSA (r,s,v) signature
-    memcpy(&post_sighash_data[CX_SHA256_SIZE + 1], &G_io_apdu_buffer[32], 65);
+    post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
     // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
     uint8_t hash_temp[SHA512_DIGEST_LENGTH];
-    SHA512_256(post_sighash_data, POST_SIGNHASH_DATA_LEN, hash_temp);
+
+    // Now get the presig_hash
+    sha512_256_ctx ctx;
+    SHA512_256_init(&ctx);
+    SHA512_256_starts(&ctx);
+
+    // sighash + pubkey encoding
+    SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
+    // the signature's v value
+    SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
+
+    // the signature's rs values
+    SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
+    SHA512_256_finish(&ctx, hash_temp);
     memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
 
     if (replyLen > 0) {

@@ -80,11 +80,15 @@ export async function signSendChunkv1(
       if (response.length > 2) {
           const  postSignHash = response.slice(0, 32);
           const  signatureCompact = response.slice(32, 97);
+          var    signatureVRS = Buffer.alloc(65);
+          signatureVRS[0] = signatureCompact[signatureCompact.length - 1];
+          signatureCompact.copy(signatureVRS, 1, 0, 64);
           const  signatureDER = response.slice(97, response.length - 2);
 
           return {
               postSignHash,
               signatureCompact,
+              signatureVRS,
               signatureDER,
               returnCode: returnCode,
               errorMessage: errorMessage,
