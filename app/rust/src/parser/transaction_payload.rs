@@ -107,7 +107,7 @@ impl<'a> StxTokenTransfer<'a> {
             // Fomatting the amount in stx
             0 => {
                 writer_key
-                    .write_str("Amount")
+                    .write_str("Amount uSTX")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 let amount = self.amount_stx()?;
                 check_canary!();
