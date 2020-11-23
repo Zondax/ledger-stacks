@@ -400,7 +400,7 @@ impl<'a> Transaction<'a> {
             // The signer fee-rate
             2 => {
                 writer_key
-                    .write_str("Fee")
+                    .write_str("Fee (uSTX)")
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 let fee_str = origin.fee_str()?;
                 zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
