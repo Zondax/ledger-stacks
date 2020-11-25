@@ -17,8 +17,9 @@
 import jest, {expect} from "jest";
 import Zemu from "@zondax/zemu";
 import BlockstackApp from "@zondax/ledger-blockstack";
-import { broadcastTransaction, makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, publicKeyToString, StacksTestnet } from '@blockstack/stacks-transactions';
-import { SpendingCondition  } from '@blockstack/stacks-transactions/lib/authorization';
+import { broadcastTransaction, makeSTXTokenTransfer, makeUnsignedSTXTokenTransfer, pubKeyfromPrivKey, publicKeyToString, makeSigHashPreSign } from '@stacks/transactions';
+import { StacksTestnet } from '@stacks/network';
+
 const BN = require('bn.js');
 import {ec as EC} from "elliptic";
 
@@ -159,7 +160,7 @@ describe('Basic checks', function () {
 
             console.log('tx_hash: ', unsignedTx.signBegin());
 
-            const sigHashPreSign = SpendingCondition.makeSigHashPreSign(
+            const sigHashPreSign = makeSigHashPreSign(
                 unsignedTx.signBegin(),
                 unsignedTx.auth.authType,
                 unsignedTx.auth.spendingCondition?.fee,
