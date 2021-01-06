@@ -72,7 +72,7 @@ endef
 $(error "$(error_message)")
 endif
 
-APP_LOAD_PARAMS = --appFlags 0x200 --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
+APP_LOAD_PARAMS = --appFlags 0x200 --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"  --tlvraw 9F:01
 
 ifeq ($(TARGET_NAME),TARGET_NANOS)
 ICONNAME:=$(CURDIR)/nanos_icon.gif
