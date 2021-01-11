@@ -47,7 +47,7 @@ typedef enum {
 #define VIEW_ADDRESS_LAST_PAGE_DEFAULT      255
 
 #define MENU_MAIN_APP_LINE1             "Stacks"
-#define MENU_MAIN_APP_LINE2             "DO NOT USE!"
+#define MENU_MAIN_APP_LINE2             "Ready"
 #define APPVERSION_LINE1                "Stacks"
 #define APPVERSION_LINE2                ("v" APPVERSION)
 
