@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include "apdu_codes.h"
+#include "ux.h"
 
 #define OFFSET_CLA                      0
 #define OFFSET_INS                      1  //< Instruction offset
