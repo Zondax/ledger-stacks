@@ -79,7 +79,7 @@ describe('Basic checks', function () {
             expect(response.returnCode).toEqual(0x9000);
 
             const expectedPublicKey = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
-            const expectedAddr = "ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5";
+            const expectedAddr = "SP39RCH114B48GY5E0K2Q4SV28XZMXW4ZZRQXY3V7";
 
             expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey);
             expect(response.address).toEqual(expectedAddr);
@@ -109,7 +109,7 @@ describe('Basic checks', function () {
             expect(resp.returnCode).toEqual(0x9000);
             expect(resp.errorMessage).toEqual("No errors");
 
-            const expected_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";
+            const expected_address_string = "SPGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9FDC6ZR";
             const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
 
             expect(resp.address).toEqual(expected_address_string);
