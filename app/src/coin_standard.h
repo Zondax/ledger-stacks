@@ -51,11 +51,10 @@ typedef enum {
 #define APPVERSION_LINE1                "Stacks"
 #define APPVERSION_LINE2                ("v" APPVERSION)
 
-#define COIN_AMOUNT_DECIMAL_PLACES          18                       // FIXME: Check this
 #define CRYPTO_BLOB_SKIP_BYTES              0
 
-#define COIN_VERSION_TESTNET_SINGLESIG   22
-#define COIN_VERSION_MAINNET_SINGLESIG   26
+#define COIN_VERSION_MAINNET_SINGLESIG   22
+#define COIN_VERSION_TESTNET_SINGLESIG   26
 
 #ifdef __cplusplus
 }
