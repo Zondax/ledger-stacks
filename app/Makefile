@@ -49,7 +49,7 @@ endif
 
 APPVERSION_M=0
 APPVERSION_N=10
-APPVERSION_P=6
+APPVERSION_P=7
 
 $(info COIN      = [$(COIN)])
 ifeq ($(COIN),STX)
