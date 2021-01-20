@@ -182,7 +182,7 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
             // Sign
             signatureLength = cx_ecdsa_sign(&cx_privateKey,
                                             CX_RND_RFC6979 | CX_LAST,
-                                            CX_SHA512,
+                                            CX_SHA256,
                                             message_digest,
                                             CX_SHA256_SIZE,
                                             signature->der_signature,
