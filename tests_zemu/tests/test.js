@@ -45,13 +45,13 @@ const simOptions = {
   logging: true,
   start_delay: 3000,
   custom: `-s "${APP_SEED}"`
-  //, X11: true
+  , X11: true
 };
 
 jest.setTimeout(20000);
 
-describe("Basic checks", function() {  
-  
+describe("Basic checks", function() {
+
   for (let nanoModel of models) {
     it(`${nanoModel.prefix} - can start and stop container`, async function() {
       const sim = new Zemu(nanoModel.path);
@@ -61,7 +61,7 @@ describe("Basic checks", function() {
         await sim.close();
       }
     });
-    
+
     it(`${nanoModel.prefix} - app version`, async function() {
       const sim = new Zemu(nanoModel.path);
       try {
@@ -81,7 +81,7 @@ describe("Basic checks", function() {
         await sim.close();
       }
     });
-    
+
     it(`${nanoModel.prefix} - get address`, async function() {
       const sim = new Zemu(nanoModel.path);
       try {
@@ -101,7 +101,7 @@ describe("Basic checks", function() {
         await sim.close();
       }
     });
-    
+
     test(`${nanoModel.prefix} - show address`, async function() {
       const sim = new Zemu(nanoModel.path);
       try {
@@ -115,7 +115,7 @@ describe("Basic checks", function() {
         // Wait until we are not in the main menu
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model == 'nanos' ? 3 : 2);
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model === 'nanos' ? 3 : 3);
 
         const resp = await respRequest;
         console.log(resp);
@@ -132,7 +132,7 @@ describe("Basic checks", function() {
         await sim.close();
       }
     });
-    
+
     test(`${nanoModel.prefix} - test signature`, async function() {
       const sim = new Zemu(nanoModel.path);
       const network = new StacksTestnet();
@@ -196,7 +196,7 @@ describe("Basic checks", function() {
         // Wait until we are not in the main men
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model == 'nanos' ? 9 : 7);
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model === 'nanos' ? 9 : 8);
 
         let signature = await signatureRequest;
         console.log(signature);

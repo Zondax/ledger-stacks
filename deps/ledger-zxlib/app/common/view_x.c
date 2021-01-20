@@ -73,7 +73,7 @@ UX_FLOW(
 
 ///////////
 
-UX_FLOW_DEF_NOCB(ux_review_flow_1_review_title, pbb, { &C_icon_app, "Please", "review",});
+UX_FLOW_DEF_NOCB(ux_review_flow_1_review_title, pbb, { &C_icon_eye, "Please", "review",});
 UX_STEP_INIT(ux_review_flow_2_start_step, NULL, NULL, { h_review_loop_start(); });
 UX_STEP_NOCB_INIT(ux_review_flow_2_step, bnnn_paging, { h_review_loop_inside(); }, { .title = viewdata.key, .text = viewdata.value, });
 UX_STEP_INIT(ux_review_flow_2_end_step, NULL, NULL, { h_review_loop_end(); });
