@@ -35,378 +35,205 @@ const Resolve = require("path").resolve;
 const APP_PATH_S = Resolve("../app/bin/app_s.elf");
 const APP_PATH_X = Resolve("../app/bin/app_x.elf");
 
+const models = [
+  { model:'nanos', prefix: 'S', path: APP_PATH_S},
+  { model: 'nanox', prefix: 'X', path: APP_PATH_X}
+];
+
 const APP_SEED = "equip will roof matter pink blind book anxiety banner elbow sun young";
 const simOptions = {
   logging: true,
   start_delay: 3000,
   custom: `-s "${APP_SEED}"`
-  , X11: true
+  //, X11: true
 };
 
 jest.setTimeout(20000);
 
-describe("Basic checks", function() {
-  it("S - can start and stop container", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    try {
-      await sim.start(simOptions);
-    } finally {
-      await sim.close();
-    }
-  });
-
-  it("X - can start and stop container", async function() {
-    const sim = new Zemu(APP_PATH_X);
-    try {
-      await sim.start({ model: "nanox", ...simOptions });
-    } finally {
-      await sim.close();
-    }
-  });
-
-  it("S - app version", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    try {
-      await sim.start(simOptions);
-      const app = new BlockstackApp(sim.getTransport());
-      const resp = await app.getVersion();
-
-      console.log(resp);
-
-      expect(resp.returnCode).toEqual(0x9000);
-      expect(resp.errorMessage).toEqual("No errors");
-      expect(resp).toHaveProperty("testMode");
-      expect(resp).toHaveProperty("major");
-      expect(resp).toHaveProperty("minor");
-      expect(resp).toHaveProperty("patch");
-    } finally {
-      await sim.close();
-    }
-  });
-
-  it("X - app version", async function() {
-    const sim = new Zemu(APP_PATH_X);
-    try {
-      await sim.start({ model: "nanox", ...simOptions });
-      const app = new BlockstackApp(sim.getTransport());
-      const resp = await app.getVersion();
-
-      console.log(resp);
-
-      expect(resp.returnCode).toEqual(0x9000);
-      expect(resp.errorMessage).toEqual("No errors");
-      expect(resp).toHaveProperty("testMode");
-      expect(resp).toHaveProperty("major");
-      expect(resp).toHaveProperty("minor");
-      expect(resp).toHaveProperty("patch");
-    } finally {
-      await sim.close();
-    }
-  });
-
-  it("S - get address", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    try {
-      await sim.start(simOptions);
-      const app = new BlockstackApp(sim.getTransport());
-
-      const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
-      console.log(response);
-      expect(response.returnCode).toEqual(0x9000);
-
-      const expectedPublicKey = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
-      const expectedAddr = "SP39RCH114B48GY5E0K2Q4SV28XZMXW4ZZRQXY3V7";
-
-      expect(response.publicKey.toString("hex")).toEqual(expectedPublicKey);
-      expect(response.address).toEqual(expectedAddr);
-    } finally {
-      await sim.close();
-    }
-  });
-
-  it("X - get address", async function() {
-    const sim = new Zemu(APP_PATH_X);
-    try {
-      await sim.start({ model: "nanox", ...simOptions });
-      const app = new BlockstackApp(sim.getTransport());
-
-      const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
-      console.log(response);
-      expect(response.returnCode).toEqual(0x9000);
-
-      const expectedPublicKey = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
-      const expectedAddr = "SP39RCH114B48GY5E0K2Q4SV28XZMXW4ZZRQXY3V7";
-
-      expect(response.publicKey.toString("hex")).toEqual(expectedPublicKey);
-      expect(response.address).toEqual(expectedAddr);
-    } finally {
-      await sim.close();
-    }
-  });
-
-  test("S - show address", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    try {
-      await sim.start(simOptions);
-      const app = new BlockstackApp(sim.getTransport());
-
-      // Derivation path. First 3 items are automatically hardened!
-      const path = "m/44'/5757'/5'/0/3";
-
-      const respRequest = app.showAddressAndPubKey(path);
-      // Wait until we are not in the main menu
-      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
-
-      await sim.compareSnapshotsAndAccept(".", "s-show-address", 3);
-
-      const resp = await respRequest;
-      console.log(resp);
-
-      expect(resp.returnCode).toEqual(0x9000);
-      expect(resp.errorMessage).toEqual("No errors");
-
-      const expected_address_string = "SPGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9FDC6ZR";
-      const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
-
-      expect(resp.address).toEqual(expected_address_string);
-      expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
-    } finally {
-      await sim.close();
-    }
-  });
-
-  test("X - show address", async function() {
-    const sim = new Zemu(APP_PATH_X);
-    try {
-      await sim.start({ model: "nanox", ...simOptions });
-      const app = new BlockstackApp(sim.getTransport());
-
-      // Derivation path. First 3 items are automatically hardened!
-      const path = "m/44'/5757'/5'/0/3";
-
-      const respRequest = app.showAddressAndPubKey(path);
-      // Wait until we are not in the main menu
-      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
-
-      await sim.compareSnapshotsAndAccept(".", "x-show-address", 2);
-
-      const resp = await respRequest;
-      console.log(resp);
-
-      expect(resp.returnCode).toEqual(0x9000);
-      expect(resp.errorMessage).toEqual("No errors");
-
-      const expected_address_string = "SPGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9FDC6ZR";
-      const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
-
-      expect(resp.address).toEqual(expected_address_string);
-      expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
-    } finally {
-      await sim.close();
-    }
-  });
-
-  test("S - test signature", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    const network = new StacksTestnet();
-    const senderKey = "2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216";
-    const path = "m/44'/5757'/0'/0/0";
-
-    try {
-      await sim.start(simOptions);
-      const app = new BlockstackApp(sim.getTransport());
-
-      // Get pubkey and check
-      const pkResponse = await app.getAddressAndPubKey(path);
-      console.log(pkResponse);
-      expect(pkResponse.returnCode).toEqual(0x9000);
-      expect(pkResponse.errorMessage).toEqual("No errors");
-      const testPublicKey = pkResponse.publicKey.toString("hex");
-      console.log("publicKey ", testPublicKey);
-
-      // uses the provided privKey to derive a pubKey using stacks API
-      // we expect the derived publicKey to be same as the ledger-app
-      const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey));
-
-      expect(testPublicKey).toEqual("02" + expectedPublicKey.slice(2, 2 + 32 * 2));
-
-      const signedTx = await makeSTXTokenTransfer({
-        senderKey,
-        recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
-        network,
-        nonce: new BN(0),
-        fee: new BN(180),
-        amount: new BN(1)
-      });
-
-      const unsignedTx = await makeUnsignedSTXTokenTransfer({
-        recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
-        network,
-        nonce: new BN(0),
-        fee: new BN(180),
-        amount: new BN(1),
-        publicKey: testPublicKey
-      });
-
-      // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
-      // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
-
-      console.log("tx_hash: ", unsignedTx.signBegin());
-
-      const sigHashPreSign = makeSigHashPreSign(
-        unsignedTx.signBegin(),
-        unsignedTx.auth.authType,
-        unsignedTx.auth.spendingCondition?.fee,
-        unsignedTx.auth.spendingCondition?.nonce);
-
-      console.log("sigHashPreSign: ", sigHashPreSign);
-
-      const blob = Buffer.from(unsignedTx.serialize());
-
-      // Check the signature
-      const signatureRequest = app.sign(path, blob);
-
-      // Wait until we are not in the main men
-      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
-
-      await sim.compareSnapshotsAndAccept(".", "s-signatureTest", 9);
-
-      let signature = await signatureRequest;
-      console.log(signature);
-
-      let js_signature = signedTx.auth.spendingCondition?.signature.signature;
-      console.log("js_signature ", js_signature);
-      console.log("ledger-postSignHash: ", signature.postSignHash.toString("hex"));
-      console.log("ledger-compact: ", signature.signatureCompact.toString("hex"));
-      console.log("ledger-vrs", signature.signatureVRS.toString("hex"));
-      console.log("ledger-DER: ", signature.signatureDER.toString("hex"));
-
-      unsignedTx.auth.spendingCondition.signature = createMessageSignature(signature.signatureVRS.toString("hex"));
-      //unsignedTx.auth.spendingCondition.signature.signature = signature.signatureVRS.toString('hex');
-
-      console.log("unsignedTx serialized ", unsignedTx.serialize().toString("hex"));
-      //
-      // const broadcast = await broadcastTransaction(unsignedTx, network);
-      // console.log(broadcast);
-      //
-      // expect(broadcast.reason).not.toBe("SignatureValidation");
-      //
-      // expect(signature.returnCode).toEqual(0x9000);
-      //
-      // const ec = new EC("secp256k1");
-      // const sig = signature.signatureDER.toString("hex");
-      // const pk = pkResponse.publicKey.toString("hex");
-      // console.log(sigHashPreSign);
-      // console.log(sig);
-      // console.log(pk);
-      // const signatureOk = ec.verify(sigHashPreSign, sig, pk, "hex");
-      // expect(signatureOk).toEqual(true);
-
-    } finally {
-      await sim.close();
-    }
-  });
-
-  test("X - test signature", async function() {
-    const sim = new Zemu(APP_PATH_X);
-    const network = new StacksTestnet();
-    const senderKey = "2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216";
-    const path = "m/44'/5757'/0'/0/0";
-
-    try {
-      await sim.start({ model: "nanox", ...simOptions });
-      const app = new BlockstackApp(sim.getTransport());
-
-      // Get pubkey and check
-      const pkResponse = await app.getAddressAndPubKey(path);
-      console.log(pkResponse);
-      expect(pkResponse.returnCode).toEqual(0x9000);
-      expect(pkResponse.errorMessage).toEqual("No errors");
-      const testPublicKey = pkResponse.publicKey.toString("hex");
-      console.log("publicKey ", testPublicKey);
-
-      // uses the provided privKey to derive a pubKey using stacks API
-      // we expect the derived publicKey to be same as the ledger-app
-      const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey));
-
-      expect(testPublicKey).toEqual("02" + expectedPublicKey.slice(2, 2 + 32 * 2));
-
-      const signedTx = await makeSTXTokenTransfer({
-        senderKey,
-        recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
-        network,
-        nonce: new BN(0),
-        fee: new BN(180),
-        amount: new BN(1)
-      });
-
-      const unsignedTx = await makeUnsignedSTXTokenTransfer({
-        recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
-        network,
-        nonce: new BN(0),
-        fee: new BN(180),
-        amount: new BN(1),
-        publicKey: testPublicKey
-      });
-
-      // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
-      // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
-
-      console.log("tx_hash: ", unsignedTx.signBegin());
-
-      const sigHashPreSign = makeSigHashPreSign(
-        unsignedTx.signBegin(),
-        unsignedTx.auth.authType,
-        unsignedTx.auth.spendingCondition?.fee,
-        unsignedTx.auth.spendingCondition?.nonce);
-
-      console.log("sigHashPreSign: ", sigHashPreSign);
-
-      const blob = Buffer.from(unsignedTx.serialize());
-
-      // Check the signature
-      const signatureRequest = app.sign(path, blob);
-
-      // Wait until we are not in the main men
-      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
-
-      await sim.compareSnapshotsAndAccept(".", "x-signatureTest", 7);
-
-      let signature = await signatureRequest;
-      console.log(signature);
-
-      let js_signature = signedTx.auth.spendingCondition?.signature.signature;
-      console.log("js_signature ", js_signature);
-      console.log("ledger-postSignHash: ", signature.postSignHash.toString("hex"));
-      console.log("ledger-compact: ", signature.signatureCompact.toString("hex"));
-      console.log("ledger-vrs", signature.signatureVRS.toString("hex"));
-      console.log("ledger-DER: ", signature.signatureDER.toString("hex"));
-
-      unsignedTx.auth.spendingCondition.signature = createMessageSignature(signature.signatureVRS.toString("hex"));
-      //unsignedTx.auth.spendingCondition.signature.signature = signature.signatureVRS.toString('hex');
-
-      console.log("unsignedTx serialized ", unsignedTx.serialize().toString("hex"));
-      //
-      // const broadcast = await broadcastTransaction(unsignedTx, network);
-      // console.log(broadcast);
-      //
-      // expect(broadcast.reason).not.toBe("SignatureValidation");
-      //
-      // expect(signature.returnCode).toEqual(0x9000);
-      //
-      // const ec = new EC("secp256k1");
-      // const sig = signature.signatureDER.toString("hex");
-      // const pk = pkResponse.publicKey.toString("hex");
-      // console.log(sigHashPreSign);
-      // console.log(sig);
-      // console.log(pk);
-      // const signatureOk = ec.verify(sigHashPreSign, sig, pk, "hex");
-      // expect(signatureOk).toEqual(true);
-
-    } finally {
-      await sim.close();
-    }
-  });
+describe("Basic checks", function() {  
+  
+  for (let nanoModel of models) {
+    it(`${nanoModel.prefix} - can start and stop container`, async function() {
+      const sim = new Zemu(nanoModel.path);
+      try {
+        await sim.start({ model: nanoModel.model, ...simOptions});
+      } finally {
+        await sim.close();
+      }
+    });
+    
+    it(`${nanoModel.prefix} - app version`, async function() {
+      const sim = new Zemu(nanoModel.path);
+      try {
+        await sim.start({ model: nanoModel.model, ...simOptions});
+        const app = new BlockstackApp(sim.getTransport());
+        const resp = await app.getVersion();
+
+        console.log(resp);
+
+        expect(resp.returnCode).toEqual(0x9000);
+        expect(resp.errorMessage).toEqual("No errors");
+        expect(resp).toHaveProperty("testMode");
+        expect(resp).toHaveProperty("major");
+        expect(resp).toHaveProperty("minor");
+        expect(resp).toHaveProperty("patch");
+      } finally {
+        await sim.close();
+      }
+    });
+    
+    it(`${nanoModel.prefix} - get address`, async function() {
+      const sim = new Zemu(nanoModel.path);
+      try {
+        await sim.start({ model: nanoModel.model, ...simOptions});
+        const app = new BlockstackApp(sim.getTransport());
+
+        const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
+        console.log(response);
+        expect(response.returnCode).toEqual(0x9000);
+
+        const expectedPublicKey = "0252dab95065cd31ae6f8ece65fffd2e904b203268a5923fa85e5db793698d753a";
+        const expectedAddr = "SP39RCH114B48GY5E0K2Q4SV28XZMXW4ZZRQXY3V7";
+
+        expect(response.publicKey.toString("hex")).toEqual(expectedPublicKey);
+        expect(response.address).toEqual(expectedAddr);
+      } finally {
+        await sim.close();
+      }
+    });
+    
+    test(`${nanoModel.prefix} - show address`, async function() {
+      const sim = new Zemu(nanoModel.path);
+      try {
+        await sim.start({ model: nanoModel.model, ...simOptions});
+        const app = new BlockstackApp(sim.getTransport());
+
+        // Derivation path. First 3 items are automatically hardened!
+        const path = "m/44'/5757'/5'/0/3";
+
+        const respRequest = app.showAddressAndPubKey(path);
+        // Wait until we are not in the main menu
+        await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
+
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model == 'nanos' ? 3 : 2);
+
+        const resp = await respRequest;
+        console.log(resp);
+
+        expect(resp.returnCode).toEqual(0x9000);
+        expect(resp.errorMessage).toEqual("No errors");
+
+        const expected_address_string = "SPGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9FDC6ZR";
+        const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
+
+        expect(resp.address).toEqual(expected_address_string);
+        expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
+      } finally {
+        await sim.close();
+      }
+    });
+    
+    test(`${nanoModel.prefix} - test signature`, async function() {
+      const sim = new Zemu(nanoModel.path);
+      const network = new StacksTestnet();
+      const senderKey = "2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216";
+      const path = "m/44'/5757'/0'/0/0";
+
+      try {
+        await sim.start({ model: nanoModel.model, ...simOptions});
+        const app = new BlockstackApp(sim.getTransport());
+
+        // Get pubkey and check
+        const pkResponse = await app.getAddressAndPubKey(path);
+        console.log(pkResponse);
+        expect(pkResponse.returnCode).toEqual(0x9000);
+        expect(pkResponse.errorMessage).toEqual("No errors");
+        const testPublicKey = pkResponse.publicKey.toString("hex");
+        console.log("publicKey ", testPublicKey);
+
+        // uses the provided privKey to derive a pubKey using stacks API
+        // we expect the derived publicKey to be same as the ledger-app
+        const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey));
+
+        expect(testPublicKey).toEqual("02" + expectedPublicKey.slice(2, 2 + 32 * 2));
+
+        const signedTx = await makeSTXTokenTransfer({
+          senderKey,
+          recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
+          network,
+          nonce: new BN(0),
+          fee: new BN(180),
+          amount: new BN(1)
+        });
+
+        const unsignedTx = await makeUnsignedSTXTokenTransfer({
+          recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
+          network,
+          nonce: new BN(0),
+          fee: new BN(180),
+          amount: new BN(1),
+          publicKey: testPublicKey
+        });
+
+        // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
+        // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
+
+        console.log("tx_hash: ", unsignedTx.signBegin());
+
+        const sigHashPreSign = makeSigHashPreSign(
+          unsignedTx.signBegin(),
+          unsignedTx.auth.authType,
+          unsignedTx.auth.spendingCondition?.fee,
+          unsignedTx.auth.spendingCondition?.nonce);
+
+        console.log("sigHashPreSign: ", sigHashPreSign);
+
+        const blob = Buffer.from(unsignedTx.serialize());
+
+        // Check the signature
+        const signatureRequest = app.sign(path, blob);
+
+        // Wait until we are not in the main men
+        await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
+
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model == 'nanos' ? 9 : 7);
+
+        let signature = await signatureRequest;
+        console.log(signature);
+
+        let js_signature = signedTx.auth.spendingCondition?.signature.signature;
+        console.log("js_signature ", js_signature);
+        console.log("ledger-postSignHash: ", signature.postSignHash.toString("hex"));
+        console.log("ledger-compact: ", signature.signatureCompact.toString("hex"));
+        console.log("ledger-vrs", signature.signatureVRS.toString("hex"));
+        console.log("ledger-DER: ", signature.signatureDER.toString("hex"));
+
+        unsignedTx.auth.spendingCondition.signature = createMessageSignature(signature.signatureVRS.toString("hex"));
+        //unsignedTx.auth.spendingCondition.signature.signature = signature.signatureVRS.toString('hex');
+
+        console.log("unsignedTx serialized ", unsignedTx.serialize().toString("hex"));
+        //
+        // const broadcast = await broadcastTransaction(unsignedTx, network);
+        // console.log(broadcast);
+        //
+        // expect(broadcast.reason).not.toBe("SignatureValidation");
+        //
+        // expect(signature.returnCode).toEqual(0x9000);
+        //
+        // const ec = new EC("secp256k1");
+        // const sig = signature.signatureDER.toString("hex");
+        // const pk = pkResponse.publicKey.toString("hex");
+        // console.log(sigHashPreSign);
+        // console.log(sig);
+        // console.log(pk);
+        // const signatureOk = ec.verify(sigHashPreSign, sig, pk, "hex");
+        // expect(signatureOk).toEqual(true);
+
+      } finally {
+        await sim.close();
+      }
+    });
+  }
 
   test.skip("sign", async function() {
     const sim = new Zemu(APP_PATH_S);
