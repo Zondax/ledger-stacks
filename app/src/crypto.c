@@ -143,11 +143,12 @@ typedef struct {
 
 } __attribute__((packed)) signature_t;
 
-uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *message, uint16_t messageLen) {
+zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *message, uint16_t messageLen, uint16_t *sigSize) {
     uint8_t message_digest[CX_SHA256_SIZE];
+    *sigSize=0;
 
     if (messageLen != CX_SHA256_SIZE) {
-        return 0;
+        return zxerr_out_of_bounds;
     }
 
     memcpy(message_digest, message, CX_SHA256_SIZE);
@@ -161,7 +162,7 @@ uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *m
 
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[32];
-    int signatureLength;
+    int signatureLength = 0;
     unsigned int info = 0;
 
     signature_t *const signature = (signature_t *) buffer;
@@ -188,7 +189,11 @@ uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *m
                                             sizeof_field(signature_t, der_signature),
                                             &info);
 
+            signatureLength = 64;
         }
+        CATCH_OTHER(e) {
+            signatureLength = 0;
+        };
         FINALLY {
             MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
             MEMZERO(privateKeyData, 32);
@@ -196,15 +201,23 @@ uint16_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *m
     }
     END_TRY;
 
+    if (signatureLength == 0) {
+        return zxerr_ledger_api_error;
+    }
+
     err_convert_e err = convertDERtoRSV(signature->der_signature, info,  signature->r, signature->s, &signature->v);
     if (err != no_error) {
-        // Error while converting so return length 0
-        return 0;
+        return zxerr_encoding_failed;
     }
 
     // return actual size using value from signatureLength
-    return sizeof_field(signature_t, r) + sizeof_field(signature_t, s) + sizeof_field(signature_t, v)
-        + sizeof_field(signature_t, post_sighash) + signatureLength;
+    *sigSize = sizeof_field(signature_t, r) +
+               sizeof_field(signature_t, s) +
+               sizeof_field(signature_t, v) +
+               sizeof_field(signature_t, post_sighash) +
+               signatureLength;
+
+    return zxerr_ok;
 }
 
 #endif

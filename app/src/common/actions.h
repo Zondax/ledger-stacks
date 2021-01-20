@@ -57,19 +57,30 @@ extern uint8_t action_addr_len;
 // helper function to get the presig_hash of the transaction being signed
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen);
 
-
 __Z_INLINE void app_sign() {
-
     uint8_t presig_hash[CX_SHA256_SIZE];
     uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN];
 
-    if (get_presig_hash(presig_hash, CX_SHA256_SIZE) != zxerr_ok)
+    zxerr_t err = get_presig_hash(presig_hash, CX_SHA256_SIZE);
+
+    if (err != zxerr_ok) {
+        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
+        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
         return;
+    }
 
     // Take "ownership" of the memory used by the transaction parser
     tx_reset_state();
 
-    const uint8_t replyLen = crypto_sign(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 3, presig_hash, CX_SHA256_SIZE);
+    uint16_t replyLen;
+    err = crypto_sign(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 3, presig_hash, CX_SHA256_SIZE, &replyLen);
+    if (err != zxerr_ok) {
+        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
+        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        return;
+    }
 
     // Calculates the post_sighash
     memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
@@ -95,13 +106,15 @@ __Z_INLINE void app_sign() {
     SHA512_256_finish(&ctx, hash_temp);
     memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
 
-    if (replyLen > 0) {
-        set_code(G_io_apdu_buffer, replyLen, APDU_CODE_OK);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, replyLen + 2);
-    } else {
-        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
+    if (replyLen == 0) {
+        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, zxerr_no_data);
+        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        return;
     }
+
+    set_code(G_io_apdu_buffer, replyLen, APDU_CODE_OK);
+    io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, replyLen + 2);
 }
 
 __Z_INLINE void app_reject() {

@@ -34,9 +34,14 @@
 </template>
 
 <script>
+
 import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
-import BlockstackApp from "../../src";
-import { LedgerError } from "../../src/common";
+import BlockstackApp from "@zondax/ledger-blockstack"
+import {LedgerError} from "@zondax/ledger-blockstack"
+import {StacksTestnet} from "@stacks/network";
+import {makeUnsignedSTXTokenTransfer} from "@stacks/transactions";
+import BN from "bn.js";
+
 const EXAMPLE_PATH = "m/44'/5757'/0'/0/0";
 
 export default {
@@ -83,7 +88,7 @@ export default {
 
         if (response.returnCode !== LedgerError.NoErrors) {
           this.log(`Error`);
-          // this.log(`Error [${response.returnCode}] ${response.errorMessage}`);
+          this.log(`Error [${response.returnCode}] ${response.errorMessage}`);
           return;
         }
 
@@ -104,7 +109,7 @@ export default {
         const app = new BlockstackApp(transport);
 
         // now it is possible to access all commands in the app
-        const response = await app.appInfo();
+        const response = await app.getAppInfo();
         if (response.returnCode !== 0x9000) {
           this.log(`Error [${response.returnCode}] ${response.errorMessage}`);
           return;
@@ -176,20 +181,40 @@ export default {
         this.deviceLog = [];
         const app = new BlockstackApp(transport);
 
-        let response = await app.getVersion();
-        this.log(`App Version ${response.major}.${response.minor}.${response.patch}`);
-        this.log(`Device Locked: ${response.deviceLocked}`);
-        this.log(`Test mode: ${response.testMode}`);
+        const network = new StacksTestnet();
+        const path = "m/44'/5757'/0'/0/0";
 
-        const message = Buffer.from(
-          "00000000010400149be4d6c4667e4fb6d461e7c8378fa5a5e10c9f000000000000000a00000000000004e200010e997280fe04c9976e70d90a93b9f86507247f5e9fa78ec95cd4eebb27b23f3338a13f549bee779b646bffff41611c9eae53b65e6b7a911b00c906a36ad5920a0302000000000005169eb0a31b22af43679e4f58ce400ed641c28113a6000000000000138800000000000000000000000000000000000000000000000000000000000000000000",
-          "hex",
-        );
-        response = await app.sign(EXAMPLE_PATH, message);
+        const pkResponse = await app.getAddressAndPubKey(path);
+        const testPublicKey = pkResponse.publicKey.toString("hex");
+        this.log("publicKey ", testPublicKey);
 
-        this.log("Response received!");
-        this.log("Full response:");
-        this.log(response);
+        const unsignedTx = await makeUnsignedSTXTokenTransfer({
+          recipient: "ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK",
+          network,
+          nonce: new BN(0),
+          fee: new BN(180),
+          amount: new BN(1),
+          publicKey: testPublicKey
+        });
+
+        const blob = Buffer.from(unsignedTx.serialize());
+        const signatureResponse = await app.sign(path, blob);
+        this.log(signatureResponse)
+
+        // let response = await app.getVersion();
+        // this.log(`App Version ${response.major}.${response.minor}.${response.patch}`);
+        // this.log(`Device Locked: ${response.deviceLocked}`);
+        // this.log(`Test mode: ${response.testMode}`);
+        //
+        // const message = Buffer.from(
+        //     "00000000010400149be4d6c4667e4fb6d461e7c8378fa5a5e10c9f000000000000000a00000000000004e200010e997280fe04c9976e70d90a93b9f86507247f5e9fa78ec95cd4eebb27b23f3338a13f549bee779b646bffff41611c9eae53b65e6b7a911b00c906a36ad5920a0302000000000005169eb0a31b22af43679e4f58ce400ed641c28113a6000000000000138800000000000000000000000000000000000000000000000000000000000000000000",
+        //     "hex",
+        // );
+        // response = await app.sign(EXAMPLE_PATH, message);
+        //
+        // this.log("Response received!");
+        // this.log("Full response:");
+        // this.log(response);
       } finally {
         transport.close();
       }
