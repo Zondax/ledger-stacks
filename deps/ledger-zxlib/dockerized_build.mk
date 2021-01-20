@@ -91,7 +91,10 @@ convert_icon:
 	@convert $(LEDGER_SRC)/nanos_icon.gif -crop 14x14+1+1 +repage -negate $(LEDGER_SRC)/nanox_icon.gif
 
 .PHONY: build
-build:
+build: buildS buildX
+
+.PHONY: buildS
+buildS:
 	$(info Replacing app icon)
 	@cp $(LEDGER_SRC)/nanos_icon.gif $(LEDGER_SRC)/glyphs/icon_app.gif
 	$(info calling make inside docker)
@@ -106,6 +109,8 @@ buildX: build_rust
 .PHONY: clean
 clean:
 	$(call run_docker,$(DOCKER_BOLOS_SDK),make -C $(DOCKER_APP_SRC) clean)
+	rm ${LEDGER_SRC}/pkg/installer_s.sh
+	rm ${LEDGER_SRC}/pkg/installer_x.sh
 
 .PHONY: clean_rust
 clean_rust:

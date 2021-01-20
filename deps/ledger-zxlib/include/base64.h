@@ -1,5 +1,5 @@
 /*******************************************************************************
-*   (c) 2019 Zondax GmbH
+*   (c) 2020 Zondax GmbH
 *
 *  Licensed under the Apache License, Version 2.0 (the "License");
 *  you may not use this file except in compliance with the License.
@@ -13,38 +13,16 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 ********************************************************************************/
-
 #pragma once
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <zxmacros.h>
-#include "coin.h"
-#include <stdbool.h>
-#include <sigutils.h>
-#include "zxerror.h"
+#include <inttypes.h>
+#include <stdint.h>
 
-#define CHECKSUM_LENGTH             4
-
-extern uint32_t hdPath[HDPATH_LEN_DEFAULT];
-
-extern address_kind_e addressKind;
-
-bool isTestnet();
-
-void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen);
-
-void crypto_extractPublicKeyHash(uint8_t *pubKey, uint16_t pubKeyLen);
-
-uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t bufferLen);
-
-zxerr_t crypto_sign(uint8_t *buffer,
-                    uint16_t signatureMaxlen,
-                    const uint8_t *message,
-                    uint16_t messageLen,
-                    uint16_t *sigSize);
+uint16_t base64_encode(char *out, uint16_t outlen, const uint8_t *in, uint16_t inlen);
 
 #ifdef __cplusplus
 }
