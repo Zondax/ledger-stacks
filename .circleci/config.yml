@@ -6,12 +6,12 @@ commands:
       - restore_cache:
           name: Restore sccache cache
           key: sccache-cache-stable-{{ arch }}
-#          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
+  #          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
   save-sccache-cache:
     steps:
       - save_cache:
           name: Save sccache cache
-#          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}-{{ epoch }}
+          #          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}-{{ epoch }}
           key: sccache-cache-stable-{{ arch }}-{{ epoch }}
           paths:
             - "~/.cache/sccache"
@@ -23,17 +23,34 @@ jobs:
     steps:
       - checkout
       - run: git submodule update --init --recursive
-      - run: cmake -DDISABLE_DOCKER_BUILDS=ON -DCMAKE_BUILD_TYPE=Debug . && make
+      - run: cmake -DCMAKE_BUILD_TYPE=Debug . && make
       # Unfortunately need to disable leak sanitizer https://github.com/google/sanitizers/issues/916
       # Still run all other ASAN components
       - run: GTEST_COLOR=1 ASAN_OPTIONS=detect_leaks=0 ctest -VV
 
-  build_ledger:
+  build_ledger_S:
     docker:
       - image: zondax/builder-bolos:latest
     environment:
-      - BOLOS_SDK=/home/zondax/project/deps/nanos-secure-sdk
-      - BOLOS_ENV=/opt/bolos
+      BOLOS_SDK: /home/zondax/project/deps/nanos-secure-sdk
+      BOLOS_ENV: /opt/bolos
+    steps:
+      - checkout
+      # Docker entrypoint is not considered
+      - run: git submodule update --init --recursive
+      - run:
+          name: Build
+          command: |
+            source /home/zondax/.cargo/env
+            cd /home/zondax/project
+            make
+
+  build_ledger_X:
+    docker:
+      - image: zondax/builder-bolos:latest
+    environment:
+      BOLOS_SDK: /home/zondax/project/deps/nanox-secure-sdk
+      BOLOS_ENV: /opt/bolos
     steps:
       - checkout
       # Docker entrypoint is not considered
@@ -84,32 +101,36 @@ jobs:
       - checkout
       - run: git submodule update --init --recursive
       - run:
-          name: Build Ledger app
+          name: Build Ledger app S
           command: |
             make
       - run:
+          name: Build Ledger app S
+          command: |
+            make buildX
+      - run:
           name: Install node + yarn
           command: |
-            nvm install 13.12.0
-            nvm use 13.12.0
+            nvm install 14.10.1
+            nvm use 14.10.1
             npm install -g yarn
       - run:
           name: Build/Install build js deps
           command: |
-            nvm use 13.12.0
+            nvm use 14.10.1
             make zemu_install
       - run:
           name: Run zemu tests
           command: |
-            nvm use 13.12.0
+            nvm use 14.10.1
             make zemu_test
 
-  build_package:
+  build_package_S:
     docker:
       - image: zondax/builder-bolos:latest
     environment:
-      - BOLOS_SDK=/home/zondax/project/deps/nanos-secure-sdk
-      - BOLOS_ENV=/opt/bolos
+      BOLOS_SDK: /home/zondax/project/deps/nanos-secure-sdk
+      BOLOS_ENV: /opt/bolos
     steps:
       - checkout
       - run: git submodule update --init --recursive
@@ -119,7 +140,24 @@ jobs:
             source /home/zondax/.cargo/env
             cd /home/zondax/project
             make
-      - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/zxtool.sh version) /home/zondax/project/app/pkg/zxtool.sh
+      - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/installer_s.sh version) /home/zondax/project/app/pkg/installer_s.sh
+
+  build_package_X:
+    docker:
+      - image: zondax/builder-bolos:latest
+    environment:
+      BOLOS_SDK: /home/zondax/project/deps/nanox-secure-sdk
+      BOLOS_ENV: /opt/bolos
+    steps:
+      - checkout
+      - run: git submodule update --init --recursive
+      - run:
+          name: Build
+          command: |
+            source /home/zondax/.cargo/env
+            cd /home/zondax/project
+            make
+      - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/installer_x.sh version) /home/zondax/project/app/pkg/installer_x.sh
 
 workflows:
   version: 2
@@ -128,13 +166,26 @@ workflows:
     jobs:
       - build
       - build_rust
-      - build_ledger
+      - build_ledger_S
+      - build_ledger_X
       - test_zemu
-      - build_package:
+      - build_package_S:
           requires:
             - build
             - build_rust
-            - build_ledger
+            - build_ledger_S
+            - build_ledger_X
+            - test_zemu
+          filters:
+            branches:
+              only:
+                - master
+      - build_package_X:
+          requires:
+            - build
+            - build_rust
+            - build_ledger_S
+            - build_ledger_X
             - test_zemu
           filters:
             branches:

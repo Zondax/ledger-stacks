@@ -1,5 +1,3 @@
-import Transport from "@ledgerhq/hw-transport";
-
 export interface ResponseBase {
   errorMessage: string;
   returnCode: number;

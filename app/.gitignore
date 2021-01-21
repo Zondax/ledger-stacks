@@ -53,5 +53,6 @@ bin/app.apdu
 
 pkg/bin/app.hex
 pkg/zxtool.sh
+pkg/installer_?.sh
 
 pkg/demo.zip
