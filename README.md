@@ -160,6 +160,16 @@ There are a few things to take into account when enabling Ledger App debugging:
     ```bash
     make
     ```
+    It will build both for Nano S and Nano X.
+    
+    To build only for Nano S
+    ```bash
+    make buildS
+    ```
+    Or Nano X 
+    ```bash 
+    make buildX
+    ```
 
 2. Define your debug scenario
 
