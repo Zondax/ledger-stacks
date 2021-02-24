@@ -26,7 +26,7 @@ import {
   pubKeyfromPrivKey,
   publicKeyToString
 } from "@stacks/transactions";
-import { StacksTestnet, StacksMainnet } from "@stacks/network";
+import { StacksTestnet } from "@stacks/network";
 import { ec as EC } from "elliptic";
 
 const BN = require("bn.js");
@@ -82,7 +82,7 @@ describe("Basic checks", function() {
       }
     });
 
-    it.skip(`${nanoModel.prefix} - get address`, async function() {
+    it(`${nanoModel.prefix} - get address`, async function() {
       const sim = new Zemu(nanoModel.path);
       try {
         await sim.start({ model: nanoModel.model, ...simOptions});
