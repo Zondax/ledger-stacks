@@ -29,6 +29,20 @@
 #include "coin.h"
 #include "zxmacros.h"
 
+__Z_INLINE void handleSetNetwork(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    extractHDPath(rx, OFFSET_DATA);
+
+    uint8_t network = G_io_apdu_buffer[OFFSET_P1];
+
+    uint8_t net[64];
+    uint16_t len = snprintf(net, 64, "****Invalid network: %d", network);
+
+    if (set_network_version(network))
+        return THROW(APDU_CODE_OK);
+    zemu_log_stack(net);
+    return THROW(APDU_CODE_DATA_INVALID);
+}
+
 __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     extractHDPath(rx, OFFSET_DATA);
 
@@ -88,6 +102,11 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
             switch (G_io_apdu_buffer[OFFSET_INS]) {
                 case INS_GET_VERSION: {
                     handle_getversion(flags, tx, rx);
+                    break;
+                }
+
+                case INS_SET_NETWORK: {
+                    handleSetNetwork(flags, tx, rx);
                     break;
                 }
 

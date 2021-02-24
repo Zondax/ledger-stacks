@@ -48,6 +48,31 @@ typedef struct {
     uint8_t hash_ripe[CX_RIPEMD160_SIZE];
 } __attribute__((packed)) address_temp_t;
 
+
+bool is_valid_network_version(uint8_t version);
+
+// Set the network version to be used when getting the address from
+// the device public key. By default it is set to mainnet
+bool set_network_version(uint8_t network) {
+    if (is_valid_network_version(network)) {
+        version = network;
+        return true;
+    }
+    version = COIN_VERSION_MAINNET_SINGLESIG;
+    return true;
+}
+
+bool is_valid_network_version(uint8_t version) {
+    switch(version) {
+        case COIN_VERSION_TESTNET_SINGLESIG: break;
+        case COIN_VERSION_MAINNET_SINGLESIG: break;
+        default: {
+            return false;
+        }
+    }
+    return true;
+}
+
 uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     if (buffer_len < sizeof(answer_t)) {
         return 0;
@@ -62,11 +87,9 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
 
     crypto_extractPublicKeyHash(address_temp.hash_ripe, CX_RIPEMD160_SIZE);
 
-    uint8_t version = COIN_VERSION_MAINNET_SINGLESIG;
-    if (isTestnet()) {
-        version = COIN_VERSION_MAINNET_SINGLESIG;
-    }
     size_t outLen = sizeof_field(answer_t, address);
+    if ( !is_valid_network_version(version) )
+        version = COIN_VERSION_MAINNET_SINGLESIG;
     outLen = rs_c32_address(address_temp.hash_ripe, version, answer->address, outLen);
 
     return PK_LEN_SECP256K1 + outLen;

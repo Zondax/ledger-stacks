@@ -26,7 +26,7 @@ import {
   pubKeyfromPrivKey,
   publicKeyToString
 } from "@stacks/transactions";
-import { StacksTestnet } from "@stacks/network";
+import { StacksTestnet, StacksMainnet } from "@stacks/network";
 import { ec as EC } from "elliptic";
 
 const BN = require("bn.js");
@@ -82,7 +82,7 @@ describe("Basic checks", function() {
       }
     });
 
-    it(`${nanoModel.prefix} - get address`, async function() {
+    it.skip(`${nanoModel.prefix} - get address`, async function() {
       const sim = new Zemu(nanoModel.path);
       try {
         await sim.start({ model: nanoModel.model, ...simOptions});
@@ -128,6 +128,14 @@ describe("Basic checks", function() {
 
         expect(resp.address).toEqual(expected_address_string);
         expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
+
+
+        // Now test if we can set the network version and get a testnet address
+        let res = await app.setNetworkVersion(path, 26);
+
+        const response_t = await app.getAddressAndPubKey("m/44'/5757'/5'/0/3", true);
+        const expected_testnet_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";
+        expect(response_t.address).toEqual(expected_testnet_address_string);
       } finally {
         await sim.close();
       }

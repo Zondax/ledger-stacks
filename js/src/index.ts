@@ -139,6 +139,13 @@ export default class BlockstackApp {
         }, processErrorResponse);
     }
 
+    async setNetworkVersion(path: string, network: number): Promise<ResponseAddress> {
+        const serializedPath = serializePath(path);
+        return this.transport
+            .send(CLA, INS.SET_NETWORK, network, 0, serializedPath, [LedgerError.NoErrors])
+            .then(processErrorResponse);
+    }
+
     async getAddressAndPubKey(path: string): Promise<ResponseAddress> {
         const serializedPath = serializePath(path);
         return this.transport
