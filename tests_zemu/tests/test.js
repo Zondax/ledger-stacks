@@ -16,6 +16,7 @@
 
 import jest, { expect } from "jest";
 import Zemu from "@zondax/zemu";
+import NetworkVersion from "@zondax/ledger-blockstack";
 import BlockstackApp from "@zondax/ledger-blockstack";
 import {
   broadcastTransaction,
@@ -24,7 +25,8 @@ import {
   makeSTXTokenTransfer,
   makeUnsignedSTXTokenTransfer,
   pubKeyfromPrivKey,
-  publicKeyToString
+  publicKeyToString,
+  AddressVersion
 } from "@stacks/transactions";
 import { StacksTestnet } from "@stacks/network";
 import { ec as EC } from "elliptic";
@@ -131,7 +133,7 @@ describe("Basic checks", function() {
 
 
         // Now test if we can set the network version and get a testnet address
-        let res = await app.setNetworkVersion(path, 26);
+        let res = await app.setAddressVersion(path, AddressVersion.TestnetSingleSig);
 
         const response_t = await app.getAddressAndPubKey("m/44'/5757'/5'/0/3", true);
         const expected_testnet_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";

@@ -16,7 +16,7 @@
  ******************************************************************************* */
 import Transport from '@ledgerhq/hw-transport';
 import {serializePath} from './helper';
-import {ResponseAddress, ResponseAppInfo, ResponseSign, ResponseVersion} from './types';
+import {ResponseBase, ResponseAddress, ResponseAppInfo, ResponseSign, ResponseVersion} from './types';
 import {
     CHUNK_SIZE,
     CLA,
@@ -139,10 +139,10 @@ export default class BlockstackApp {
         }, processErrorResponse);
     }
 
-    async setNetworkVersion(path: string, network: number): Promise<ResponseAddress> {
+    async setAddressVersion(path: string, version: number): Promise<ResponseBase> {
         const serializedPath = serializePath(path);
         return this.transport
-            .send(CLA, INS.SET_NETWORK, network, 0, serializedPath, [LedgerError.NoErrors])
+            .send(CLA, INS.SET_NETWORK, version, 0, serializedPath, [LedgerError.NoErrors])
             .then(processErrorResponse);
     }
 
