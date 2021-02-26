@@ -58,7 +58,7 @@ DEFINES += APP_STANDARD
 APPNAME = "Stacks"
 APPPATH = "44'/5757'"
 ifeq ($(TARGET_NAME),TARGET_NANOS)
-SCRIPT_LD:=$(CURDIR)/script.ld
+APP_STACK_SIZE:=2828
 endif
 
 else ifeq ($(COIN),STX_variant1)
