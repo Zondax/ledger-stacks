@@ -117,7 +117,7 @@ describe("Basic checks", function() {
         // Wait until we are not in the main menu
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model === 'nanos' ? 3 : 3);
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model === 'nanos' ? 2 : 2);
 
         const resp = await respRequest;
         console.log(resp);
@@ -129,14 +129,16 @@ describe("Basic checks", function() {
         const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
 
         expect(resp.address).toEqual(expected_address_string);
+        console.log("Response address ", resp.address)
         expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
 
 
         // Now test if we can set the network version and get a testnet address
         let res = await app.setAddressVersion(path, AddressVersion.TestnetSingleSig);
 
-        const response_t = await app.getAddressAndPubKey("m/44'/5757'/5'/0/3", true);
+        const response_t = await app.getAddressAndPubKey(path, true);
         const expected_testnet_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";
+        res = await app.setAddressVersion(path, AddressVersion.MainnetSingleSig);
         expect(response_t.address).toEqual(expected_testnet_address_string);
       } finally {
         await sim.close();
@@ -206,7 +208,7 @@ describe("Basic checks", function() {
         // Wait until we are not in the main men
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model === 'nanos' ? 9 : 8);
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model === 'nanos' ? 8 : 7);
 
         let signature = await signatureRequest;
         console.log(signature);
