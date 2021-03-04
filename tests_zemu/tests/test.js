@@ -152,7 +152,7 @@ describe("Basic checks", function() {
         const app = new BlockstackApp(sim.getTransport());
 
         // Get pubkey and check
-        const pkResponse = await app.getAddressAndPubKey(path);
+        const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig);
         console.log(pkResponse);
         expect(pkResponse.returnCode).toEqual(0x9000);
         expect(pkResponse.errorMessage).toEqual("No errors");
