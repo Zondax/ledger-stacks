@@ -8,7 +8,6 @@ export const INS = {
     GET_VERSION: 0x00,
     GET_ADDR_SECP256K1: 0x01,
     SIGN_SECP256K1: 0x02,
-    SET_NETWORK: 0X03,
 };
 
 export const PAYLOAD_TYPE = {

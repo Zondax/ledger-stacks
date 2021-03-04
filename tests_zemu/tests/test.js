@@ -90,7 +90,7 @@ describe("Basic checks", function() {
         await sim.start({ model: nanoModel.model, ...simOptions});
         const app = new BlockstackApp(sim.getTransport());
 
-        const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
+        const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", AddressVersion.MainnetSingleSig, true);
         console.log(response);
         expect(response.returnCode).toEqual(0x9000);
 
@@ -113,7 +113,7 @@ describe("Basic checks", function() {
         // Derivation path. First 3 items are automatically hardened!
         const path = "m/44'/5757'/5'/0/3";
 
-        const respRequest = app.showAddressAndPubKey(path);
+        const respRequest = app.showAddressAndPubKey(path, AddressVersion.MainnetSingleSig);
         // Wait until we are not in the main menu
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
@@ -133,12 +133,8 @@ describe("Basic checks", function() {
         expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
 
 
-        // Now test if we can set the network version and get a testnet address
-        let res = await app.setAddressVersion(path, AddressVersion.TestnetSingleSig);
-
-        const response_t = await app.getAddressAndPubKey(path, true);
+        const response_t = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig);
         const expected_testnet_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";
-        res = await app.setAddressVersion(path, AddressVersion.MainnetSingleSig);
         expect(response_t.address).toEqual(expected_testnet_address_string);
       } finally {
         await sim.close();

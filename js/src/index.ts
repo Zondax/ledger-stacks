@@ -30,6 +30,8 @@ import {
     processErrorResponse,
 } from './common';
 
+import type { AddressVersion } from '@stacks/transactions';
+
 export {LedgerError};
 export * from './types';
 
@@ -139,25 +141,17 @@ export default class BlockstackApp {
         }, processErrorResponse);
     }
 
-    async setAddressVersion(path: string, version: number): Promise<ResponseBase> {
+    async getAddressAndPubKey(path: string, version: AddressVersion): Promise<ResponseAddress> {
         const serializedPath = serializePath(path);
         return this.transport
-            .send(CLA, INS.SET_NETWORK, version, 0, serializedPath, [LedgerError.NoErrors])
-            .then(processErrorResponse);
-    }
-
-    async getAddressAndPubKey(path: string): Promise<ResponseAddress> {
-        const serializedPath = serializePath(path);
-        return this.transport
-            .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.ONLY_RETRIEVE, 0, serializedPath, [0x9000])
+            .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.ONLY_RETRIEVE, version, serializedPath, [0x9000])
             .then(processGetAddrResponse, processErrorResponse);
     }
 
-    async showAddressAndPubKey(path: string): Promise<ResponseAddress> {
+    async showAddressAndPubKey(path: string, version: AddressVersion): Promise<ResponseAddress> {
         const serializedPath = serializePath(path);
-
         return this.transport
-            .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.SHOW_ADDRESS_IN_DEVICE, 0, serializedPath, [
+            .send(CLA, INS.GET_ADDR_SECP256K1, P1_VALUES.SHOW_ADDRESS_IN_DEVICE, version, serializedPath, [
                 LedgerError.NoErrors,
             ])
             .then(processGetAddrResponse, processErrorResponse);
