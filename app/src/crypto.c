@@ -52,14 +52,14 @@ typedef struct {
 bool is_valid_network_version(uint8_t version);
 
 // Set the network version to be used when getting the address from
-// the device public key. By default it is set to mainnet
+// the device public key.
 bool set_network_version(uint8_t network) {
     if (is_valid_network_version(network)) {
         version = network;
         return true;
     }
-    version = COIN_VERSION_MAINNET_SINGLESIG;
-    return true;
+    zemu_log_stack("Address version not supported/0");
+    return false;
 }
 
 bool is_valid_network_version(uint8_t version) {
