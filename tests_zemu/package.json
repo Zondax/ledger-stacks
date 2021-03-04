@@ -18,7 +18,7 @@
   "dependencies": {
     "@stacks/network": "^1.0.1",
     "@stacks/transactions": "^1.0.1",
-    "@zondax/ledger-blockstack": "^0.1.0",
+    "@zondax/ledger-blockstack": "file:../js",
     "@zondax/zemu": "^0.11.0",
     "bn.js": "^5.1.3"
   },

@@ -16,6 +16,7 @@
 
 import jest, { expect } from "jest";
 import Zemu from "@zondax/zemu";
+import NetworkVersion from "@zondax/ledger-blockstack";
 import BlockstackApp from "@zondax/ledger-blockstack";
 import {
   broadcastTransaction,
@@ -24,7 +25,8 @@ import {
   makeSTXTokenTransfer,
   makeUnsignedSTXTokenTransfer,
   pubKeyfromPrivKey,
-  publicKeyToString
+  publicKeyToString,
+  AddressVersion
 } from "@stacks/transactions";
 import { StacksTestnet } from "@stacks/network";
 import { ec as EC } from "elliptic";
@@ -88,7 +90,7 @@ describe("Basic checks", function() {
         await sim.start({ model: nanoModel.model, ...simOptions});
         const app = new BlockstackApp(sim.getTransport());
 
-        const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", true);
+        const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", AddressVersion.MainnetSingleSig, true);
         console.log(response);
         expect(response.returnCode).toEqual(0x9000);
 
@@ -111,11 +113,11 @@ describe("Basic checks", function() {
         // Derivation path. First 3 items are automatically hardened!
         const path = "m/44'/5757'/5'/0/3";
 
-        const respRequest = app.showAddressAndPubKey(path);
+        const respRequest = app.showAddressAndPubKey(path, AddressVersion.MainnetSingleSig);
         // Wait until we are not in the main menu
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model === 'nanos' ? 3 : 3);
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-show-address`, nanoModel.model === 'nanos' ? 2 : 2);
 
         const resp = await respRequest;
         console.log(resp);
@@ -127,7 +129,13 @@ describe("Basic checks", function() {
         const expected_publicKey = "02beafa347af54948b214106b9972cc4a05a771a2573f32905c48e4dc697171e60";
 
         expect(resp.address).toEqual(expected_address_string);
+        console.log("Response address ", resp.address)
         expect(resp.publicKey.toString("hex")).toEqual(expected_publicKey);
+
+
+        const response_t = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig);
+        const expected_testnet_address_string = "STGZNGF9PTR3ZPJN9J67WRYV5PSV783JY9ZMT3Y6";
+        expect(response_t.address).toEqual(expected_testnet_address_string);
       } finally {
         await sim.close();
       }
@@ -144,7 +152,7 @@ describe("Basic checks", function() {
         const app = new BlockstackApp(sim.getTransport());
 
         // Get pubkey and check
-        const pkResponse = await app.getAddressAndPubKey(path);
+        const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig);
         console.log(pkResponse);
         expect(pkResponse.returnCode).toEqual(0x9000);
         expect(pkResponse.errorMessage).toEqual("No errors");
@@ -196,7 +204,7 @@ describe("Basic checks", function() {
         // Wait until we are not in the main men
         await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model === 'nanos' ? 9 : 8);
+        await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-signatureTest`, nanoModel.model === 'nanos' ? 8 : 7);
 
         let signature = await signatureRequest;
         console.log(signature);

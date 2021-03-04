@@ -40,12 +40,7 @@ $(info EXAMPLE_VUE_DIR       : $(EXAMPLE_VUE_DIR))
 $(info TESTS_JS_DIR          : $(TESTS_JS_DIR))
 $(info TESTS_JS_PACKAGE      : $(TESTS_JS_PACKAGE))
 
-ifeq ($(USERID),1001)
-# TODO: Use podman inside circleci machines?
-DOCKER_IMAGE=zondax/builder-bolos-1001@sha256:423348672bb9f1e6aca573de29afa6763bcbead1a592cedb62c8fbfd82fb7f65
-else
-DOCKER_IMAGE=zondax/builder-bolos@sha256:2ce8f16b1e3face5464c538198e57a64340f664d932b3383d019f2636321f342
-endif
+DOCKER_IMAGE=zondax/builder-bolos@sha256:0e0097c01ef3c6c964fea8d8b6e3a584f4ff209a04ec68b6b2b4aeab64379c23
 
 ifdef INTERACTIVE
 INTERACTIVE_SETTING:="-i"

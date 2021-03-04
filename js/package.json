@@ -22,7 +22,8 @@
   "dependencies": {
     "@babel/runtime": "^7.12.5",
     "@ledgerhq/hw-transport": "^5.39.1",
-    "@types/ledgerhq__hw-transport": "^4.21.3"
+    "@types/ledgerhq__hw-transport": "^4.21.3",
+    "@stacks/transactions": "^1.0.1"
   },
   "devDependencies": {
     "@babel/cli": "^7.12.10",
