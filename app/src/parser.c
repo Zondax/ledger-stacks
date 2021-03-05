@@ -50,13 +50,11 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
 
-    // Checks if this device is allowed to sign the transaction,
-    // being either the origin or sponsor
-    // returns parser_ok if so;
     uint8_t pubKeyHash[CX_RIPEMD160_SIZE];
 
     crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
 
+    // Checks if this device is allowed to sign this transaction
     if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
         return parser_invalid_auth_type;
 
@@ -119,8 +117,16 @@ uint16_t parser_presig_hash_data(uint8_t *buf, uint16_t bufLen) {
     return _presig_hash_data(&parser_state, buf, bufLen);
 }
 
-uint8_t* parser_last_transaction_block() {
-    return _last_block_ptr(&parser_state);
+uint16_t parser_last_transaction_block(uint8_t **last_block) {
+    return _last_block_ptr(&parser_state, last_block);
+}
+
+int8_t parser_is_transaction_multisig() {
+    return _is_multisig(&parser_state);
+}
+
+uint16_t parser_previous_signer_data(uint8_t **data) {
+    return _previous_signer_data(&parser_state, data);
 }
 
 void parser_resetState() {

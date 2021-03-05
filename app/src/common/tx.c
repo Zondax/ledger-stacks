@@ -155,6 +155,14 @@ uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen) {
     return parser_presig_hash_data(buf, bufLen);
 }
 
-uint8_t* tx_last_tx_block() {
-    return parser_last_transaction_block();
+uint16_t tx_last_tx_block(uint8_t ** last_tx_block) {
+    return parser_last_transaction_block(last_tx_block);
+}
+
+int8_t tx_is_multisig() {
+    return parser_is_transaction_multisig();
+}
+
+uint16_t tx_previous_signer_data(uint8_t **data) {
+    return parser_previous_signer_data(data);
 }

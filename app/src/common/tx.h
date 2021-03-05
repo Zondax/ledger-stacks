@@ -56,17 +56,24 @@ zxerr_t tx_getItem(int8_t displayIdx,
                    char *outValue, uint16_t outValueLen,
                    uint8_t pageIdx, uint8_t *pageCount);
 
-/// Gets the transaction authorization type
+// Gets the transaction authorization type
 zxerr_t tx_auth_flag(uint8_t *flag);
 
-/// Gets the origin fee as bytes
+// Returns 1 if the transaction is multisig, 0 otherwise, returns -1 in case of error
+int8_t tx_is_multisig();
+
+// Gets the origin fee as bytes
 uint8_t tx_fee(uint8_t *fee, uint16_t fee_len);
 
-/// Gets the origin nonce as bytes
+// Gets the origin nonce as bytes
 uint8_t tx_nonce(uint8_t *nonce, uint16_t nonce_len);
 
 // Writes in buf, the auth fields used for the initial transaction hash
 uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen);
 
-// Returns a pointer to the last transaction chunk
-uint8_t* tx_last_tx_block();
+// Gets a pointer to the last block in the transaction and returns its lenght
+uint16_t tx_last_tx_block(uint8_t ** last_tx_block);
+
+// Gets the pointer to the previous signer signature and required data
+// for signing a multisig transaction
+uint16_t tx_previous_signer_data(uint8_t **data);

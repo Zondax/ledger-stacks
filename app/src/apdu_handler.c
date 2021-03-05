@@ -33,6 +33,11 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     extractHDPath(rx, OFFSET_DATA);
 
     uint8_t requireConfirmation = G_io_apdu_buffer[OFFSET_P1];
+    uint8_t network = G_io_apdu_buffer[OFFSET_P2];
+
+    // Set the address version
+    if (!set_network_version(network))
+        return THROW(APDU_CODE_DATA_INVALID);
 
     if (requireConfirmation) {
         app_fill_address(addr_secp256k1);
@@ -62,7 +67,7 @@ __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t 
         THROW(APDU_CODE_DATA_INVALID);
     }
 
-    zemu_log_stack("tx_parse done");
+    zemu_log_stack("tx_parse done\n");
 
     CHECK_APP_CANARY()
     view_review_init(tx_getItem, tx_getNumItems, app_sign);
