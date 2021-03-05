@@ -52,16 +52,50 @@
 // according to the blockstack's rust implementation
 #define POST_SIGNHASH_DATA_LEN CX_SHA256_SIZE + 1
 
+// The previous signer signature data and post_sig_hash
+// that should be treated as the pre_sig_hash for this signer
+// this includes:
+// 32-byte previous signer post_sig_hash
+// 1-byte pubkey type(compressed/uncompressed)
+// 65-byte previous signer signature(vrs)
+#define PREVIOUS_SIGNER_DATA_LEN CX_SHA256_SIZE + 1 + 65
+
 extern uint8_t action_addr_len;
 
 // helper function to get the presig_hash of the transaction being signed
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen);
 
+// Heper function to verify the previous signer post_sig_hash in a multisig transaction
+__Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
+
 __Z_INLINE void app_sign() {
     uint8_t presig_hash[CX_SHA256_SIZE];
     uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN];
+    zxerr_t err = zxerr_ok;
 
-    zxerr_t err = get_presig_hash(presig_hash, CX_SHA256_SIZE);
+    // Get the current transaction presig_hash
+    if (get_presig_hash(presig_hash, CX_SHA256_SIZE) != zxerr_ok)
+        err = zxerr_no_data;
+
+    // Check if this is a multisig transaction, If so, checks that there is a previous
+    // signer data, in that case we know we have to use that signers's data as our
+    // pre_sig_hash. Otherwise, we are the first signer in a multisig transaction
+    if (tx_is_multisig() && err == zxerr_ok) {
+        // Get the previous signer data to do the verification and to sign it
+        uint8_t *data = NULL;
+        uint8_t **previous_signer_data = &data;
+        uint16_t len = tx_previous_signer_data(previous_signer_data);
+
+        if (data != NULL && len >= PREVIOUS_SIGNER_DATA_LEN) {
+            if (validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len) == zxerr_ok) {
+                // the previous signer post_sig_hash becomes our presig_hash
+                memcpy(presig_hash, data, CX_SHA256_SIZE);
+            } else {
+                // An invalid post_sig_hash from a full signer data should be considered an error
+                err = zxerr_no_data;
+            }
+        }
+    }
 
     if (err != zxerr_ok) {
         uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
@@ -85,7 +119,7 @@ __Z_INLINE void app_sign() {
     // Calculates the post_sighash
     memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
-    // set the signing public key's encoding byte, it is compressed
+    // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
     post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
     // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
@@ -150,6 +184,29 @@ __Z_INLINE void app_reply_error() {
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
 }
 
+__Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
+
+    // get the previous signer post_sig_hash and validate it
+    uint8_t reconstructed_post_sig_hash[CX_SHA256_SIZE];
+
+    sha512_256_ctx ctx;
+    SHA512_256_init(&ctx);
+    SHA512_256_starts(&ctx);
+    SHA512_256_update(&ctx, current_pre_sig_hash, hash_len);
+    // include the previous signer pubkey type(compressed/uncompressed) and its signature(vrs)
+    // those bytes are the last 66-bytes in the previous signer data
+    SHA512_256_update(&ctx, signer_data + CX_SHA256_SIZE, PREVIOUS_SIGNER_DATA_LEN - CX_SHA256_SIZE);
+    SHA512_256_finish(&ctx, reconstructed_post_sig_hash);
+
+    // now compare
+    for (unsigned int i = 0; i < CX_SHA256_SIZE; ++i) {
+        if ( reconstructed_post_sig_hash[i] != signer_data[i]) {
+            zemu_log_stack("Invalid post_sig_hash\n");
+            return zxerr_no_data;
+        }
+    }
+    return zxerr_ok;
+}
 
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     uint8_t tx_auth[INITIAL_SIGHASH_AUTH_LEN];
@@ -177,16 +234,13 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     SHA512_256_update(&ctx, tx_auth, auth_len);
 
     // prepare the last transaction block to be hashed
-    uint8_t* last_block = NULL;
+    uint8_t *last_block = NULL;
+    uint8_t **last_block_ptr = &last_block;
 
-    last_block = tx_last_tx_block();
-
-    if (last_block == NULL) {
+    uint16_t last_block_len = tx_last_tx_block(last_block_ptr);
+    if (last_block == NULL || last_block_len == 0) {
         return zxerr_no_data;
     }
-
-    // Gets the last block length
-    uint16_t last_block_len = messageLength - (last_block - message);
 
     // gets the full transaction hash used for signing and copies the result into the first
     // 32-bytes of presig_data

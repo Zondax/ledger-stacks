@@ -30,6 +30,8 @@ parser_error_t _getItem(const parser_context_t *ctx,
 
 parser_error_t _auth_flag(const parser_tx_t *v, uint8_t *auth_flag);
 
+uint8_t _is_multisig(const parser_tx_t *v);
+
 uint8_t _fee_bytes(const parser_tx_t *v, uint8_t *fee, uint16_t fee_len);
 uint8_t _nonce_bytes(const parser_tx_t *v, uint8_t *nonce, uint16_t nonce_len);
 
@@ -37,4 +39,7 @@ parser_error_t _check_pubkey_hash(const parser_tx_t *v, const uint8_t *pubKey, u
 
 uint16_t _presig_hash_data(const parser_tx_t *v, uint8_t *buf, uint16_t bufLen);
 
-uint8_t* _last_block_ptr(const parser_tx_t *v);
+uint16_t _last_block_ptr(const parser_tx_t *v, uint8_t **block_ptr);
+
+uint16_t _previous_signer_data(const parser_tx_t *v, uint8_t **data);
+

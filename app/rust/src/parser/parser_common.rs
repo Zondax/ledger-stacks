@@ -112,7 +112,6 @@ impl<'a> AssetInfo<'a> {
 }
 
 #[repr(u32)]
-#[no_mangle]
 #[derive(Copy, Clone, Debug, PartialEq)]
 /// ParserError is the counterpart of
 /// the parse_error_t in c,
