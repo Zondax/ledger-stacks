@@ -145,6 +145,13 @@ void crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
     uint8_t publicKey[PK_LEN_SECP256K1];
 
     crypto_extractPublicKey(hdPath, publicKey, PK_LEN_SECP256K1);
+    {
+        zemu_log("pubKey: ***");
+        char buffer[PK_LEN_SECP256K1 * 3];
+        array_to_hexstr(buffer, PK_LEN_SECP256K1 * 3,  publicKey, PK_LEN_SECP256K1 );
+        zemu_log(buffer);
+        zemu_log("\n");
+    }
 
     // calculates the sha256 + ripemd160
     address_temp_t address_temp;

@@ -4,6 +4,7 @@
 use crate::parser::{
     parser_common::ParserError, post_condition::TransactionPostCondition, transaction::Transaction,
 };
+use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 
 // extern c function for formatting to fixed point number
 extern "C" {
@@ -11,7 +12,6 @@ extern "C" {
 }
 
 #[repr(C)]
-#[no_mangle]
 pub struct parser_context_t {
     pub buffer: *const u8,
     pub bufferLen: u16,
@@ -19,7 +19,6 @@ pub struct parser_context_t {
 }
 
 #[repr(C)]
-#[no_mangle]
 pub struct parse_tx_t {
     state: *mut u8,
     len: u16,
@@ -211,9 +210,34 @@ pub extern "C" fn _presig_hash_data(tx_t: *const parse_tx_t, buf: *mut u8, bufLe
 }
 
 #[no_mangle]
-pub extern "C" fn _last_block_ptr(tx_t: *const parse_tx_t) -> *const u8 {
+pub extern "C" fn _last_block_ptr(tx_t: *const parse_tx_t, block_ptr: *mut *const u8) -> u16 {
     if let Some(tx) = transaction_from(tx_t as _) {
-        return tx.last_transaction_block();
+        let block = tx.last_transaction_block();
+        unsafe {
+            *block_ptr = block.as_ptr();
+            return block.len() as _;
+        }
     }
-    core::ptr::null()
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> i8 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        return tx.is_multisig() as _;
+    }
+    -1
+}
+
+#[no_mangle]
+pub extern "C" fn _previous_signer_data(tx_t: *const parse_tx_t, data: *mut *const u8) -> u16 {
+    if let Some(tx) = transaction_from(tx_t as _) {
+        if let Some(slice) = tx.previous_signer_data() {
+            unsafe {
+                *data = slice.as_ptr();
+            };
+            return slice.len() as _;
+        }
+    }
+    0
 }
