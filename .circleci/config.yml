@@ -139,25 +139,8 @@ jobs:
           command: |
             source /home/zondax/.cargo/env
             cd /home/zondax/project
-            make
+            make buildS
       - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/installer_s.sh version) /home/zondax/project/app/pkg/installer_s.sh
-
-  build_package_X:
-    docker:
-      - image: zondax/builder-bolos:latest
-    environment:
-      BOLOS_SDK: /home/zondax/project/deps/nanox-secure-sdk
-      BOLOS_ENV: /opt/bolos
-    steps:
-      - checkout
-      - run: git submodule update --init --recursive
-      - run:
-          name: Build
-          command: |
-            source /home/zondax/.cargo/env
-            cd /home/zondax/project
-            make
-      - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/installer_x.sh version) /home/zondax/project/app/pkg/installer_x.sh
 
 workflows:
   version: 2
@@ -170,17 +153,6 @@ workflows:
       - build_ledger_X
       - test_zemu
       - build_package_S:
-          requires:
-            - build
-            - build_rust
-            - build_ledger_S
-            - build_ledger_X
-            - test_zemu
-          filters:
-            branches:
-              only:
-                - master
-      - build_package_X:
           requires:
             - build
             - build_rust
