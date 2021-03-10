@@ -139,7 +139,7 @@ jobs:
           command: |
             source /home/zondax/.cargo/env
             cd /home/zondax/project
-            make buildS
+            make
       - run: /home/zondax/go/bin/ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete $(/home/zondax/project/app/pkg/installer_s.sh version) /home/zondax/project/app/pkg/installer_s.sh
 
 workflows:
