@@ -41,6 +41,7 @@ import { ec as EC } from "elliptic";
 import {recoverPublicKey} from "noble-secp256k1";
 
 const BN = require("bn.js");
+var sha512_256 = require('js-sha512').sha512_256;
 
 const Resolve = require("path").resolve;
 const APP_PATH_S = Resolve("../app/bin/app_s.elf");
@@ -333,8 +334,6 @@ describe("Basic checks", function() {
             let signature = await signatureRequest;
             console.log(signature);
 
-            //let js_signature = signedTx.auth.spendingCondition?.signature.signature;
-            //console.log("js_signature ", js_signature);
             console.log("ledger-postSignHash: ", signature.postSignHash.toString("hex"));
             console.log("ledger-compact: ", signature.signatureCompact.toString("hex"));
             console.log("ledger-vrs", signature.signatureVRS.toString("hex"));
@@ -350,9 +349,15 @@ describe("Basic checks", function() {
             expect(signatureOk).toEqual(true);
 
             // Verifies that the second signer's signature is ok
+
+            // Construct the presig_hash from the prior_postsig_hash, authflag, fee and nonce
+            let presig_hash = [Buffer.from(signer0.sigHash, 'hex'), Buffer.alloc(1, unsignedTx.auth.authType) , Buffer.alloc(8, unsignedTx.auth.getFee()), Buffer.alloc(8, unsignedTx.auth.spendingCondition.nonce)];
+            const signer2_hash = Buffer.concat(presig_hash);
+            const hash = sha512_256(signer2_hash);
+
             const signature1 = signature.signatureVRS.toString("hex");
             const signature1_obj = {r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
-            const signature1Ok = ec.verify(signer0.sigHash, signature1_obj, devicePublicKey, "hex");
+            const signature1Ok = ec.verify(hash, signature1_obj, devicePublicKey, "hex");
             expect(signature1Ok).toEqual(true);
 
         } finally {
