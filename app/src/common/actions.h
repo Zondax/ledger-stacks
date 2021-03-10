@@ -65,7 +65,10 @@ extern uint8_t action_addr_len;
 // helper function to get the presig_hash of the transaction being signed
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen);
 
-// Heper function to verify the previous signer post_sig_hash in a multisig transaction
+// Helper function that appends the transaction auth_type, fee and  nonce getting the hash of the result
+__Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen);
+
+// Helper function to verify the previous signer post_sig_hash in a multisig transaction
 __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
 
 __Z_INLINE void app_sign() {
@@ -87,13 +90,10 @@ __Z_INLINE void app_sign() {
         uint16_t len = tx_previous_signer_data(previous_signer_data);
 
         if (data != NULL && len >= PREVIOUS_SIGNER_DATA_LEN) {
-            if (validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len) == zxerr_ok) {
-                // the previous signer post_sig_hash becomes our presig_hash
-                memcpy(presig_hash, data, CX_SHA256_SIZE);
-            } else {
-                // An invalid post_sig_hash from a full signer data should be considered an error
+            // Check postsig_hash and append the authfield, fee and nonce, after that the result is copied to the presig_hash
+            // buffer
+            if ( validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len) != zxerr_ok || append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE) != zxerr_ok)
                 err = zxerr_no_data;
-            }
         }
     }
 
@@ -211,7 +211,6 @@ __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     uint8_t tx_auth[INITIAL_SIGHASH_AUTH_LEN];
     MEMZERO(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
-    uint8_t presig_data[PRESIG_DATA_LEN];
     uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
     // Before hashing the transaction the auth field should be cleared
@@ -220,8 +219,6 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
 
     // Init the hasher
-    //cx_sha256_t ctx;
-    //cx_sha256_init(&ctx);
     sha512_256_ctx ctx;
     SHA512_256_init(&ctx);
     SHA512_256_starts(&ctx);
@@ -242,18 +239,20 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         return zxerr_no_data;
     }
 
-    // gets the full transaction hash used for signing and copies the result into the first
-    // 32-bytes of presig_data
     SHA512_256_update(&ctx, last_block, last_block_len);
     SHA512_256_finish(&ctx, hash_temp);
-    memcpy(presig_data, hash_temp, CX_SHA256_SIZE);
-    {
-        zemu_log("tx_hash: ***");
-        char buffer[65];
-        array_to_hexstr(buffer, 65, presig_data, CX_SHA256_SIZE);
-        zemu_log(buffer);
-        zemu_log("\n");
-    }
+
+    return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
+}
+
+__Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen) {
+    uint8_t presig_data[PRESIG_DATA_LEN];
+    uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+
+    if ( input_hashLen != CX_SHA256_SIZE )
+        return zxerr_no_data;
+
+    memcpy(presig_data, input_hash, input_hashLen);
 
     // now append the auth-flag, fee and nonce
     uint8_t idx = CX_SHA256_SIZE;
@@ -271,13 +270,12 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     if (hashLen < CX_SHA256_SIZE || idx != PRESIG_DATA_LEN)
         return zxerr_no_data;
 
-    // Now get the presig_hash
+    // Now get the hash
+    sha512_256_ctx ctx;
     SHA512_256_init(&ctx);
     SHA512_256_starts(&ctx);
     SHA512_256_update(&ctx, presig_data, PRESIG_DATA_LEN);
-    SHA512_256_finish(&ctx, hash_temp);
-    memcpy(hash, hash_temp, CX_SHA256_SIZE);
-
+    SHA512_256_finish(&ctx, hash);
     return zxerr_ok;
 }
 
