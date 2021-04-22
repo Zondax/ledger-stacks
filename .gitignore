@@ -91,3 +91,5 @@ yarn.lock
 app/tmp.gif
 
 app/tmp.gif~
+
+tests_zemu/yarn.lock

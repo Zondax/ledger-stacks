@@ -97,8 +97,12 @@ void extractHDPath(uint32_t rx, uint32_t offset) {
 
     MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * HDPATH_LEN_DEFAULT);
 
-    const bool mainnet = hdPath[0] == HDPATH_0_DEFAULT &&
-                         hdPath[1] == HDPATH_1_DEFAULT;
+    bool mainnet =
+            hdPath[0] == HDPATH_0_DEFAULT &&
+            hdPath[1] == HDPATH_1_DEFAULT;
+
+    mainnet |=
+            (hdPath[0] == HDPATH_0_ALTERNATIVE);
 
     const bool testnet = hdPath[0] == HDPATH_0_TESTNET &&
                          hdPath[1] == HDPATH_1_TESTNET;
@@ -146,7 +150,7 @@ bool process_chunk(volatile uint32_t *tx, uint32_t rx) {
 void handle_generic_apdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     if (rx > 4 && os_memcmp(G_io_apdu_buffer, "\xE0\x01\x00\x00", 4) == 0) {
         // Respond to get device info command
-        uint8_t *p = G_io_apdu_buffer;
+        uint8_t * p = G_io_apdu_buffer;
         // Target ID        4 bytes
         p[0] = (TARGET_ID >> 24) & 0xFF;
         p[1] = (TARGET_ID >> 16) & 0xFF;
