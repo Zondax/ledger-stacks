@@ -177,16 +177,14 @@ only-release-tags: &only-release-tags
     tags:
       only: /^v[0-9]+(\.[0-9]+)*/
     branches:
-      only:
-        - master
+      ignore: /.*/
 
 only-npm-tags: &only-npm-tags
   filters:
     tags:
       only: /^npm_v[0-9]+(\.[0-9]+)*/
     branches:
-      only:
-        - master
+      ignore: /.*/
 
 workflows:
   version: 2
@@ -205,6 +203,8 @@ workflows:
           <<: *no-tags
 
   release:
+    when:
+      equal: [ master, << pipeline.git.branch >> ]
     jobs:
       - build:
           <<: *only-release-tags
@@ -226,6 +226,8 @@ workflows:
             - test_zemu
 
   release_npm:
+    when:
+      equal: [ master, << pipeline.git.branch >> ]
     jobs:
       - publish_npm_package:
           <<: *only-npm-tags
