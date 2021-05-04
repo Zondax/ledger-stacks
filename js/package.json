@@ -49,7 +49,8 @@
     "typescript": "^4.1.3"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "loginZondax": "npm --scope=@Zondax login"
   },
   "moduleDirectories": [
     "node_modules",
@@ -63,6 +64,11 @@
   "browserslist": [
     "> 1%",
     "last 2 versions"
+  ],
+  "files": [
+    "dist/*",
+    "LICENSE",
+    "yarn.lock"
   ],
   "publishConfig": {
     "access": "public"
