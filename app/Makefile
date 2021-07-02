@@ -48,7 +48,7 @@ COIN=STX
 endif
 
 APPVERSION_M=0
-APPVERSION_N=11
+APPVERSION_N=13
 APPVERSION_P=0
 
 $(info COIN      = [$(COIN)])
@@ -56,7 +56,7 @@ ifeq ($(COIN),STX)
 # Main app configuration
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
-APPPATH = "44'/5757'"
+APPPATH = "44'/5757'" --path "5757'"
 ifeq ($(TARGET_NAME),TARGET_NANOS)
 APP_STACK_SIZE:=2828
 endif

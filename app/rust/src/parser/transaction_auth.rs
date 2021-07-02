@@ -65,6 +65,14 @@ impl<'a> TransactionAuth<'a> {
         }
     }
 
+    // check just for origin, meaning we support standard transaction only
+    pub fn is_multisig(&self) -> bool {
+        match self {
+            Self::Standard(origin) => origin.is_multisig(),
+            Self::Sponsored(origin, _) => origin.is_multisig(),
+        }
+    }
+
     pub fn origin(&self) -> &TransactionSpendingCondition {
         match *self {
             Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => origin,
@@ -117,7 +125,8 @@ impl<'a> TransactionAuth<'a> {
     pub fn check_signer(&self, signer_pk: &[u8]) -> SignerId {
         match self {
             Self::Standard(ref origin) => {
-                if signer_pk == origin.signer_pub_key_hash() {
+                // Multisig support just for non sponsored transactions
+                if signer_pk == origin.signer_pub_key_hash() || origin.is_multisig() {
                     return SignerId::Origin;
                 }
             }

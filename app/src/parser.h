@@ -62,8 +62,15 @@ uint8_t parser_tx_nonce(uint8_t *nonce, uint16_t nonce_len);
 uint16_t parser_presig_hash_data(uint8_t *buf, uint16_t bufLen);
 
 // When signing the full transaction, The transaction hash has to be done in blocks.
-// this function returns a pointer to the last transaction block
-uint8_t* parser_last_transaction_block();
+// this function returns a pointer to the last transaction block and its lenght
+uint16_t parser_last_transaction_block(uint8_t ** last_tx_block);
+
+// Returns 1 if the transaction is multisig, 0 otherwise, returns -1 in case of error
+int8_t parser_is_transaction_multisig();
+
+// Gets a pointer to the previous signer signature, post_sig_hash and pubkey type
+// that is the last part of a lultisig transaction buffer
+uint16_t parser_previous_signer_data(uint8_t **data);
 
 void parser_resetState();
 

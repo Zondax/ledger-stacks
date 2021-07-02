@@ -32,6 +32,10 @@ extern uint32_t hdPath[HDPATH_LEN_DEFAULT];
 
 extern address_kind_e addressKind;
 
+uint8_t version;
+
+bool set_network_version(uint8_t version);
+
 bool isTestnet();
 
 void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen);

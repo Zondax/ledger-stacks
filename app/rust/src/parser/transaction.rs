@@ -24,6 +24,12 @@ use crate::parser::ffi::fp_uint64_to_str;
 
 use crate::{check_canary, zxformat};
 
+// In multisig transactions the remainder should contain:
+// 32-byte previous signer post_sig_hash
+// 1-byte pubkey type
+// 65-bytes vrs
+const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
+
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum TransactionAuthFlags {
@@ -236,6 +242,12 @@ pub struct Transaction<'a> {
     pub post_conditions: PostConditions<'a>,
     pub payload: TransactionPayload<'a>,
     signer: SignerId,
+    // If this is a multisig transaction this field should content
+    // the previous signer's post_sig_hash, pubkey type(compressed/uncom..), and the signature(vrs)
+    // with them, we can construct the pre_sig_hash for the current signer
+    // we would ideally verify it, but we can lend such responsability to the application
+    // which has more resources
+    // If this is not a multisig transaction, this field should be an empty array
     pub remainder: &'a [u8],
 }
 
@@ -503,6 +515,9 @@ impl<'a> Transaction<'a> {
         TransactionAuthFlags::Sponsored
     }
 
+    /// Checks if we can sign this transaction.
+    /// If this is a singlesig transaction we should be either the origin or sponsor
+    /// We will just pass the check if the transaction is multisig.
     pub fn check_signer_pk_hash(&mut self, signer_pk: &[u8]) -> ParserError {
         self.signer = self.transaction_auth.check_signer(signer_pk);
         if self.signer != SignerId::Invalid {
@@ -511,10 +526,24 @@ impl<'a> Transaction<'a> {
         ParserError::parser_invalid_auth_type
     }
 
-    // returns a pointer to the last transaction block which includes every thing after the
-    // transaction authorization field.
-    pub fn last_transaction_block(&self) -> *const u8 {
-        self.transaction_modes.as_ptr()
+    // returns a slice of the last block to be used in the presighash calculation
+    pub fn last_transaction_block(&self) -> &[u8] {
+        unsafe {
+            let len =
+                (self.remainder.as_ptr() as usize - self.transaction_modes.as_ptr() as usize) as _;
+            core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+        }
+    }
+
+    pub fn previous_signer_data(&self) -> Option<&[u8]> {
+        if self.is_multisig() && self.remainder.len() >= MULTISIG_PREVIOUS_SIGNER_DATA_LEN {
+            return Some(&self.remainder[..MULTISIG_PREVIOUS_SIGNER_DATA_LEN]);
+        }
+        None
+    }
+
+    pub fn is_multisig(&self) -> bool {
+        self.transaction_auth.is_multisig()
     }
 
     #[cfg(test)]
@@ -594,6 +623,43 @@ mod test {
             r.push(env!("CARGO_MANIFEST_DIR"));
             r.push("tests");
             r.push("stx_token_transfer");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: StxTransaction = serde_json::from_str(&str).unwrap();
+
+        let bytes = hex::decode(&json.raw).unwrap();
+        let mut transaction = Transaction::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+
+        assert!(transaction.transaction_auth.is_standard_auth());
+
+        let spending_condition = transaction.transaction_auth.origin();
+
+        assert_eq!(json.nonce, spending_condition.nonce());
+        assert_eq!(json.fee, spending_condition.fee() as u32);
+
+        let origin = spending_condition
+            .signer_address(transaction.version)
+            .unwrap();
+        let origin = core::str::from_utf8(&origin[0..origin.len()]).unwrap();
+        assert_eq!(&json.sender, origin);
+
+        let recipient = transaction.payload_recipient_address().unwrap();
+        let addr_len = recipient.len();
+        let address = core::str::from_utf8(&recipient[0..addr_len]).unwrap();
+        assert_eq!(&json.recipient, address);
+        assert!(Transaction::validate(&mut transaction).is_ok());
+    }
+
+    #[test]
+    fn test_multisig_token_transfer() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("stx_multisig_token_transfer");
             r.set_extension("json");
             r
         };
