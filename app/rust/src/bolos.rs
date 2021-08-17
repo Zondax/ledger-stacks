@@ -5,8 +5,8 @@ extern "C" {
 }
 
 #[cfg(not(test))]
-pub fn c_zemu_log_stack(s: &[u8]) {
-    unsafe { _zemu_log_stack(s.as_ptr()) }
+pub fn c_zemu_log_stack<S: AsRef<[u8]>>(s: S) {
+    unsafe { _zemu_log_stack(s.as_ref().as_ptr()) }
 }
 #[cfg(test)]
-pub fn c_zemu_log_stack(_s: &[u8]) {}
+pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {}
