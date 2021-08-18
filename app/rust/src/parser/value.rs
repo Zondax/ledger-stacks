@@ -54,50 +54,6 @@ impl ValueId {
             _ => Err(ParserError::parser_invalid_argument_id),
         }
     }
-
-    pub fn write_id_name(&self, writer: &mut impl core::fmt::Write) -> Result<(), ParserError> {
-        match self {
-            Self::Int => writer
-                .write_str("Int")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::UInt => writer
-                .write_str("UInt")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::Buffer => writer
-                .write_str("Buffer")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::BoolTrue => writer
-                .write_str("true")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::BoolFalse => writer
-                .write_str("false")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::StandardPrincipal => writer
-                .write_str("principal")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::ContractPrincipal => writer
-                .write_str("contract prin")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::ResponseOk => writer
-                .write_str("Ok")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::ResponseErr => writer
-                .write_str("Err")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::OptionalNone => writer
-                .write_str("None")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::OptionalSome => writer
-                .write_str("None")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::List => writer
-                .write_str("List")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-            Self::Tuple => writer
-                .write_str("None")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end),
-        }
-    }
 }
 
 impl<'a> Value<'a> {
@@ -110,6 +66,14 @@ impl<'a> Value<'a> {
     pub fn value_id(&self) -> Result<ValueId, ParserError> {
         let id = ValueId::from_bytes(self.0).map_err(|_| ParserError::parser_unexpected_value)?;
         Ok(id.1)
+    }
+
+    pub fn payload(&self) -> Result<&'a [u8], ParserError> {
+        if self.0.len() > 0 {
+            Ok(&self.0[1..])
+        } else {
+            Err(ParserError::parser_unexpected_buffer_end)
+        }
     }
 
     pub fn value_len(bytes: &'a [u8]) -> Result<usize, ParserError> {
@@ -139,6 +103,7 @@ impl<'a> Value<'a> {
             ValueId::Buffer => {
                 let len = be_u32::<'a, ParserError>(raw)
                     .map_err(|_| ParserError::parser_unexpected_value)?;
+                // value_len + 4-bytes
                 len.1 as usize + 4
             }
             ValueId::BoolTrue | ValueId::BoolFalse => 0,

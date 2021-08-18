@@ -175,7 +175,8 @@ impl<'a> Arguments<'a> {
         check_canary!();
         let mut idx = 0;
         let num_args = self.num_args()?;
-        let mut leftover = self.0;
+        // skip the first 4-bytes
+        let mut leftover = &self.0[4..];
         while idx < num_args as usize {
             let (bytes, value) =
                 Value::from_bytes(leftover).map_err(|_| ParserError::parser_invalid_argument_id)?;
@@ -185,7 +186,6 @@ impl<'a> Arguments<'a> {
             }
             idx += 1;
         }
-        //bolos::c_zemu_log_stack("Error no value/0");
         Err(ParserError::parser_display_idx_out_of_range)
     }
 }
@@ -241,6 +241,32 @@ impl<'a> TransactionContractCall<'a> {
         c32::c32_address(version, &self.0[1..21])
     }
 
+    // change label if it is a stacking contract call
+    fn label_stacking_value(&self, key: &mut [u8]) -> Result<(), ParserError> {
+        let addr = self.contract_address()?;
+        let contract_name = self.contract_name()?;
+        if (&addr[..addr.len()] == "SP000000000000000000002Q6VF78".as_bytes()
+            || &addr[..addr.len()] == "ST000000000000000000002AMW42H".as_bytes())
+            && contract_name == "stacking-contract".as_bytes()
+        {
+            let name = self.function_name()?;
+            if name == "stack-stx".as_bytes() {
+                key.iter_mut().for_each(|v| *v = 0);
+                let mut writer = zxformat::Writer::new(key);
+                writer
+                    .write_str("stacked uSTX")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            } else if name == "delegate-stx".as_bytes() {
+                key.iter_mut().for_each(|v| *v = 0);
+                let mut writer = zxformat::Writer::new(key);
+                writer
+                    .write_str("delegated uSTX")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            }
+        }
+        Ok(())
+    }
+
     fn get_contract_call_args(
         &self,
         display_idx: u8,
@@ -257,20 +283,22 @@ impl<'a> TransactionContractCall<'a> {
 
         let value = args.argument_at(arg_num as _)?;
 
-        let mut writer_key = zxformat::Writer::new(out_key);
-        let mut arg_num_buff = [0u8; 3];
-        let arg_num_str = arg_num.numtoa_str(10, &mut arg_num_buff);
+        {
+            let mut writer_key = zxformat::Writer::new(out_key);
+            let mut arg_num_buff = [0u8; 3];
+            let arg_num_str = arg_num.numtoa_str(10, &mut arg_num_buff);
 
-        writer_key
-            .write_str("arg")
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-        writer_key
-            .write_str(arg_num_str)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-
+            writer_key
+                .write_str("arg")
+                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            writer_key
+                .write_str(arg_num_str)
+                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+        }
+        let payload = value.payload()?;
         match value.value_id()? {
             ValueId::Int => {
-                let val = be_i128::<'a, ParserError>(value.0)
+                let val = be_i128::<'a, ParserError>(payload)
                     .map(|res| res.1)
                     .map_err(|_| ParserError::parser_unexpected_error)?;
                 let mut buff = [0u8; 39];
@@ -281,10 +309,13 @@ impl<'a> TransactionContractCall<'a> {
                 )
             }
             ValueId::UInt => {
-                let val = be_u128::<'a, ParserError>(value.0)
+                let val = be_u128::<'a, ParserError>(payload)
                     .map(|res| res.1)
                     .map_err(|_| ParserError::parser_unexpected_error)?;
                 let mut buff = [0u8; 39];
+                if arg_num == 0 {
+                    self.label_stacking_value(out_key)?;
+                }
                 zxformat::pageString(
                     out_value,
                     val.numtoa_str(10, &mut buff).as_bytes(),
@@ -307,15 +338,11 @@ impl<'a> TransactionContractCall<'a> {
             ValueId::ResponseErr => {
                 zxformat::pageString(out_value, "Result: Err".as_bytes(), page_idx)
             }
-            ValueId::StandardPrincipal => {
-                let version = value.0[0];
-                let p = c32::c32_address(version, &value.0[1..21])?;
-                zxformat::pageString(out_value, &p[..p.len()], page_idx)
-            }
-            ValueId::ContractPrincipal => {
-                let version = value.0[0];
-                let p = c32::c32_address(version, &value.0[1..21])?;
-                zxformat::pageString(out_value, &p[..p.len()], page_idx)
+            ValueId::ContractPrincipal | ValueId::StandardPrincipal => {
+                let (_, address) = StacksAddress::from_bytes(payload)
+                    .map_err(|_| ParserError::parser_invalid_address)?;
+                let address = address.encoded_address()?;
+                zxformat::pageString(out_value, &address[0..address.len()], page_idx)
             }
             ValueId::Buffer => zxformat::pageString(out_value, "Buffer".as_bytes(), page_idx),
             ValueId::List => zxformat::pageString(out_value, "List".as_bytes(), page_idx),
@@ -379,6 +406,7 @@ impl<'a> TransactionContractCall<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        // display_idx was already normalize
         if display_idx < CONTRACT_CALL_BASE_ITEMS {
             self.get_base_items(display_idx, out_key, out_value, page_idx)
         } else {
@@ -553,8 +581,9 @@ impl<'a> TransactionPayload<'a> {
         out_key: &mut [u8],
         out_value: &mut [u8],
         page_idx: u8,
+        total_items: u8,
     ) -> Result<u8, ParserError> {
-        let idx = display_idx % self.num_items();
+        let idx = self.num_items() - (total_items - display_idx);
         match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
@@ -563,7 +592,6 @@ impl<'a> TransactionPayload<'a> {
                 contract.get_contract_items(idx, out_key, out_value, page_idx)
             }
             Self::ContractCall(ref call) => {
-                check_canary!();
                 call.get_contract_call_items(idx, out_key, out_value, page_idx)
             }
         }
