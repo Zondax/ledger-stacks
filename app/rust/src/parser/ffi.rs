@@ -1,12 +1,8 @@
 #![allow(non_camel_case_types, non_snake_case)]
 #![allow(clippy::cast_ptr_alignment)]
 
-use crate::{
-    bolos,
-    parser::{
-        parser_common::ParserError, post_condition::TransactionPostCondition,
-        transaction::Transaction,
-    },
+use crate::parser::{
+    parser_common::ParserError, post_condition::TransactionPostCondition, transaction::Transaction,
 };
 use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 

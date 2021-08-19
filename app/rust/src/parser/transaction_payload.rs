@@ -10,14 +10,10 @@ use nom::{
 use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
-use crate::{
-    bolos,
-    parser::parser_common::{
-        u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, ParserError,
-        PrincipalData, StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH,
-        HASH160_LEN, MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
-        STX_DECIMALS,
-    },
+use crate::parser::parser_common::{
+    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, ParserError, PrincipalData,
+    StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
 
 use crate::parser::c32;

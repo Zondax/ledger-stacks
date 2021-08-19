@@ -24,6 +24,7 @@ import {
   makeSigHashPreSign,
   makeSTXTokenTransfer,
   makeUnsignedSTXTokenTransfer,
+  makeUnsignedContractCall,
   pubKeyfromPrivKey,
   AddressVersion,
   standardPrincipalCV,
@@ -34,11 +35,12 @@ import {
   PubKeyEncoding,
   SpendingCondition,
   createTransactionAuthField,
+  uintCV,
   UnsignedMultiSigTokenTransferOptions
 } from "@stacks/transactions";
 import { StacksTestnet } from "@stacks/network";
 import { ec as EC } from "elliptic";
-import {recoverPublicKey} from "noble-secp256k1";
+//import {recoverPublicKey} from "noble-secp256k1";
 
 const BN = require("bn.js");
 var sha512_256 = require('js-sha512').sha512_256;
@@ -365,36 +367,61 @@ describe("Basic checks", function() {
         }
       });
 
+      test(`${nanoModel.prefix}-sign standard_contract_call_tx`, async function() {
+          const sim = new Zemu(nanoModel.path);
+          const network = new StacksTestnet();
+          const senderKey = "2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216";
+          const my_key =    "2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f";
+          const path = "m/44'/5757'/0'/0/0";
+          try {
+              await sim.start({ model: nanoModel.model, ...simOptions});
+              const app = new BlockstackApp(sim.getTransport());
+              // Get pubkey and check
+              const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig);
+              console.log(pkResponse);
+              expect(pkResponse.returnCode).toEqual(0x9000);
+              expect(pkResponse.errorMessage).toEqual("No errors");
+              const devicePublicKey = pkResponse.publicKey.toString("hex");
+              const pubKeyStrings = [devicePublicKey];
+
+              const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5');
+              const fee = new BN(10);
+              const nonce = new BN(0);
+              const txOptions = {
+                  contractAddress: 'SP000000000000000000002Q6VF78',
+                  contractName: 'stacking-contract',
+                  functionName: 'stack-stx',
+                  functionArgs: [uintCV(20000), recipient, uintCV(2), uintCV(10)],
+                  network: network,
+                  fee: fee,
+                  nonce:nonce,
+                  publicKey: devicePublicKey,
+              };
+
+              const transaction = await makeUnsignedContractCall(txOptions);
+              const serializeTx = transaction.serialize().toString('hex');
+
+              const blob = Buffer.from(serializeTx, "hex");
+              const signatureRequest = app.sign(path, blob);
+
+              // Wait until we are not in the main menu
+              await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
+
+              await sim.compareSnapshotsAndAccept(".", `${nanoModel.prefix.toLowerCase()}-sign_standard_contract_call_tx`, nanoModel.model === 'nanos' ? 12 : 11);
+
+              let signature = await signatureRequest;
+              console.log(signature);
+
+              expect(signature.returnCode).toEqual(0x9000);
+              // TODO: Verify signature
+          } finally {
+              await sim.close();
+          }
+      });
+
   }
 
   test.skip("sign", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    try {
-      await sim.start(simOptions);
-      const app = new BlockstackApp(sim.getTransport());
-
-      const blob = Buffer.from("80800000000400d386442122c88878ae04c5726762477f4ef09ffe0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003020000000000051a3b471808467d33eec688b7a7a75f06aad921ba6e000000000000007b74657374206d656d6f00000000000000000000000000000000000000000000000000", "hex");
-
-      // Do not await.. we need to click asynchronously
-      const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
-
-      // Wait until we are not in the main menu
-      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
-
-      await sim.compareSnapshotsAndAccept(".", "sign", 9);
-
-      let signature = await signatureRequest;
-      console.log(signature);
-
-      expect(signature.returnCode).toEqual(0x9000);
-
-      // TODO: Verify signature
-    } finally {
-      await sim.close();
-    }
-  });
-
-  test.skip("multisig sign", async function() {
     const sim = new Zemu(APP_PATH_S);
     try {
       await sim.start(simOptions);
@@ -496,29 +523,6 @@ describe("Basic checks", function() {
     }
   });
 
-  test.skip("sign standard_contract_call_tx", async function() {
-    const sim = new Zemu(APP_PATH_S);
-    try {
-      await sim.start(simOptions);
-      const app = new BlockstackApp(sim.getTransport());
-
-      const blob = Buffer.from("808000000004003a8dda5c8785cbba6daec2013bdac06b98202bc30000000000000000000000000000000000004c4c6b830501e8853f4c5b94fa699a6a14b2c07fa1d2b969fe61bcc830aefe3b44cb3a294f33fd615661b6a6b593108c588d92b930ef68225d1bb4417c023ed9030200000000021a143e543243dfcd8c02a12ad7ea371bd07bc91df90b68656c6c6f2d776f726c64077365742d6261720000000200000000000000000000000000000000060000000000000000000000000000000002", "hex");
-      const signatureRequest = app.sign("m/44'/5757'/5'/0/0", blob);
-
-      // Wait until we are not in the main menu
-      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
-
-      await sim.compareSnapshotsAndAccept(".", "sign_standard_contract_call_tx", 9);
-
-      let signature = await signatureRequest;
-      console.log(signature);
-
-      expect(signature.returnCode).toEqual(0x9000);
-      // TODO: Verify signature
-    } finally {
-      await sim.close();
-    }
-  });
 
   test.skip("sign sponsored_contract_call_tx", async function() {
     const sim = new Zemu(APP_PATH_S);
