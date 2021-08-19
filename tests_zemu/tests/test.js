@@ -387,9 +387,10 @@ describe("Basic checks", function() {
               const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5');
               const fee = new BN(10);
               const nonce = new BN(0);
+              const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
               const txOptions = {
-                  contractAddress: 'SP000000000000000000002Q6VF78',
-                  contractName: 'stacking-contract',
+                  contractAddress: contract_address,
+                  contractName: contract_name,
                   functionName: 'stack-stx',
                   functionArgs: [uintCV(20000), recipient, uintCV(2), uintCV(10)],
                   network: network,

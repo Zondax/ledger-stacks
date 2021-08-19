@@ -240,10 +240,11 @@ impl<'a> TransactionContractCall<'a> {
     // change label if it is a stacking contract call
     fn label_stacking_value(&self, key: &mut [u8]) -> Result<(), ParserError> {
         let addr = self.contract_address()?;
+        let addr = addr.as_ref();
         let contract_name = self.contract_name()?;
-        if (&addr[..addr.len()] == "SP000000000000000000002Q6VF78".as_bytes()
-            || &addr[..addr.len()] == "ST000000000000000000002AMW42H".as_bytes())
-            && contract_name == "stacking-contract".as_bytes()
+        if (addr == "SP000000000000000000002Q6VF78".as_bytes()
+            || addr == "ST000000000000000000002AMW42H".as_bytes())
+            && contract_name == "pox".as_bytes()
         {
             let name = self.function_name()?;
             if name == "stack-stx".as_bytes() {
@@ -371,7 +372,7 @@ impl<'a> TransactionContractCall<'a> {
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 let address = self.contract_address()?;
                 check_canary!();
-                zxformat::pageString(out_value, &address[..address.len()], page_idx)
+                zxformat::pageString(out_value, address.as_ref(), page_idx)
             }
             // Contract.name
             1 => {

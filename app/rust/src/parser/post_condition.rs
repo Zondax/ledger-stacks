@@ -479,7 +479,7 @@ impl<'a> TransactionPostCondition<'a> {
                         .write_str("STX amount")
                         .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                     let amount = self.amount_stx_str().unwrap();
-                    zxformat::pageString(out_value, &amount[..amount.len()], page_idx)
+                    zxformat::pageString(out_value, amount.as_ref(), page_idx)
                 }
                 _ => Err(ParserError::parser_display_idx_out_of_range),
             },
