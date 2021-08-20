@@ -16,6 +16,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "zxmacros.h"
 #include "crypto.h"
 #include "cx.h"
 #include "tx.h"
