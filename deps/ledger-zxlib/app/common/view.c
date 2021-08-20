@@ -239,7 +239,10 @@ zxerr_t h_review_update_data() {
         if (viewdata.pageCount > 1) {
             uint8_t keyLen = strlen(viewdata.key);
             if (keyLen < MAX_CHARS_PER_KEY_LINE) {
-                snprintf(viewdata.key + keyLen, MAX_CHARS_PER_KEY_LINE - keyLen, " [%d/%d]", viewdata.pageIdx + 1,
+                snprintf(viewdata.key + keyLen,
+                         MAX_CHARS_PER_KEY_LINE - keyLen,
+                         " [%d/%d]",
+                         viewdata.pageIdx + 1,
                          viewdata.pageCount);
             }
         }
@@ -262,6 +265,9 @@ void io_seproxyhal_display(const bagl_element_t *element) {
 
 void view_init(void) {
     UX_INIT();
+#ifdef APP_SECRET_MODE_ENABLED
+    viewdata.secret_click_count = 0;
+#endif
 }
 
 void view_idle_show(uint8_t item_idx, char *statusString) {
