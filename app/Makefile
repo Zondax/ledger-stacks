@@ -47,7 +47,6 @@ $(info ************ TARGET_NAME  = [$(TARGET_NAME)])
 ifeq ($(APP_TESTING),1)
 DEFINES += APP_TESTING
 DEFINES += ZEMU_LOGGING
-$(info ************ LOGGING ENABLED ************)
 endif
 
 ifndef COIN
@@ -86,7 +85,7 @@ DEFINES += HAVE_PENDING_REVIEW_SCREEN
 
 ifeq ($(TARGET_NAME),TARGET_NANOS)
 ICONNAME:=$(CURDIR)/nanos_icon.gif
-OUTPUT_ELF ?= $(CURDIR)/bin/app_s.elf
+OUTPUT_ELF:= $(CURDIR)/bin/app_s.elf
 OUTPUT_INSTALLER := $(CURDIR)/pkg/installer_s.sh
 endif
 
@@ -94,7 +93,7 @@ ifeq ($(TARGET_NAME),TARGET_NANOX)
 APP_STACK_SIZE:=3472
 SCRIPT_LD:=$(CURDIR)/script_x.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
-OUTPUT_ELF ?= $(CURDIR)/bin/app_x.elf
+OUTPUT_ELF:= $(CURDIR)/bin/app_x.elf
 OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_x.sh
 endif
 
