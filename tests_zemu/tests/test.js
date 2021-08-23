@@ -46,8 +46,8 @@ const BN = require("bn.js");
 var sha512_256 = require('js-sha512').sha512_256;
 
 const Resolve = require("path").resolve;
-const APP_PATH_S = Resolve("../app/bin/app_s.elf");
-const APP_PATH_X = Resolve("../app/bin/app_x.elf");
+const APP_PATH_S = Resolve("../app/output/app_s.elf");
+const APP_PATH_X = Resolve("../app/output/app_x.elf");
 
 const models = [
   { model:'nanos', prefix: 'S', path: APP_PATH_S},
