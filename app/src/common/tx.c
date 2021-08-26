@@ -20,6 +20,7 @@
 #include "parser.h"
 #include <string.h>
 #include "zxmacros.h"
+#include "zbuffer.h"
 
 #if defined(TARGET_NANOX)
 #define RAM_BUFFER_SIZE 8192

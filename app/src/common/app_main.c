@@ -20,6 +20,7 @@
 #include <string.h>
 #include <os_io_seproxyhal.h>
 #include <os.h>
+#include <ux.h>
 
 #include "view.h"
 #include "actions.h"
@@ -27,6 +28,7 @@
 #include "crypto.h"
 #include "coin.h"
 #include "zxmacros.h"
+#include "zbuffer.h"
 
 unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
@@ -148,7 +150,7 @@ bool process_chunk(volatile uint32_t *tx, uint32_t rx) {
 }
 
 void handle_generic_apdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
-    if (rx > 4 && os_memcmp(G_io_apdu_buffer, "\xE0\x01\x00\x00", 4) == 0) {
+    if (rx > 4 && memcmp(G_io_apdu_buffer, "\xE0\x01\x00\x00", 4) == 0) {
         // Respond to get device info command
         uint8_t * p = G_io_apdu_buffer;
         // Target ID        4 bytes
