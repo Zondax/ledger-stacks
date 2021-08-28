@@ -53,6 +53,9 @@ typedef enum {
 #define APPVERSION_LINE1                "Stacks"
 #define APPVERSION_LINE2                ("v" APPVERSION)
 
+#define COIN_SECRET_REQUIRED_CLICKS 0
+#define MENU_MAIN_APP_LINE2_SECRET "??????"
+
 #define CRYPTO_BLOB_SKIP_BYTES              0
 
 #define COIN_VERSION_MAINNET_SINGLESIG   22

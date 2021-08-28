@@ -17,8 +17,6 @@
 
 #if defined(APP_STANDARD)
 #include "coin_standard.h"
-#elif defined(APP_VARIANT1)
-#include "coin_variant1.h"
 #else
 #error "APP MODE IS NOT SUPPORTED"
 #endif

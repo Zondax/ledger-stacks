@@ -35,9 +35,14 @@ void h_review_button_left();
 void h_review_button_right();
 void h_review_button_both();
 
+#ifdef APP_SECRET_MODE_ENABLED
+void h_secret_click();
+#endif
+
 ux_state_t ux;
 
 void os_exit(uint32_t id) {
+    (void)id;
     os_sched_exit(0);
 }
 
@@ -45,7 +50,15 @@ const ux_menu_entry_t menu_main[] = {
     {NULL, NULL, 0, &C_icon_app, MENU_MAIN_APP_LINE1, viewdata.key, 33, 12},
     {NULL, h_expert_toggle, 0, &C_icon_app, "Expert mode:", viewdata.value, 33, 12},
     {NULL, NULL, 0, &C_icon_app, APPVERSION_LINE1, APPVERSION_LINE2, 33, 12},
-    {NULL, NULL, 0, &C_icon_app, "Developed by:", "Zondax.ch", 33, 12},
+
+    {NULL,
+#ifdef APP_SECRET_MODE_ENABLED
+     h_secret_click,
+#else
+     NULL,
+#endif
+     0, &C_icon_app, "Developed by:", "Zondax.ch", 33, 12},
+
     {NULL, NULL, 0, &C_icon_app, "License: ", "Apache 2.0", 33, 12},
     {NULL, os_exit, 0, &C_icon_dashboard, "Quit", NULL, 50, 29},
     UX_MENU_END
@@ -73,6 +86,7 @@ static const bagl_element_t view_error[] = {
 };
 
 static unsigned int view_error_button(unsigned int button_mask, unsigned int button_mask_counter) {
+    UNUSED(button_mask_counter);
     switch (button_mask) {
         case BUTTON_EVT_RELEASED | BUTTON_LEFT | BUTTON_RIGHT:
         case BUTTON_EVT_RELEASED | BUTTON_LEFT:
@@ -85,6 +99,7 @@ static unsigned int view_error_button(unsigned int button_mask, unsigned int but
 }
 
 static unsigned int view_message_button(unsigned int button_mask, unsigned int button_mask_counter) {
+    UNUSED(button_mask_counter);
     switch (button_mask) {
         case BUTTON_EVT_RELEASED | BUTTON_LEFT | BUTTON_RIGHT:
         case BUTTON_EVT_RELEASED | BUTTON_LEFT:
@@ -95,6 +110,7 @@ static unsigned int view_message_button(unsigned int button_mask, unsigned int b
 }
 
 static unsigned int view_review_button(unsigned int button_mask, unsigned int button_mask_counter) {
+    UNUSED(button_mask_counter);
     switch (button_mask) {
         case BUTTON_EVT_RELEASED | BUTTON_LEFT | BUTTON_RIGHT:
             h_review_button_both();
@@ -192,6 +208,11 @@ void splitValueField() {
 void view_idle_show_impl(uint8_t item_idx, char *statusString) {
     if (statusString == NULL ) {
         snprintf(viewdata.key, MAX_CHARS_PER_VALUE_LINE, "%s", MENU_MAIN_APP_LINE2);
+#ifdef APP_SECRET_MODE_ENABLED
+        if (app_mode_secret()) {
+            snprintf(viewdata.key, MAX_CHARS_PER_VALUE_LINE, "%s", MENU_MAIN_APP_LINE2_SECRET);
+        }
+#endif
     } else {
         snprintf(viewdata.key, MAX_CHARS_PER_VALUE_LINE, "%s", statusString);
     }
@@ -213,6 +234,26 @@ void h_expert_toggle() {
     app_mode_set_expert(!app_mode_expert());
     view_idle_show(1, NULL);
 }
+
+#ifdef APP_SECRET_MODE_ENABLED
+void h_secret_click() {
+    if (COIN_SECRET_REQUIRED_CLICKS == 0) {
+        // There is no secret mode
+        return;
+    }
+
+    viewdata.secret_click_count++;
+
+    char buffer[50];
+    snprintf(buffer, sizeof(buffer), "secret click %d\n", viewdata.secret_click_count);
+    zemu_log(buffer);
+
+    if (viewdata.secret_click_count >= COIN_SECRET_REQUIRED_CLICKS) {
+        secret_enabled();
+        viewdata.secret_click_count = 0;
+    }
+}
+#endif
 
 void h_expert_update() {
     snprintf(viewdata.value, MAX_CHARS_PER_VALUE_LINE, "disabled");

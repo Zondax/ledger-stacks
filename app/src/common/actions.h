@@ -16,6 +16,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "zxmacros.h"
 #include "crypto.h"
 #include "cx.h"
 #include "tx.h"
@@ -224,7 +225,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     SHA512_256_starts(&ctx);
 
     const uint8_t *message = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
-    const uint16_t messageLength = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
+    // const uint16_t messageLength = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     // Update the hasher with the first and second block of bytes
     SHA512_256_update(&ctx, message, TRANSACTION_FIRST_BLOCK_LEN);
@@ -247,7 +248,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
 
 __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen) {
     uint8_t presig_data[PRESIG_DATA_LEN];
-    uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+    // uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
     if ( input_hashLen != CX_SHA256_SIZE )
         return zxerr_no_data;

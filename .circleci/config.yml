@@ -1,21 +1,4 @@
-version: 2.1
-
-commands:
-  restore-sccache-cache:
-    steps:
-      - restore_cache:
-          name: Restore sccache cache
-          key: sccache-cache-stable-{{ arch }}
-  #          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
-  save-sccache-cache:
-    steps:
-      - save_cache:
-          name: Save sccache cache
-          #          key: sccache-cache-stable-{{ arch }}-{{ .Environment.CIRCLE_JOB }}-{{ epoch }}
-          key: sccache-cache-stable-{{ arch }}-{{ epoch }}
-          paths:
-            - "~/.cache/sccache"
-
+version: 2
 jobs:
   build:
     docker:
@@ -28,41 +11,7 @@ jobs:
       # Still run all other ASAN components
       - run: GTEST_COLOR=1 ASAN_OPTIONS=detect_leaks=0 ctest -VV
 
-  build_ledger_S:
-    docker:
-      - image: zondax/builder-bolos:latest
-    environment:
-      BOLOS_SDK: /home/zondax/project/deps/nanos-secure-sdk
-      BOLOS_ENV: /opt/bolos
-    steps:
-      - checkout
-      # Docker entrypoint is not considered
-      - run: git submodule update --init --recursive
-      - run:
-          name: Build
-          command: |
-            source /home/zondax/.cargo/env
-            cd /home/zondax/project
-            make
-
-  build_ledger_X:
-    docker:
-      - image: zondax/builder-bolos:latest
-    environment:
-      BOLOS_SDK: /home/zondax/project/deps/nanox-secure-sdk
-      BOLOS_ENV: /opt/bolos
-    steps:
-      - checkout
-      # Docker entrypoint is not considered
-      - run: git submodule update --init --recursive
-      - run:
-          name: Build
-          command: |
-            source /home/zondax/.cargo/env
-            cd /home/zondax/project
-            make
-
-  build_rust:
+  build_only_rust:
     docker:
       - image: zondax/rust-ci:latest
     steps:
@@ -91,41 +40,66 @@ jobs:
             cd ~/project/app/rust
             cargo test
 
+  build_ledger:
+    docker:
+      - image: zondax/builder-bolos:latest
+    working_directory: ~/project
+    environment:
+      BOLOS_SDK: /home/zondax/project/deps/nanos-secure-sdk
+      BOLOS_ENV: /opt/bolos
+    steps:
+      - checkout
+      # Docker entrypoint is not considered
+      - run: git submodule update --init --recursive
+      - run:
+          name: Build Standard app
+          command: |
+            source /home/zondax/.cargo/env
+            make
+
   test_zemu:
     machine:
-      image: ubuntu-1604:201903-01
+      image: ubuntu-2004:202101-01
+    resource_class: large
     working_directory: ~/repo
     environment:
       BASH_ENV: "/opt/circleci/.nvm/nvm.sh"
     steps:
       - checkout
       - run: git submodule update --init --recursive
+      - run: sudo apt-get update -y && sudo apt-get install -y libusb-1.0.0 libudev-dev
       - run:
-          name: Build Ledger app S
+          name: Install rust
           command: |
-            make
-      - run:
-          name: Build Ledger app S
-          command: |
-            make buildX
+            sudo apt-get update
+            sudo apt-get install -y cmake binutils-dev libcurl4-openssl-dev libiberty-dev libelf-dev libdw-dev
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --no-modify-path --default-toolchain none -y;
+          no_output_timeout: 1800s
       - run:
           name: Install node + yarn
           command: |
-            nvm install 14.10.1
-            nvm use 14.10.1
+            nvm install 14.17.0
+            nvm use 14.17.0
             npm install -g yarn
+      - run:
+          name: Build Ledger app
+          command: |
+            make clean_build && make buildS
+            make clean_build && make buildX
       - run:
           name: Build/Install build js deps
           command: |
-            nvm use 14.10.1
+            nvm use 14.17.0
+            export PATH=~/.cargo/bin:$PATH
             make zemu_install
       - run:
           name: Run zemu tests
           command: |
-            nvm use 14.10.1
+            nvm use 14.17.0
+            export PATH=~/.cargo/bin:$PATH
             make zemu_test
 
-  build_package_S:
+  build_package:
     docker:
       - image: zondax/builder-bolos:latest
     environment:
@@ -134,10 +108,6 @@ jobs:
     steps:
       - checkout
       - run: git submodule update --init --recursive
-      - run:
-          name: Check branch is master
-          command: |
-            if [ $CIRCLE_BRANCH != "master" ]; then exit 1 ; else exit 0; fi
       - run:
           name: Build
           command: |
@@ -151,10 +121,6 @@ jobs:
       - image: circleci/node:lts
     steps:
       - checkout
-      - run:
-          name: Check branch is master
-          command: |
-            if [ $CIRCLE_BRANCH != "master" ]; then exit 1 ; else exit 0; fi
       - run:
           name: Build package
           command: |
@@ -180,13 +146,6 @@ no-tags: &no-tags
     tags:
       ignore: /.*/
 
-only-release-tags: &only-release-tags
-  filters:
-    tags:
-      only: /^v[0-9]+(\.[0-9]+)*/
-    branches:
-      ignore: /.*/
-
 only-npm-tags: &only-npm-tags
   filters:
     tags:
@@ -201,35 +160,20 @@ workflows:
     jobs:
       - build:
           <<: *no-tags
-      - build_rust:
-          <<: *no-tags
-      - build_ledger_S:
-          <<: *no-tags
-      - build_ledger_X:
+      - build_ledger:
           <<: *no-tags
       - test_zemu:
           <<: *no-tags
-
-  release:
-    jobs:
-      - build:
-          <<: *only-release-tags
-      - build_rust:
-          <<: *only-release-tags
-      - build_ledger_S:
-          <<: *only-release-tags
-      - build_ledger_X:
-          <<: *only-release-tags
-      - test_zemu:
-          <<: *only-release-tags
-      - build_package_S:
-          <<: *only-release-tags
+      - build_package:
+          <<: *no-tags
           requires:
             - build
-            - build_rust
-            - build_ledger_S
-            - build_ledger_X
+            - build_ledger
             - test_zemu
+          filters:
+            branches:
+              only:
+                - master
 
   release_npm:
     jobs:

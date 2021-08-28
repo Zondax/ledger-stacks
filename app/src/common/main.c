@@ -27,56 +27,17 @@ main(void) {
     view_init();
     os_boot();
 
-    volatile uint8_t app_init_done = 0;
-    volatile uint32_t rx = 0, tx = 0, flags = 0;
-    volatile uint16_t sw = 0;
-
-    for (;;) {
-        BEGIN_TRY
+    BEGIN_TRY
+    {
+        TRY
         {
-            TRY
-            {
-                if (!app_init_done) {
-                    app_init();
-                    app_init_done = 1;
-                }
-
-                rx = tx;
-                tx = 0;
-
-                rx = io_exchange(CHANNEL_APDU | flags, rx);
-                flags = 0;
-                CHECK_APP_CANARY()
-
-                if (rx == 0)
-                    THROW(APDU_CODE_EMPTY_BUFFER);
-
-                handle_generic_apdu(&flags, &tx, rx);
-                CHECK_APP_CANARY()
-
-                handleApdu(&flags, &tx, rx);
-                CHECK_APP_CANARY()
-            }
-            CATCH_OTHER(e)
-            {
-                if (app_init_done) {
-                    switch (e & 0xF000) {
-                        case 0x6000:
-                        case 0x9000:
-                            sw = e;
-                            break;
-                        default:
-                            sw = 0x6800 | (e & 0x7FF);
-                            break;
-                    }
-                    G_io_apdu_buffer[tx] = sw >> 8;
-                    G_io_apdu_buffer[tx + 1] = sw;
-                    tx += 2;
-                }
-            }
-            FINALLY
-            {}
+            app_init();
+            app_main();
         }
-        END_TRY;
+        CATCH_OTHER(e)
+        {}
+        FINALLY
+        {}
     }
+    END_TRY;
 }
