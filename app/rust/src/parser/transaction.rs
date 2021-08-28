@@ -445,8 +445,13 @@ impl<'a> Transaction<'a> {
                 num_items as u8,
             )
         } else {
-            self.payload
-                .get_items(display_idx, out_key, out_value, page_idx)
+            self.payload.get_items(
+                display_idx,
+                out_key,
+                out_value,
+                page_idx,
+                num_items - post_conditions_items, // we need to display the payload in order
+            )
         }
     }
 
@@ -548,15 +553,22 @@ impl<'a> Transaction<'a> {
 
     #[cfg(test)]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
-        let mut key = [0u8; 30];
-        let mut value = [0u8; 30];
+        extern crate std;
+        use std::*;
+        let mut key = [0u8; 64];
+        let mut value = [0u8; 64];
         let mut page_idx = 0;
         let mut display_idx = 0;
 
         let num_items = tx.num_items();
         while display_idx < num_items {
             let pages = tx.get_item(display_idx, &mut key, &mut value, page_idx)?;
-
+            let k = string::String::from_utf8_lossy(key.as_ref());
+            let v = string::String::from_utf8_lossy(value.as_ref());
+            println!("key: {}", k);
+            println!("value: {}", v);
+            key.iter_mut().for_each(|v| *v = 0);
+            value.iter_mut().for_each(|v| *v = 0);
             page_idx += 1;
             if page_idx >= pages {
                 page_idx = 0;

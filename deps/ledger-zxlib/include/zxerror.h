@@ -15,6 +15,7 @@
 ********************************************************************************/
 
 #pragma once
+#include "zxmacros.h"
 
 #ifdef __cplusplus
 extern "C" {
