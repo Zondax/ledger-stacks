@@ -70,3 +70,4 @@ TODO\.md
 /certs/cert.pem
 /certs/server.cert
 /certs/server.key
+/yarn.lock

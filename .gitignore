@@ -76,6 +76,7 @@ cmake-build-fuzz/
 /app/bin/
 /app/debug/
 /app/obj/
+/app/output/app*.*
 
 \deps/*
 !/deps/sha512
