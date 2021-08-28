@@ -59,7 +59,11 @@ const defaultOptions = {
   X11: true,
 }
 
-jest.setTimeout(20000);
+jest.setTimeout(60000);
+
+beforeAll(async () => {
+  await Zemu.checkAndPullImage()
+})
 
 describe.skip("Skipped", function () {
   test.each(models)("sign2", async function (m) {
