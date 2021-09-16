@@ -55,7 +55,7 @@ endif
 
 APPVERSION_M=0
 APPVERSION_N=14
-APPVERSION_P=0
+APPVERSION_P=1
 
 $(info COIN  = [$(COIN)])
 
@@ -64,9 +64,6 @@ ifeq ($(COIN),STX)
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
 APPPATH = "44'/5757'" --path "5757'"
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-APP_STACK_SIZE:=2828
-endif
 
 else ifeq ($(COIN),STX_variant1)
 else
@@ -84,13 +81,13 @@ APP_LOAD_PARAMS = --appFlags 0x200 --delete $(COMMON_LOAD_PARAMS) --path ${APPPA
 DEFINES += HAVE_PENDING_REVIEW_SCREEN
 
 ifeq ($(TARGET_NAME),TARGET_NANOS)
+APP_STACK_SIZE:=3100
 ICONNAME:=$(CURDIR)/nanos_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_s.elf
 OUTPUT_INSTALLER := $(CURDIR)/pkg/installer_s.sh
 endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOX)
-APP_STACK_SIZE:=3472
 SCRIPT_LD:=$(CURDIR)/script_x.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
@@ -178,7 +175,6 @@ AFLAGS +=
 
 LD       := $(GCCPATH)arm-none-eabi-gcc
 LDFLAGS  += -O3 -Os
-LDFLAGS  += -z muldefs
 LDLIBS   += -lm -lgcc -lc
 LDLIBS   += -Lrust/target/thumbv6m-none-eabi/release -lrslib
 
