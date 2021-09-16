@@ -1,4 +1,5 @@
 # Ledger Blockstack app
+
 ![stability-wip](https://img.shields.io/badge/stability-work_in_progress-lightgrey.svg)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![npm version](https://badge.fury.io/js/%40zondax%2Fledger-blockstack.svg)](https://badge.fury.io/js/%40zondax%2Fledger-blockstack)
@@ -55,9 +56,10 @@ then run:
     ```
 
 - Install Docker CE
-    - Instructions can be found here: https://docs.docker.com/install/
+  - Instructions can be found here: <https://docs.docker.com/install/>
 
 - We only officially support Ubuntu. Install the following packages:
+
    ```
    sudo apt update && apt-get -y install build-essential git wget cmake \
   libssl-dev libgmp-dev autoconf libtool
@@ -66,10 +68,10 @@ then run:
 - Install `node > v13.0`. We typically recommend using `n`
 
 - You will need python 3 and then run
-    - `make deps`
+  - `make deps`
 
-- This project requires Ledger firmware 1.6
-    - The current repository keeps track of Ledger's SDK but it is possible to override it by changing the git submodule.
+- This project requires Ledger firmware 2.0
+  - The current repository keeps track of Ledger's SDK but it is possible to override it by changing the git submodule.
 
 *Warning*: Some IDEs may not use the same python interpreter or virtual enviroment as the one you used when running `pip`.
 If you see conan is not found, check that you installed the package in the same interpreter as the one that launches `cmake`.
