@@ -215,8 +215,15 @@ zxerr_t h_review_update_data() {
 #endif
 
     do {
-        viewdata.pageCount = 1;
         CHECK_ZXERR(viewdata.viewfuncGetNumItems(&viewdata.itemCount))
+
+        //Verify how many chars fit in display (nanos)
+        CHECK_ZXERR(viewdata.viewfuncGetItem(
+                viewdata.itemIdx,
+                viewdata.key, MAX_CHARS_PER_KEY_LINE,
+                viewdata.value, MAX_CHARS_PER_VALUE1_LINE,
+                0, &viewdata.pageCount))
+        viewdata.pageCount = 1;
         const max_char_display dyn_max_char_per_line1 = get_max_char_per_line();
 
         // be sure we are not out of bounds

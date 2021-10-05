@@ -209,17 +209,14 @@ void splitValueAddress() {
         exceeding_max = exceed_pixel_in_display(len);
     }
     print_value2("");
-    strcpy(viewdata.value2, viewdata.value + len);
-    viewdata.value[len] = 0;
+    const uint16_t vlen = strlen(viewdata.value);
+    if (vlen > len) {
+        strcpy(viewdata.value2, viewdata.value + len);
+        viewdata.value[len] = 0;
+    }
 }
 
 max_char_display get_max_char_per_line() {
-    CHECK_ZXERR(viewdata.viewfuncGetItem(
-                viewdata.itemIdx,
-                viewdata.key, MAX_CHARS_PER_KEY_LINE,
-                viewdata.value, MAX_CHARS_PER_VALUE1_LINE,
-                0, &viewdata.pageCount))
-    
     uint8_t len = MAX_CHARS_PER_VALUE_LINE;
     bool exceeding_max = exceed_pixel_in_display(len);
     while(exceeding_max) {
@@ -233,7 +230,7 @@ max_char_display get_max_char_per_line() {
 bool exceed_pixel_in_display(const uint8_t length) {
     unsigned short strWidth = bagl_compute_line_width((BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER |BAGL_FONT_ALIGNMENT_MIDDLE), 
         200, viewdata.value, length, BAGL_ENCODING_LATIN1);
-    return (strWidth >= BAGL_WIDTH);
+    return (strWidth >= (BAGL_WIDTH-10));
 }
 
 //////////////////////////
