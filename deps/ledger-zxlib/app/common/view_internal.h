@@ -44,8 +44,10 @@
 #if defined(TARGET_NANOS)
 #define INCLUDE_ACTIONS_AS_ITEMS 2
 #define INCLUDE_ACTIONS_COUNT (INCLUDE_ACTIONS_AS_ITEMS-1)
+typedef uint8_t max_char_display;
 #else
 #define INCLUDE_ACTIONS_COUNT 0
+typedef int max_char_display;
 #endif
 
 typedef struct {
@@ -60,6 +62,9 @@ typedef struct {
     viewfunc_getNumItems_t viewfuncGetNumItems;
     viewfunc_accept_t viewfuncAccept;
 
+#ifdef APP_SECRET_MODE_ENABLED
+    uint8_t secret_click_count;
+#endif
     uint8_t itemIdx;
     uint8_t itemCount;
     uint8_t pageIdx;
@@ -83,6 +88,8 @@ extern view_t viewdata;
 #endif
 
 void splitValueField();
+void splitValueAddress();
+max_char_display get_max_char_per_line();
 
 ///////////////////////////////////////////////
 ///////////////////////////////////////////////

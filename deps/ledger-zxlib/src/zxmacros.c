@@ -52,9 +52,8 @@ void check_app_canary() {
 #endif
 }
 
-void zemu_log_stack(char *ctx) {
-#if defined(ZEMU_LOGGING)
-#if defined (TARGET_NANOS) || defined(TARGET_NANOX)
+void zemu_log_stack(const char *ctx) {
+#if defined(ZEMU_LOGGING) && (defined (TARGET_NANOS) || defined(TARGET_NANOX))
 #define STACK_SHIFT 20
     void* p = NULL;
     char buf[70];
@@ -64,6 +63,18 @@ void zemu_log_stack(char *ctx) {
             (uint32_t)((void*)&p)+STACK_SHIFT - (uint32_t)&app_stack_canary,
             ctx);
     zemu_log(buf);
+#else
+    (void)ctx;
 #endif
+}
+
+void zemu_trace(const char *file, uint32_t line) {
+#if defined(ZEMU_LOGGING) && (defined (TARGET_NANOS) || defined(TARGET_NANOX))
+    char buf[200];
+    snprintf(buf, sizeof(buf), "|TRACE| %s:%d\n", file, line);
+    zemu_log(buf);
+#else
+    UNUSED(file);
+    UNUSED(line);
 #endif
 }

@@ -32,7 +32,7 @@ extern uint32_t hdPath[HDPATH_LEN_DEFAULT];
 
 extern address_kind_e addressKind;
 
-uint8_t version;
+extern uint8_t version;
 
 bool set_network_version(uint8_t version);
 

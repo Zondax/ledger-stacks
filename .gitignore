@@ -76,6 +76,7 @@ cmake-build-fuzz/
 /app/bin/
 /app/debug/
 /app/obj/
+/app/output/app*.*
 
 \deps/*
 !/deps/sha512
@@ -84,12 +85,6 @@ cmake-build-fuzz/
 !\deps/ledger-zxlib
 !\deps/BLAKE
 /build
-yarn.lock
-!/tests_zemu/yarn.lock
 !/tests_zemu/yarn-error.log
-
-app/tmp.gif
-
-app/tmp.gif~
-
 tests_zemu/yarn.lock
+.vscode

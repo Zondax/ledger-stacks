@@ -1,5 +1,5 @@
 #*******************************************************************************
-#*   (c) 2019 Zondax GmbH
+#*   (c) 2019-2021 Zondax GmbH
 #*
 #*  Licensed under the Apache License, Version 2.0 (the "License");
 #*  you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ LEDGER_SRC=$(CURDIR)/app
 DOCKER_APP_SRC=/project
 DOCKER_APP_BIN=$(DOCKER_APP_SRC)/app/bin/app.elf
 
-DOCKER_BOLOS_SDK=/project/deps/nanos-secure-sdk
+DOCKER_BOLOS_SDKS=/project/deps/nanos-secure-sdk
 DOCKER_BOLOS_SDKX=/project/deps/nanox-secure-sdk
 
 # Note: This is not an SSH key, and being public represents no risk
@@ -40,7 +40,7 @@ $(info EXAMPLE_VUE_DIR       : $(EXAMPLE_VUE_DIR))
 $(info TESTS_JS_DIR          : $(TESTS_JS_DIR))
 $(info TESTS_JS_PACKAGE      : $(TESTS_JS_PACKAGE))
 
-DOCKER_IMAGE=zondax/builder-bolos@sha256:979f4893b07ab8c37cc96e70c78124a5bbcf665cc9aa510b89e0ec317527b47f
+DOCKER_IMAGE=zondax/builder-bolos:latest
 
 ifdef INTERACTIVE
 INTERACTIVE_SETTING:="-i"
@@ -50,6 +50,14 @@ INTERACTIVE_SETTING:=
 TTY_SETTING:=
 endif
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	NPROC=$(shell nproc)
+endif
+ifeq ($(UNAME_S),Darwin)
+	NPROC=$(shell sysctl -n hw.physicalcpu)
+endif
+
 define run_docker
 	docker run $(TTY_SETTING) $(INTERACTIVE_SETTING) --rm \
 	-e SCP_PRIVKEY=$(SCP_PRIVKEY) \
@@ -57,11 +65,19 @@ define run_docker
 	-e BOLOS_ENV=/opt/bolos \
 	-u $(USERID) \
 	-v $(shell pwd):/project \
-	$(DOCKER_IMAGE) \
-	"COIN=$(COIN) APP_TESTING=$(APP_TESTING) $(2)"
+	-e SUPPORT_SR25519=$(SUPPORT_SR25519) \
+	-e SUBSTRATE_PARSER_FULL=$(SUBSTRATE_PARSER_FULL) \
+	-e COIN=$(COIN) \
+	-e APP_TESTING=$(APP_TESTING) \
+	$(DOCKER_IMAGE) "$(2)"
 endef
 
-all: build
+all:
+	@$(MAKE) clean_output
+	@$(MAKE) clean_build
+	@$(MAKE) buildS
+	@$(MAKE) clean_build
+	@$(MAKE) buildX
 
 .PHONY: check_python
 check_python:
@@ -76,48 +92,50 @@ deps: check_python
 pull:
 	docker pull $(DOCKER_IMAGE)
 
-.PHONY: build_rust
-build_rust:
-	$(call run_docker,$(DOCKER_BOLOS_SDK),make -C $(DOCKER_APP_SRC) rust)
+.PHONY: build_rustS
+build_rustS:
+	$(call run_docker,$(DOCKER_BOLOS_SDKS),make -C $(DOCKER_APP_SRC) rust)
+
+.PHONY: build_rustX
+build_rustX:
+	$(call run_docker,$(DOCKER_BOLOS_SDKX),make -C $(DOCKER_APP_SRC) rust)
 
 .PHONY: convert_icon
 convert_icon:
 	@convert $(LEDGER_SRC)/tmp.gif -monochrome -size 16x16 -depth 1 $(LEDGER_SRC)/nanos_icon.gif
 	@convert $(LEDGER_SRC)/nanos_icon.gif -crop 14x14+1+1 +repage -negate $(LEDGER_SRC)/nanox_icon.gif
 
-.PHONY: build
-build: buildS buildX
-
 .PHONY: buildS
-buildS:
-	$(info Replacing app icon)
-	@cp $(LEDGER_SRC)/nanos_icon.gif $(LEDGER_SRC)/glyphs/icon_app.gif
-	$(info calling make inside docker)
-	$(call run_docker,$(DOCKER_BOLOS_SDK),make -j `nproc` -C $(DOCKER_APP_SRC))
+buildS: build_rustS
+	$(call run_docker,$(DOCKER_BOLOS_SDKS),make -j $(NPROC) -C $(DOCKER_APP_SRC))
 
 .PHONY: buildX
-buildX: build_rust
-	@cp $(LEDGER_SRC)/nanos_icon.gif $(LEDGER_SRC)/glyphs/icon_app.gif
-	@convert $(LEDGER_SRC)/nanos_icon.gif -crop 14x14+1+1 +repage -negate $(LEDGER_SRC)/nanox_icon.gif
-	$(call run_docker,$(DOCKER_BOLOS_SDKX),make -j `nproc` -C $(DOCKER_APP_SRC))
+buildX: build_rustX
+	$(call run_docker,$(DOCKER_BOLOS_SDKX),make -j $(NPROC) -C $(DOCKER_APP_SRC))
+
+.PHONY: clean_output
+clean_output:
+	@echo "Removing output files"
+	@rm -f app/output/app* || true
 
 .PHONY: clean
-clean:
-	$(call run_docker,$(DOCKER_BOLOS_SDK),make -C $(DOCKER_APP_SRC) clean)
-	rm ${LEDGER_SRC}/pkg/installer_s.sh
-	rm ${LEDGER_SRC}/pkg/installer_x.sh
+clean_build:
+	$(call run_docker,$(DOCKER_BOLOS_SDKS),make -C $(DOCKER_APP_SRC) clean)
 
-.PHONY: clean_rust
-clean_rust:
-	$(call run_docker,$(DOCKER_BOLOS_SDK),make -C $(DOCKER_APP_SRC) rust_clean)
+.PHONY: clean
+clean: clean_output clean_build
 
 .PHONY: listvariants
 listvariants:
-	$(call run_docker,$(DOCKER_BOLOS_SDK),make -C $(DOCKER_APP_SRC) listvariants)
+	$(call run_docker,$(DOCKER_BOLOS_SDKS),make -C $(DOCKER_APP_SRC) listvariants)
 
-.PHONY: shell
-shell:
-	$(call run_docker,$(DOCKER_BOLOS_SDK) -t,bash)
+.PHONY: shellS
+shellS:
+	$(call run_docker,$(DOCKER_BOLOS_SDKS) -t,bash)
+
+.PHONY: shellX
+shellX:
+	$(call run_docker,$(DOCKER_BOLOS_SDKX) -t,bash)
 
 .PHONY: load
 load:
@@ -260,7 +278,7 @@ cpp_test:
 
 .PHONY: fuzz_build
 fuzz_build:
-	cmake -B build -DCMAKE_C_COMPILER=clang-10 -DCMAKE_CXX_COMPILER=clang++-10 -DCMAKE_BUILD_TYPE=Debug -DENABLE_FUZZING=1 -DENABLE_SANITIZERS=1 .
+	cmake -B build -DCMAKE_C_COMPILER=clang-11 -DCMAKE_CXX_COMPILER=clang++-11 -DCMAKE_BUILD_TYPE=Debug -DENABLE_FUZZING=1 -DENABLE_SANITIZERS=1 .
 	make -C build
 
 .PHONY: fuzz
@@ -268,5 +286,6 @@ fuzz: fuzz_build
 	./fuzz/run-fuzzers.py
 
 .PHONY: fuzz_crash
+fuzz_crash: FUZZ_LOGGING=1
 fuzz_crash: fuzz_build
 	./fuzz/run-fuzz-crashes.py

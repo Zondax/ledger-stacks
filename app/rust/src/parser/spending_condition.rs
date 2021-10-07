@@ -409,13 +409,6 @@ mod test {
         let hash = [0x11; 20];
         let sign_uncompressed = [0xff; 65];
         let sign_compressed = [0xfe; 65];
-        //let spending_condition_p2pkh_uncompressed = TransactionSpendingCondition {
-        /*let spending_condition_signer = SpendingConditionSigner {
-            signer: Hash160(hash.as_ref()),
-            hash_mode: HashMode::P2PKH,
-            nonce: 123,
-            fee_rate: 456,
-        }*/
 
         let mut spending_condition_signer = vec![HashMode::P2PKH as u8];
         spending_condition_signer.extend_from_slice(hash.as_ref());

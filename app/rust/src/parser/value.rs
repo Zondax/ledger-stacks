@@ -7,6 +7,7 @@ use nom::{
 use crate::parser::parser_common::{
     ClarityName, ContractName, ContractPrincipal, ParserError, StacksAddress, HASH160_LEN,
 };
+use arrayvec::ArrayVec;
 
 // Big ints size in bytes
 pub const BIG_INT_SIZE: usize = 16;
@@ -24,7 +25,7 @@ pub struct Value<'a>(pub &'a [u8]);
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum ValueId {
+pub enum ValueId {
     Int = 0x00,
     UInt = 0x01,
     Buffer = 0x02,
@@ -62,6 +63,19 @@ impl<'a> Value<'a> {
         Ok((leftover, Self(inner)))
     }
 
+    pub fn value_id(&self) -> Result<ValueId, ParserError> {
+        let id = ValueId::from_bytes(self.0).map_err(|_| ParserError::parser_unexpected_value)?;
+        Ok(id.1)
+    }
+
+    pub fn payload(&self) -> Result<&'a [u8], ParserError> {
+        if self.0.len() > 0 {
+            Ok(&self.0[1..])
+        } else {
+            Err(ParserError::parser_unexpected_buffer_end)
+        }
+    }
+
     pub fn value_len(bytes: &'a [u8]) -> Result<usize, ParserError> {
         if bytes.is_empty() {
             return Ok(0);
@@ -89,6 +103,7 @@ impl<'a> Value<'a> {
             ValueId::Buffer => {
                 let len = be_u32::<'a, ParserError>(raw)
                     .map_err(|_| ParserError::parser_unexpected_value)?;
+                // value_len + 4-bytes
                 len.1 as usize + 4
             }
             ValueId::BoolTrue | ValueId::BoolFalse => 0,

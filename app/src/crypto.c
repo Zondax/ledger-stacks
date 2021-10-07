@@ -20,6 +20,8 @@
 #include "zxmacros.h"
 #include "rslib.h"
 
+uint8_t version;
+
 uint32_t hdPath[HDPATH_LEN_DEFAULT];
 
 bool isTestnet() {

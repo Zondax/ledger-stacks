@@ -215,23 +215,33 @@ zxerr_t h_review_update_data() {
 #endif
 
     do {
-        viewdata.pageCount = 1;
         CHECK_ZXERR(viewdata.viewfuncGetNumItems(&viewdata.itemCount))
 
-        // be sure we are not out of bounds
+        //Verify how many chars fit in display (nanos)
         CHECK_ZXERR(viewdata.viewfuncGetItem(
                 viewdata.itemIdx,
                 viewdata.key, MAX_CHARS_PER_KEY_LINE,
                 viewdata.value, MAX_CHARS_PER_VALUE1_LINE,
                 0, &viewdata.pageCount))
+        viewdata.pageCount = 1;
+        const max_char_display dyn_max_char_per_line1 = get_max_char_per_line();
+
+        // be sure we are not out of bounds
+        CHECK_ZXERR(viewdata.viewfuncGetItem(
+                viewdata.itemIdx,
+                viewdata.key, MAX_CHARS_PER_KEY_LINE,
+                viewdata.value, dyn_max_char_per_line1,
+                0, &viewdata.pageCount))
+
         if (viewdata.pageCount != 0 && viewdata.pageIdx > viewdata.pageCount) {
             // try again and get last page
             viewdata.pageIdx = viewdata.pageCount - 1;
         }
+
         CHECK_ZXERR(viewdata.viewfuncGetItem(
                 viewdata.itemIdx,
                 viewdata.key, MAX_CHARS_PER_KEY_LINE,
-                viewdata.value, MAX_CHARS_PER_VALUE1_LINE,
+                viewdata.value, dyn_max_char_per_line1,
                 viewdata.pageIdx, &viewdata.pageCount))
 
         viewdata.itemCount++;
@@ -239,7 +249,10 @@ zxerr_t h_review_update_data() {
         if (viewdata.pageCount > 1) {
             uint8_t keyLen = strlen(viewdata.key);
             if (keyLen < MAX_CHARS_PER_KEY_LINE) {
-                snprintf(viewdata.key + keyLen, MAX_CHARS_PER_KEY_LINE - keyLen, " [%d/%d]", viewdata.pageIdx + 1,
+                snprintf(viewdata.key + keyLen,
+                         MAX_CHARS_PER_KEY_LINE - keyLen,
+                         " [%d/%d]",
+                         viewdata.pageIdx + 1,
                          viewdata.pageCount);
             }
         }
@@ -249,7 +262,7 @@ zxerr_t h_review_update_data() {
         }
     } while (viewdata.pageCount == 0);
 
-    splitValueField();
+    splitValueAddress();
     return zxerr_ok;
 }
 
@@ -262,6 +275,9 @@ void io_seproxyhal_display(const bagl_element_t *element) {
 
 void view_init(void) {
     UX_INIT();
+#ifdef APP_SECRET_MODE_ENABLED
+    viewdata.secret_click_count = 0;
+#endif
 }
 
 void view_idle_show(uint8_t item_idx, char *statusString) {
