@@ -215,23 +215,33 @@ zxerr_t h_review_update_data() {
 #endif
 
     do {
-        viewdata.pageCount = 1;
         CHECK_ZXERR(viewdata.viewfuncGetNumItems(&viewdata.itemCount))
 
-        // be sure we are not out of bounds
+        //Verify how many chars fit in display (nanos)
         CHECK_ZXERR(viewdata.viewfuncGetItem(
                 viewdata.itemIdx,
                 viewdata.key, MAX_CHARS_PER_KEY_LINE,
                 viewdata.value, MAX_CHARS_PER_VALUE1_LINE,
                 0, &viewdata.pageCount))
+        viewdata.pageCount = 1;
+        const max_char_display dyn_max_char_per_line1 = get_max_char_per_line();
+
+        // be sure we are not out of bounds
+        CHECK_ZXERR(viewdata.viewfuncGetItem(
+                viewdata.itemIdx,
+                viewdata.key, MAX_CHARS_PER_KEY_LINE,
+                viewdata.value, dyn_max_char_per_line1,
+                0, &viewdata.pageCount))
+
         if (viewdata.pageCount != 0 && viewdata.pageIdx > viewdata.pageCount) {
             // try again and get last page
             viewdata.pageIdx = viewdata.pageCount - 1;
         }
+
         CHECK_ZXERR(viewdata.viewfuncGetItem(
                 viewdata.itemIdx,
                 viewdata.key, MAX_CHARS_PER_KEY_LINE,
-                viewdata.value, MAX_CHARS_PER_VALUE1_LINE,
+                viewdata.value, dyn_max_char_per_line1,
                 viewdata.pageIdx, &viewdata.pageCount))
 
         viewdata.itemCount++;
@@ -252,7 +262,7 @@ zxerr_t h_review_update_data() {
         }
     } while (viewdata.pageCount == 0);
 
-    splitValueField();
+    splitValueAddress();
     return zxerr_ok;
 }
 
