@@ -9,4 +9,6 @@ mod transaction_payload;
 mod value;
 pub use ffi::{_getItem, _getNumItems, _parser_init, _read, fp_uint64_to_str};
 pub use parser_common::{ParserError, SignerId};
+pub use transaction::{Transaction};
 pub use transaction_auth::TransactionAuth;
+pub use value::{Value, ValueId};

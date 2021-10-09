@@ -81,16 +81,29 @@ pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut par
 }
 
 #[no_mangle]
-pub extern "C" fn _getNumItems(_ctx: *const parser_context_t, tx_t: *const parse_tx_t) -> u8 {
+pub extern "C" fn _getNumItems(
+    _ctx: *const parser_context_t,
+    tx_t: *const parse_tx_t,
+    num_items: *mut u8,
+) -> u32 {
     unsafe {
-        if tx_t.is_null() || (*tx_t).state.is_null() {
+        if tx_t.is_null() || (*tx_t).state.is_null() || num_items.is_null() {
             return 0;
         }
     }
     if let Some(tx) = transaction_from(tx_t as _) {
-        return tx.num_items();
+        match tx.num_items() {
+            Ok(n) => {
+                unsafe {
+                    *num_items = n;
+                }
+                0
+            }
+            Err(e) => e as u32,
+        }
+    } else {
+        ParserError::parser_no_data as u32
     }
-    0
 }
 
 #[no_mangle]

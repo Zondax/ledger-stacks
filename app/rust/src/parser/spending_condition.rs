@@ -61,7 +61,7 @@ pub enum TransactionAuthFieldID {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct SpendingConditionSigner<'a> {
     pub data: &'a [u8],
 }
@@ -149,7 +149,7 @@ impl<'a> SpendingConditionSigner<'a> {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct SinglesigSpendingCondition<'a>(&'a [u8]);
 
 /// A structure that encodes enough state to authenticate
@@ -157,11 +157,11 @@ pub struct SinglesigSpendingCondition<'a>(&'a [u8]);
 /// public_keys + signatures_required determines the Principal.
 /// nonce is the "check number" for the Principal.
 #[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MultisigSpendingCondition<'a>(&'a [u8]);
 
 #[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SpendingConditionSignature<'a> {
     Singlesig(SinglesigSpendingCondition<'a>),
     Multisig(MultisigSpendingCondition<'a>),
@@ -184,7 +184,7 @@ impl<'a> SpendingConditionSignature<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TransactionSpendingCondition<'a> {
     signer: SpendingConditionSigner<'a>,
     signature: SpendingConditionSignature<'a>,
@@ -231,7 +231,10 @@ impl<'a> MultisigSpendingCondition<'a> {
         let (_, num_fields) = be_u32(bytes)?;
         let mut bytes_count = 4usize;
         for _ in 0..num_fields {
-            match bytes[bytes_count] {
+            match bytes
+                .get(bytes_count)
+                .ok_or(nom::Err::Error(ParserError::parser_value_out_of_range))?
+            {
                 0x00 | 0x01 => {
                     bytes_count += 33 + 1;
                 }

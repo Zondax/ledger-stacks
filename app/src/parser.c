@@ -74,8 +74,7 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
 }
 
 parser_error_t parser_getNumItems(const parser_context_t *ctx, uint8_t *num_items) {
-    *num_items = _getNumItems(ctx, &parser_state);
-    return parser_ok;
+    return _getNumItems(ctx, &parser_state, num_items);
 }
 
 parser_error_t parser_getItem(const parser_context_t *ctx,

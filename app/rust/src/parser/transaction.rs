@@ -92,7 +92,7 @@ impl TransactionAnchorMode {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PostConditions<'a> {
     conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]>,
     num_items: u8,
@@ -233,7 +233,7 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
@@ -336,7 +336,7 @@ impl<'a> Transaction<'a> {
         Ok(())
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, fuzzing))]
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, ParserError> {
         match permutation((
             TransactionVersion::from_bytes,
@@ -365,9 +365,11 @@ impl<'a> Transaction<'a> {
         self.payload.recipient_address()
     }
 
-    pub fn num_items(&self) -> u8 {
+    pub fn num_items(&self) -> Result<u8, ParserError> {
         // nonce + origin + fee-rate + payload + post-conditions
-        3 + self.payload.num_items() + self.post_conditions.num_items
+        3u8.checked_add(self.payload.num_items())
+            .and_then(|res| res.checked_add(self.post_conditions.num_items))
+            .ok_or(ParserError::parser_value_out_of_range)
     }
 
     fn get_origin_items(
@@ -430,7 +432,7 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        let num_items = self.num_items();
+        let num_items = self.num_items()?;
         let post_conditions_items = self.post_conditions.num_items;
 
         if display_idx >= (num_items - post_conditions_items) {
@@ -462,7 +464,7 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        if display_idx >= self.num_items() {
+        if display_idx >= self.num_items()? {
             return Err(ParserError::parser_display_idx_out_of_range);
         }
 
@@ -551,7 +553,7 @@ impl<'a> Transaction<'a> {
         self.transaction_auth.is_multisig()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, fuzzing))]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
         extern crate std;
         use std::*;
@@ -560,7 +562,7 @@ impl<'a> Transaction<'a> {
         let mut page_idx = 0;
         let mut display_idx = 0;
 
-        let num_items = tx.num_items();
+        let num_items = tx.num_items()?;
         while display_idx < num_items {
             let pages = tx.get_item(display_idx, &mut key, &mut value, page_idx)?;
             let k = string::String::from_utf8_lossy(key.as_ref());

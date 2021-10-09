@@ -14,12 +14,12 @@ use crate::parser::spending_condition::TransactionSpendingCondition;
 // 66-byte signature and signature encoding
 const SPONSOR_SENTINEL_LEN: usize = 21 + 16 + 66;
 
-#[repr(C)]
-#[derive(Debug)]
 /// A Transaction's Authorization structure
 ///
 /// this structure contains the address of the origin account,
 /// signature(s) and signature threshold for the origin account
+#[repr(C)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TransactionAuth<'a> {
     // 0x04
     Standard(TransactionSpendingCondition<'a>),
