@@ -1,0 +1,2 @@
+cargo:rustc-env=TYPENUM_BUILD_CONSTS=/home/neithanmo/Documents/zondax/ledger-blockstack/app/hfuzz-parser/hfuzz_target/x86_64-unknown-linux-gnu/release/build/typenum-ca0261de759523e2/out/consts.rs
+cargo:rustc-env=TYPENUM_BUILD_OP=/home/neithanmo/Documents/zondax/ledger-blockstack/app/hfuzz-parser/hfuzz_target/x86_64-unknown-linux-gnu/release/build/typenum-ca0261de759523e2/out/op.rs
