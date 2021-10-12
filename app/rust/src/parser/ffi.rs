@@ -88,7 +88,7 @@ pub extern "C" fn _getNumItems(
 ) -> u32 {
     unsafe {
         if tx_t.is_null() || (*tx_t).state.is_null() || num_items.is_null() {
-            return 0;
+            return ParserError::parser_no_data as u32;
         }
     }
     if let Some(tx) = transaction_from(tx_t as _) {
@@ -97,7 +97,7 @@ pub extern "C" fn _getNumItems(
                 unsafe {
                     *num_items = n;
                 }
-                0
+                ParserError::parser_ok as u32;
             }
             Err(e) => e as u32,
         }
@@ -196,7 +196,7 @@ pub extern "C" fn _check_pubkey_hash(
     tx_t: *const parse_tx_t,
     pubKey: *const u8,
     pubKeyLen: u16,
-) -> u8 {
+) -> u32 {
     if let Some(tx) = transaction_from(tx_t as _) {
         unsafe {
             if pubKey.is_null() {
