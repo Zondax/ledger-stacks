@@ -1,0 +1,14 @@
+[package]
+authors = ["Zondax <info@zondax.ch>"]
+edition = "2018"
+name = "hfuzz-parser"
+publish = false
+version = "0.0.1"
+
+[dependencies]
+honggfuzz = "0.5"
+rslib = {path = "../rust"}
+
+[[bin]]
+name = "transaction"
+path = "transaction.rs"

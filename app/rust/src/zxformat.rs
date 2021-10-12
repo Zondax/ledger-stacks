@@ -42,7 +42,7 @@ macro_rules! num_to_str {
             if output.len() < 2 {
                 return Err(ParserError::parser_unexpected_buffer_end);
             }
-            let len = if cfg!(test) {
+            let len = if cfg!(any(test, fuzzing)) {
                 let mut writer = Writer::new(output);
                 core::write!(writer, "{}", number)
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
@@ -101,7 +101,7 @@ pub fn fpu64_to_str_check_test(
     value: u64,
     decimals: u8,
 ) -> Result<usize, ParserError> {
-    let len = if cfg!(test) {
+    let len = if cfg!(any(test, fuzzing)) {
         fpu64_to_str(out, value, decimals)? as usize
     } else {
         unsafe { fp_uint64_to_str(out.as_mut_ptr() as _, out.len() as _, value, decimals) as usize }

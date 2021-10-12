@@ -350,7 +350,10 @@ impl<'a> TransactionContractCall<'a> {
     pub fn num_items(&self) -> Result<u8, ParserError> {
         // contract-address, contract-name, function-name
         // + the number of arguments
-        Ok(CONTRACT_CALL_BASE_ITEMS + self.num_args()? as u8)
+        let num_args = self.num_args()? as u8;
+        num_args
+            .checked_add(CONTRACT_CALL_BASE_ITEMS)
+            .ok_or(ParserError::parser_value_out_of_range)
     }
 
     fn get_base_items(
