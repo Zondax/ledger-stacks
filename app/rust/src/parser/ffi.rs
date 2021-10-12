@@ -97,7 +97,7 @@ pub extern "C" fn _getNumItems(
                 unsafe {
                     *num_items = n;
                 }
-                ParserError::parser_ok as u32;
+                ParserError::parser_ok as u32
             }
             Err(e) => e as u32,
         }
