@@ -1,9 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case)]
 #![allow(clippy::cast_ptr_alignment)]
 
-use crate::parser::{
-    parser_common::ParserError, post_condition::TransactionPostCondition, transaction::Transaction,
-};
+use crate::parser::{parser_common::ParserError, ParsedObj, TransactionPostCondition};
 use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 
 // extern c function for formatting to fixed point number
@@ -24,8 +22,8 @@ pub struct parse_tx_t {
     len: u16,
 }
 
-fn transaction_from<'a>(tx: *mut parse_tx_t) -> Option<&'a mut Transaction<'a>> {
-    unsafe { ((*tx).state as *const u8 as *mut Transaction).as_mut() }
+fn parsed_obj_from_state<'a>(tx: *mut parse_tx_t) -> Option<&'a mut ParsedObj<'a>> {
+    unsafe { ((*tx).state as *const u8 as *mut ParsedObj).as_mut() }
 }
 
 #[no_mangle]
@@ -41,7 +39,7 @@ pub extern "C" fn _parser_init(
         return ParserError::parser_no_memory_for_state as u32;
     }
     unsafe {
-        *alloc_size = core::mem::size_of::<Transaction>() as u16;
+        *alloc_size = core::mem::size_of::<ParsedObj>() as u16;
     }
     parser_init_context(ctx, buffer, bufferSize) as u32
 }
@@ -70,8 +68,8 @@ fn parser_init_context(
 pub extern "C" fn _read(context: *const parser_context_t, parser_state: *mut parse_tx_t) -> u32 {
     let data = unsafe { core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _) };
 
-    if let Some(tx) = transaction_from(parser_state) {
-        match tx.read(data) {
+    if let Some(obj) = parsed_obj_from_state(parser_state) {
+        match obj.read(data) {
             Ok(_) => ParserError::parser_ok as u32,
             Err(e) => e as u32,
         }
@@ -91,8 +89,8 @@ pub extern "C" fn _getNumItems(
             return ParserError::parser_no_data as u32;
         }
     }
-    if let Some(tx) = transaction_from(tx_t as _) {
-        match tx.num_items() {
+    if let Some(obj) = parsed_obj_from_state(tx_t as _) {
+        match obj.num_items() {
             Ok(n) => {
                 unsafe {
                     *num_items = n;
@@ -118,18 +116,23 @@ pub extern "C" fn _getItem(
     pageCount: *mut u8,
     tx_t: *const parse_tx_t,
 ) -> u32 {
-    let (page_count, key, value) = unsafe {
+    let page_count = unsafe {
         *pageCount = 0u8;
         let page_count = &mut *pageCount;
-        let key = core::slice::from_raw_parts_mut(outKey as *mut u8, outKeyLen as usize);
-        let value = core::slice::from_raw_parts_mut(outValue as *mut u8, outValueLen as usize);
         if tx_t.is_null() || (*tx_t).state.is_null() {
             return ParserError::parser_context_mismatch as _;
         }
-        (page_count, key, value)
+        page_count
     };
-    if let Some(tx) = transaction_from(tx_t as _) {
-        match tx.get_item(displayIdx, key, value, pageIdx) {
+    if let Some(obj) = parsed_obj_from_state(tx_t as _) {
+        match obj.get_item(
+            displayIdx,
+            outKey,
+            outKeyLen,
+            outValue,
+            outValueLen,
+            pageIdx,
+        ) {
             Ok(page) => {
                 *page_count = page;
                 ParserError::parser_ok as _
@@ -143,7 +146,7 @@ pub extern "C" fn _getItem(
 
 #[no_mangle]
 pub extern "C" fn _auth_flag(tx_t: *const parse_tx_t, auth_flag: *mut u8) -> u32 {
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         unsafe {
             *auth_flag = tx.auth_flag() as u8;
             ParserError::parser_ok as _
@@ -155,7 +158,7 @@ pub extern "C" fn _auth_flag(tx_t: *const parse_tx_t, auth_flag: *mut u8) -> u32
 
 #[no_mangle]
 pub extern "C" fn _fee_bytes(tx_t: *const parse_tx_t, fee: *mut u8, fee_len: u16) -> u8 {
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         unsafe {
             let fee_bytes = if let Some(fee) = tx.fee() {
                 fee.to_be_bytes()
@@ -174,7 +177,7 @@ pub extern "C" fn _fee_bytes(tx_t: *const parse_tx_t, fee: *mut u8, fee_len: u16
 
 #[no_mangle]
 pub extern "C" fn _nonce_bytes(tx_t: *const parse_tx_t, nonce: *mut u8, nonce_len: u16) -> u8 {
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         unsafe {
             let nonce_bytes = if let Some(nonce) = tx.nonce() {
                 nonce.to_be_bytes()
@@ -197,7 +200,7 @@ pub extern "C" fn _check_pubkey_hash(
     pubKey: *const u8,
     pubKeyLen: u16,
 ) -> u32 {
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         unsafe {
             if pubKey.is_null() {
                 return ParserError::parser_no_data as _;
@@ -214,7 +217,7 @@ pub extern "C" fn _check_pubkey_hash(
 pub extern "C" fn _presig_hash_data(tx_t: *const parse_tx_t, buf: *mut u8, bufLen: u16) -> u16 {
     let buffer = unsafe { core::slice::from_raw_parts_mut(buf, bufLen as usize) };
 
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         if let Ok(len) = tx.transaction_auth.initial_sighash_auth(buffer) {
             return len as _;
         }
@@ -224,7 +227,7 @@ pub extern "C" fn _presig_hash_data(tx_t: *const parse_tx_t, buf: *mut u8, bufLe
 
 #[no_mangle]
 pub extern "C" fn _last_block_ptr(tx_t: *const parse_tx_t, block_ptr: *mut *const u8) -> u16 {
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         let block = tx.last_transaction_block();
         unsafe {
             *block_ptr = block.as_ptr();
@@ -235,16 +238,26 @@ pub extern "C" fn _last_block_ptr(tx_t: *const parse_tx_t, block_ptr: *mut *cons
 }
 
 #[no_mangle]
-pub extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> i8 {
-    if let Some(tx) = transaction_from(tx_t as _) {
-        return tx.is_multisig() as _;
+pub extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> u8 {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
+        tx.is_multisig() as _
+    } else {
+        false as _
     }
-    -1
+}
+
+#[no_mangle]
+pub extern "C" fn _is_transaction(tx_t: *const parse_tx_t) -> u8 {
+    if let Some(obj) = parsed_obj_from_state(tx_t as _) {
+        obj.is_transaction() as u8
+    } else {
+        false as _
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn _previous_signer_data(tx_t: *const parse_tx_t, data: *mut *const u8) -> u16 {
-    if let Some(tx) = transaction_from(tx_t as _) {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         if let Some(slice) = tx.previous_signer_data() {
             unsafe {
                 *data = slice.as_ptr();
