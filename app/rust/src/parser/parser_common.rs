@@ -13,6 +13,7 @@ use crate::parser::c32;
 // The max len for asset, contract and clarity names
 pub const MAX_STRING_LEN: u8 = 128;
 pub const HASH160_LEN: usize = 20;
+pub const STACKS_ADDR_LEN: usize = HASH160_LEN + 1;
 
 // The conversion constant between microSTX to STX
 pub const STX_DECIMALS: u8 = 6;
@@ -160,6 +161,7 @@ pub enum ParserError {
     parser_value_out_of_range,
     parser_invalid_address,
     parser_invalid_token_transfer_type,
+    parser_invalid_bytestr_message,
 }
 
 impl From<ErrorKind> for ParserError {
@@ -304,13 +306,14 @@ impl<'a> ClarityName<'a> {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct StacksAddress<'a>(pub &'a [u8]);
+// we take HASH160_LEN + 1-byte hash mode
+pub struct StacksAddress<'a>(pub &'a [u8; STACKS_ADDR_LEN]);
 
 impl<'a> StacksAddress<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        // we take HASH160_LEN + 1-byte hash mode
-        let (raw, address) = take(HASH160_LEN + 1usize)(bytes)?;
+        let (raw, _) = take(STACKS_ADDR_LEN)(bytes)?;
+        let address = arrayref::array_ref!(bytes, 0, STACKS_ADDR_LEN);
         Ok((raw, Self(address)))
     }
 

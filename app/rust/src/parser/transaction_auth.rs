@@ -4,9 +4,10 @@ use nom::{
     number::complete::{be_u64, le_u8},
 };
 
+use crate::bolos::c_zemu_log_stack;
 use crate::check_canary;
 use crate::parser::parser_common::{ParserError, SignerId};
-use crate::parser::spending_condition::TransactionSpendingCondition;
+use crate::parser::spending_condition::{SpendingConditionSigner, TransactionSpendingCondition};
 
 // The sponsor sentinel length that includes:
 // 21-byte pub_key hash
@@ -73,15 +74,17 @@ impl<'a> TransactionAuth<'a> {
         }
     }
 
-    pub fn origin(&self) -> &TransactionSpendingCondition {
-        match *self {
-            Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => origin,
+    #[inline(always)]
+    pub fn origin(&self) -> &SpendingConditionSigner {
+        match self {
+            Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => &origin.signer,
         }
     }
 
-    pub fn sponsor(&self) -> Option<&TransactionSpendingCondition> {
-        match *self {
-            Self::Sponsored(_, ref sponsor) => Some(sponsor),
+    #[inline(always)]
+    pub fn sponsor(&self) -> Option<&SpendingConditionSigner> {
+        match self {
+            Self::Sponsored(_, ref sponsor) => Some(&sponsor.signer),
             _ => None,
         }
     }

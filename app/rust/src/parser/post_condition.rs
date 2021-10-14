@@ -655,7 +655,7 @@ mod test {
         let mut address = vec![2u8];
         address.extend_from_slice([2u8; 20].as_ref());
 
-        let addr = StacksAddress(address.as_ref());
+        let addr = StacksAddress(arrayref::array_ref!(address, 0, 21));
         let mut principal = vec![3u8];
         principal.extend_from_slice(addr.0);
         principal.push(11u8); // contract_name len
