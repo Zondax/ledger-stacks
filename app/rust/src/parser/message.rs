@@ -1,3 +1,4 @@
+#![allow(clippy::missing_safety_doc)]
 use crate::parser::{parser_common::ParserError, transaction::Transaction};
 //use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 use core::mem::ManuallyDrop;

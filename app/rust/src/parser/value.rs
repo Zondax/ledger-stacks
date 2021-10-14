@@ -69,7 +69,7 @@ impl<'a> Value<'a> {
     }
 
     pub fn payload(&self) -> Result<&'a [u8], ParserError> {
-        if self.0.len() > 0 {
+        if !self.0.is_empty() {
             Ok(&self.0[1..])
         } else {
             Err(ParserError::parser_unexpected_buffer_end)

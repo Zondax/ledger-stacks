@@ -60,10 +60,7 @@ impl<'a> TransactionAuth<'a> {
 
     #[inline(never)]
     pub fn is_standard_auth(&self) -> bool {
-        match *self {
-            Self::Standard(_) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Standard(_))
     }
 
     // check just for origin, meaning we support standard transaction only
@@ -144,7 +141,7 @@ impl<'a> TransactionAuth<'a> {
         SignerId::Invalid
     }
 
-    pub fn initial_sighash_auth(&self, buf: &mut [u8]) -> Result<usize, ()> {
+    pub fn initial_sighash_auth(&self, buf: &mut [u8]) -> Result<usize, ParserError> {
         match self {
             Self::Standard(ref origin) => origin.init_sighash(buf),
             Self::Sponsored(ref origin, _) => {
@@ -154,9 +151,9 @@ impl<'a> TransactionAuth<'a> {
         }
     }
 
-    pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ()> {
+    pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ParserError> {
         if buf.len() < SPONSOR_SENTINEL_LEN {
-            return Err(());
+            return Err(ParserError::parser_no_data);
         }
         buf.iter_mut()
             .take(SPONSOR_SENTINEL_LEN)

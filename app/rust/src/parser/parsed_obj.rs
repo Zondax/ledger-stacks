@@ -1,4 +1,4 @@
-#![allow(non_camel_case_types, non_snake_case)]
+#![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 use crate::parser::{parser_common::ParserError, transaction::Transaction, Message};
 use crate::{bolos::c_zemu_log_stack, check_canary};
 use nom::error::ErrorKind;
@@ -28,7 +28,7 @@ pub struct ParsedObj<'a> {
 
 impl<'a> ParsedObj<'a> {
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(ParserError::parser_no_data);
         }
 
@@ -55,25 +55,22 @@ impl<'a> ParsedObj<'a> {
 
     pub fn get_item(
         &mut self,
-        displayIdx: u8,
-        outKey: *mut i8,
-        outKeyLen: u16,
-        outValue: *mut i8,
-        outValueLen: u16,
-        pageIdx: u8,
+        display_idx: u8,
+        key: &mut [u8],
+        value: &mut [u8],
+        page_idx: u8,
     ) -> Result<u8, ParserError> {
-        let (key, value) = unsafe {
-            let key = core::slice::from_raw_parts_mut(outKey as *mut u8, outKeyLen as usize);
-            let value = core::slice::from_raw_parts_mut(outValue as *mut u8, outValueLen as usize);
-            (key, value)
-        };
         unsafe {
             match self.tag {
-                Tag::Transaction => self
+                Tag::Transaction => {
+                    self.obj
+                        .transaction()
+                        .get_item(display_idx, key, value, page_idx)
+                }
+                Tag::Message => self
                     .obj
-                    .transaction()
-                    .get_item(displayIdx, key, value, pageIdx),
-                Tag::Message => self.obj.message().get_item(displayIdx, key, value, pageIdx),
+                    .message()
+                    .get_item(display_idx, key, value, page_idx),
             }
         }
     }

@@ -345,17 +345,11 @@ impl<'a> TransactionSpendingCondition<'a> {
     }
 
     pub fn is_singlesig(&self) -> bool {
-        match self.signature {
-            SpendingConditionSignature::Singlesig(..) => true,
-            _ => false,
-        }
+        matches!(self.signature, SpendingConditionSignature::Singlesig(..))
     }
 
     pub fn is_multisig(&self) -> bool {
-        match self.signature {
-            SpendingConditionSignature::Multisig(..) => true,
-            _ => false,
-        }
+        matches!(self.signature, SpendingConditionSignature::Multisig(..))
     }
 
     pub fn num_auth_fields(&self) -> Option<u32> {
@@ -372,7 +366,7 @@ impl<'a> TransactionSpendingCondition<'a> {
         }
     }
 
-    pub fn init_sighash(&self, buf: &mut [u8]) -> Result<usize, ()> {
+    pub fn init_sighash(&self, buf: &mut [u8]) -> Result<usize, ParserError> {
         let buf_len = buf.len();
 
         if self.is_singlesig() && buf_len >= STANDARD_SINGLESIG_AUTH_LEN {
@@ -396,7 +390,7 @@ impl<'a> TransactionSpendingCondition<'a> {
                 return Ok(STANDARD_MULTISIG_AUTH_LEN);
             }
         }
-        Err(())
+        Err(ParserError::parser_no_data)
     }
 }
 
