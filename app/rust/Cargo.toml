@@ -8,7 +8,7 @@ readme = "README.md"
 
 [lib]
 name = "rslib"
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 numtoa = "0.2.4"
