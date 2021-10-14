@@ -52,7 +52,7 @@ impl<'a> ByteString<'a> {
         data.len() >= msg_bytes.len() && &data[..msg_bytes.len()] == msg_bytes
     }
 
-    pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+    pub fn read(&mut self, _data: &'a [u8]) -> Result<(), ParserError> {
         todo!()
     }
 

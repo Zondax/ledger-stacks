@@ -1,16 +1,29 @@
+#![allow(non_camel_case_types, non_snake_case)]
 use crate::parser::{parser_common::ParserError, transaction::Transaction, Message};
 use crate::{bolos::c_zemu_log_stack, check_canary};
 use nom::error::ErrorKind;
 
 use core::mem::ManuallyDrop;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Tag {
+    Transaction,
+    Message,
+}
+
 // safety: this is memory allocated in C and last the application lifetime
 // and is initialized once which means that once the object is initialized with an especific
 // union variant such variant wont be changed.
 #[repr(C)]
-pub union ParsedObj<'a> {
+pub union Obj<'a> {
     tx: ManuallyDrop<Transaction<'a>>,
     msg: ManuallyDrop<Message<'a>>,
+}
+
+pub struct ParsedObj<'a> {
+    tag: Tag,
+    obj: Obj<'a>,
 }
 
 impl<'a> ParsedObj<'a> {
@@ -19,20 +32,23 @@ impl<'a> ParsedObj<'a> {
             return Err(ParserError::parser_no_data);
         }
 
+        self.tag = Tag::Transaction;
+
         unsafe {
             if !Message::is_message(data) {
-                (&mut *self.tx).read(data)
+                self.obj.read_tx(data)
             } else {
-                (&mut *self.msg).read(data)
+                self.tag = Tag::Message;
+                self.obj.read_msg(data)
             }
         }
     }
 
-    pub fn num_items(&self) -> Result<u8, ParserError> {
+    pub fn num_items(&mut self) -> Result<u8, ParserError> {
         unsafe {
-            match self {
-                Self { tx } => tx.num_items(),
-                Self { msg } => msg.num_items(),
+            match self.tag {
+                Tag::Transaction => self.obj.transaction().num_items(),
+                Tag::Message => self.obj.message().num_items(),
             }
         }
     }
@@ -52,39 +68,63 @@ impl<'a> ParsedObj<'a> {
             (key, value)
         };
         unsafe {
-            match self {
-                Self { ref mut tx } => (&mut *tx).get_item(displayIdx, key, value, pageIdx),
-                Self { ref mut msg } => (&mut *msg).get_item(displayIdx, key, value, pageIdx),
+            match self.tag {
+                Tag::Transaction => self
+                    .obj
+                    .transaction()
+                    .get_item(displayIdx, key, value, pageIdx),
+                Tag::Message => self.obj.message().get_item(displayIdx, key, value, pageIdx),
             }
         }
     }
 
     pub fn is_transaction(&self) -> bool {
-        unsafe { matches!(self, &Self { ref tx }) }
+        matches!(self.tag, Tag::Transaction)
     }
     // For now we support only ByteString messages
     // but this later new data types could be to added
     pub fn is_message(&self) -> bool {
-        unsafe { matches!(self, &Self { ref msg }) }
+        matches!(self.tag, Tag::Message)
     }
 
     #[inline(always)]
     pub fn transaction(&mut self) -> Option<&mut Transaction<'a>> {
         unsafe {
-            match self {
-                Self { ref mut tx } => Some(tx),
-                _ => None,
+            if self.tag == Tag::Transaction {
+                Some(self.obj.transaction())
+            } else {
+                None
             }
         }
     }
 
     pub fn message(&mut self) -> Option<&mut Message<'a>> {
         unsafe {
-            match self {
-                Self { ref mut msg } => Some(msg),
-                _ => None,
+            if self.tag == Tag::Message {
+                Some(self.obj.message())
+            } else {
+                None
             }
         }
+    }
+}
+
+impl<'a> Obj<'a> {
+    pub unsafe fn read_tx(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        (&mut *self.tx).read(data)
+    }
+
+    pub unsafe fn read_msg(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        (&mut *self.msg).read(data)
+    }
+
+    #[inline(always)]
+    pub unsafe fn transaction(&mut self) -> &mut Transaction<'a> {
+        &mut *self.tx
+    }
+
+    pub unsafe fn message(&mut self) -> &mut Message<'a> {
+        &mut *self.msg
     }
 }
 
