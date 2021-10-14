@@ -222,7 +222,7 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
             version: (raw.1).0,
             chain_id: (raw.1).1,
             transaction_auth: (raw.1).2,
-            transaction_modes: (raw.1).3,
+            transaction_modes: arrayref::array_ref!((raw.1).3, 0, 2),
             post_conditions: (raw.1).4,
             payload: (raw.1).5,
             // At this point the signer is unknown
@@ -238,7 +238,7 @@ pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
     pub transaction_auth: TransactionAuth<'a>,
-    pub transaction_modes: &'a [u8],
+    pub transaction_modes: &'a [u8; 2],
     pub post_conditions: PostConditions<'a>,
     pub payload: TransactionPayload<'a>,
     signer: SignerId,
@@ -308,8 +308,9 @@ impl<'a> Transaction<'a> {
     fn read_transaction_modes(&mut self) -> Result<(), ParserError> {
         // two modes are included here,
         // anchor mode and postcondition mode
-        let (raw, modes) = take::<_, _, ParserError>(2usize)(self.remainder)
+        let (raw, _) = take::<_, _, ParserError>(2usize)(self.remainder)
             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+        let modes = arrayref::array_ref!(self.remainder, 0, 2);
         self.transaction_modes = modes;
         self.update_remainder(raw);
         check_canary!();
@@ -651,8 +652,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce().unwrap());
+        assert_eq!(json.fee, spending_condition.fee().unwrap() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -688,8 +689,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce().unwrap());
+        assert_eq!(json.fee, spending_condition.fee().unwrap() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -725,8 +726,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce().unwrap());
+        assert_eq!(json.fee, spending_condition.fee().unwrap() as u32);
 
         let origin = spending_condition
             .signer_address(TransactionVersion::Mainnet)
@@ -762,8 +763,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce().unwrap());
+        assert_eq!(json.fee, spending_condition.fee().unwrap() as u32);
 
         let origin = spending_condition
             .signer_address(TransactionVersion::Mainnet)
@@ -815,8 +816,8 @@ mod test {
 
         let spending_condition = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce().unwrap());
+        assert_eq!(json.fee as u32, spending_condition.fee().unwrap() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -851,8 +852,8 @@ mod test {
         let spending_condition = transaction.transaction_auth.origin();
         let spending_condition_s = transaction.transaction_auth.sponsor().unwrap();
 
-        assert_eq!(json.nonce, spending_condition.nonce());
-        assert_eq!(json.fee as u32, spending_condition.fee() as u32);
+        assert_eq!(json.nonce, spending_condition.nonce().unwrap());
+        assert_eq!(json.fee as u32, spending_condition.fee().unwrap() as u32);
 
         let origin = spending_condition
             .signer_address(transaction.version)
@@ -899,8 +900,8 @@ mod test {
 
         let origin = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
+        assert_eq!(json.nonce, origin.nonce().unwrap());
+        assert_eq!(json.fee as u32, origin.fee().unwrap() as u32);
 
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
@@ -940,8 +941,8 @@ mod test {
 
         let origin = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
+        assert_eq!(json.nonce, origin.nonce().unwrap());
+        assert_eq!(json.fee as u32, origin.fee().unwrap() as u32);
 
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
@@ -994,8 +995,8 @@ mod test {
         let sponsor = transaction.transaction_auth.sponsor().unwrap();
 
         // test Fee, Nonce of origin
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
+        assert_eq!(json.nonce, origin.nonce().unwrap());
+        assert_eq!(json.fee as u32, origin.fee().unwrap() as u32);
 
         // Test origin and sponsor addresses
         let origin_addr = origin.signer_address(transaction.version).unwrap();
@@ -1039,8 +1040,8 @@ mod test {
 
         let origin = transaction.transaction_auth.origin();
 
-        assert_eq!(json.nonce, origin.nonce());
-        assert_eq!(json.fee as u32, origin.fee() as u32);
+        assert_eq!(json.nonce, origin.nonce().unwrap());
+        assert_eq!(json.fee as u32, origin.fee().unwrap() as u32);
 
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
