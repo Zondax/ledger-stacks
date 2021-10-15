@@ -12,3 +12,7 @@ rslib = {path = "../rust"}
 [[bin]]
 name = "transaction"
 path = "transaction.rs"
+
+[[bin]]
+name = "byte_string"
+path = "byte_string.rs"
