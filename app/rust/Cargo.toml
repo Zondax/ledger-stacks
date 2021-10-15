@@ -8,11 +8,12 @@ readme = "README.md"
 
 [lib]
 name = "rslib"
-crate-type = ["staticlib", "rlib"]
+crate-type = ["staticlib"]
 
 [dependencies]
 numtoa = "0.2.4"
 arrayref = "0.3.6"
+lexical-core = { version = "0.8", features = ["parse-integers"], default-features = false }
 
 [dependencies.nom]
 version = "5.1.2"
