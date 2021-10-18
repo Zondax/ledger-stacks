@@ -1,6 +1,7 @@
 #![no_std]
 #![no_builtins]
 #![allow(dead_code, unused_imports)]
+#![deny(unused_crate_dependencies)]
 #![macro_use]
 
 #[cfg(test)]
