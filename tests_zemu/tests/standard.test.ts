@@ -491,7 +491,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_message`, m.name === 'nanos' ? 2 : 2)
+      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_message`, m.name === 'nanos' ? 1 : 2)
 
       const signature = await signatureRequest
       // TODO: Complete message signing
