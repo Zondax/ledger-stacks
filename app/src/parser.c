@@ -134,6 +134,10 @@ void parser_resetState() {
     zb_deallocate();
 }
 
+uint8_t parser_is_transaction() {
+    return _is_transaction(&parser_state);
+}
+
 const char *parser_getErrorDescription(parser_error_t err) {
     switch (err) {
         // General errors

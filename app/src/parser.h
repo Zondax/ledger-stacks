@@ -74,6 +74,8 @@ uint16_t parser_previous_signer_data(uint8_t **data);
 
 void parser_resetState();
 
+uint8_t parser_is_transaction();
+
 #ifdef __cplusplus
 }
 #endif

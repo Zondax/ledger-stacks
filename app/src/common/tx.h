@@ -77,3 +77,5 @@ uint16_t tx_last_tx_block(uint8_t ** last_tx_block);
 // Gets the pointer to the previous signer signature and required data
 // for signing a multisig transaction
 uint16_t tx_previous_signer_data(uint8_t **data);
+
+uint8_t tx_is_transaction();
