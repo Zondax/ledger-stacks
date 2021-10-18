@@ -1,14 +1,12 @@
 #![allow(clippy::missing_safety_doc)]
 use crate::parser::{parser_common::ParserError, transaction::Transaction};
-use core::fmt::Write;
-use nom::{
-    bytes::complete::take,
-    error::ErrorKind,
-    number::complete::{be_u16, be_u32, be_u64, le_u8},
+use crate::{
+    bolos::c_zemu_log_stack,
+    check_canary,
+    zxformat::{pageString, Writer},
 };
+use core::fmt::Write;
 
-use crate::zxformat::{pageString, Writer};
-//use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 use core::mem::ManuallyDrop;
 
 // The lenght of \x19Stacks Signed Message:
@@ -29,7 +27,6 @@ pub union Message<'a> {
 }
 
 impl<'a> Message<'a> {
-    #[cfg(any(test, fuzzing))]
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         let byte_str = ByteString::from_bytes(data)?;
         Ok(Self { bstr: byte_str })
@@ -139,15 +136,18 @@ impl<'a> ByteString<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let mut writer_key = Writer::new(out_key);
+
         if display_idx == 0 {
             writer_key
                 .write_str("Sign Message")
                 .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+
             let len = if self.len > MAX_CHARS_TO_SHOW_FROM_MSG {
                 MAX_CHARS_TO_SHOW_FROM_MSG
             } else {
                 self.len
-            };
+            } + self.at;
+
             pageString(out_value, &self.data[self.at..len], page_idx)
         } else {
             Err(ParserError::parser_display_idx_out_of_range)
