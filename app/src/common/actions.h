@@ -78,8 +78,7 @@ __Z_INLINE void app_sign() {
     zxerr_t err = zxerr_ok;
 
     // Get the current transaction presig_hash
-    if (get_presig_hash(presig_hash, CX_SHA256_SIZE) != zxerr_ok)
-        err = zxerr_no_data;
+    err = get_presig_hash(presig_hash, CX_SHA256_SIZE);
 
     // Check if this is a multisig transaction, If so, checks that there is a previous
     // signer data, in that case we know we have to use that signers's data as our
@@ -93,8 +92,10 @@ __Z_INLINE void app_sign() {
         if (data != NULL && len >= PREVIOUS_SIGNER_DATA_LEN) {
             // Check postsig_hash and append the authfield, fee and nonce, after that the result is copied to the presig_hash
             // buffer
-            if ( validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len) != zxerr_ok || append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE) != zxerr_ok)
+            err = validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len);
+            if(tx_is_transaction() && append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE) != zxerr_ok) {
                 err = zxerr_no_data;
+            }
         }
     }
 
@@ -117,29 +118,31 @@ __Z_INLINE void app_sign() {
         return;
     }
 
-    // Calculates the post_sighash
-    memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
+    if(tx_is_transaction()) {
+        // Calculates the post_sighash
+        memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
-    // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
-    post_sighash_data[CX_SHA256_SIZE] = 0x00;
+        // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
+        post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
-    // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
-    uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+        // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
+        uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
-    // Now get the presig_hash
-    sha512_256_ctx ctx;
-    SHA512_256_init(&ctx);
-    SHA512_256_starts(&ctx);
+        // Now get the presig_hash
+        sha512_256_ctx ctx;
+        SHA512_256_init(&ctx);
+        SHA512_256_starts(&ctx);
 
-    // sighash + pubkey encoding
-    SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
-    // the signature's v value
-    SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
+        // sighash + pubkey encoding
+        SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
+        // the signature's v value
+        SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
 
-    // the signature's rs values
-    SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
-    SHA512_256_finish(&ctx, hash_temp);
-    memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+        // the signature's rs values
+        SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
+        SHA512_256_finish(&ctx, hash_temp);
+        memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+    }
 
     if (replyLen == 0) {
         uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, zxerr_no_data);
@@ -230,20 +233,23 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     // Update the hasher with the first and second block of bytes
     SHA512_256_update(&ctx, message, TRANSACTION_FIRST_BLOCK_LEN);
     SHA512_256_update(&ctx, tx_auth, auth_len);
+    if(tx_is_transaction()) {
+        // prepare the last transaction block to be hashed
+        uint8_t *last_block = NULL;
+        uint8_t **last_block_ptr = &last_block;
 
-    // prepare the last transaction block to be hashed
-    uint8_t *last_block = NULL;
-    uint8_t **last_block_ptr = &last_block;
+        uint16_t last_block_len = tx_last_tx_block(last_block_ptr);
+        if (last_block == NULL || last_block_len == 0) {
+            return zxerr_no_data;
+        }
 
-    uint16_t last_block_len = tx_last_tx_block(last_block_ptr);
-    if (last_block == NULL || last_block_len == 0) {
-        return zxerr_no_data;
+        SHA512_256_update(&ctx, last_block, last_block_len);
+        SHA512_256_finish(&ctx, hash_temp);
+        return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
+    } else {
+        SHA512_256_finish(&ctx, hash);
+        return zxerr_ok;
     }
-
-    SHA512_256_update(&ctx, last_block, last_block_len);
-    SHA512_256_finish(&ctx, hash_temp);
-
-    return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
 }
 
 __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen) {
