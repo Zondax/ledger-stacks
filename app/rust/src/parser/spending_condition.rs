@@ -70,10 +70,11 @@ pub enum TransactionAuthFieldID {
     SignatureUncompressed = 0x03,
 }
 
+// {FT} Replacer 37 with SPENDING_CONDITION_SIGNER_LEN
 #[repr(C)]
 #[derive(PartialEq, Debug, Clone)]
 pub struct SpendingConditionSigner<'a> {
-    pub data: &'a [u8; 37],
+    pub data: &'a [u8; SPENDING_CONDITION_SIGNER_LEN],
 }
 
 impl<'a> SpendingConditionSigner<'a> {
