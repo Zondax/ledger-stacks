@@ -93,8 +93,8 @@ __Z_INLINE void app_sign() {
             // Check postsig_hash and append the authfield, fee and nonce, after that the result is copied to the presig_hash
             // buffer
             err = validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len);
-            if(tx_is_transaction() && append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE) != zxerr_ok) {
-                err = zxerr_no_data;
+            if(err == zxerr_ok) {
+                err = append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE);
             }
         }
     }
@@ -228,13 +228,12 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     SHA512_256_starts(&ctx);
 
     const uint8_t *message = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
-    // const uint16_t messageLength = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     // Update the hasher with the first and second block of bytes
-    SHA512_256_update(&ctx, message, TRANSACTION_FIRST_BLOCK_LEN);
-    SHA512_256_update(&ctx, tx_auth, auth_len);
     if(tx_is_transaction()) {
         // prepare the last transaction block to be hashed
+        SHA512_256_update(&ctx, message, TRANSACTION_FIRST_BLOCK_LEN);
+        SHA512_256_update(&ctx, tx_auth, auth_len);
         uint8_t *last_block = NULL;
         uint8_t **last_block_ptr = &last_block;
 
@@ -247,6 +246,8 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
     } else {
+        const uint16_t messageLength = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
+        SHA512_256_update(&ctx, message, messageLength);
         SHA512_256_finish(&ctx, hash);
         return zxerr_ok;
     }
