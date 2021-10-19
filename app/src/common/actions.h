@@ -77,6 +77,7 @@ __Z_INLINE void app_sign() {
     uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN];
     zxerr_t err = zxerr_ok;
 
+    const uint8_t is_transaction = tx_is_transaction();
     // Get the current transaction presig_hash
     err = get_presig_hash(presig_hash, CX_SHA256_SIZE);
 
@@ -118,7 +119,7 @@ __Z_INLINE void app_sign() {
         return;
     }
 
-    if(tx_is_transaction()) {
+    if(is_transaction) {
         // Calculates the post_sighash
         memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
