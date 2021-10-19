@@ -523,14 +523,18 @@ describe('Standard', function () {
       //
       // expect(signature.returnCode).toEqual(0x9000);
       //
-      // const ec = new EC("secp256k1");
-      // const sig = signature.signatureDER.toString("hex");
-      // const pk = pkResponse.publicKey.toString("hex");
-      // console.log(sigHashPreSign);
-      // console.log(sig);
-      // console.log(pk);
-      // const signatureOk = ec.verify(sigHashPreSign, sig, pk, "hex");
-      // expect(signatureOk).toEqual(true);
+      
+      //Verify signature
+      const ec = new EC("secp256k1");
+      var msgHash = sha512_256(unsignedTx);
+      const sig = signature.signatureVRS.toString('hex')
+      const signature_obj = {
+        r: sig.substr(2, 64),
+        s: sig.substr(66, 64),
+      }
+      //@ts-ignore
+      const signatureOk = ec.verify(msgHash, signature_obj, testPublicKey, "hex");
+      expect(signatureOk).toEqual(true);
     } finally {
       await sim.close()
     }
