@@ -526,7 +526,7 @@ describe('Standard', function () {
       
       //Verify signature
       const ec = new EC("secp256k1");
-      var msgHash = sha512_256(unsignedTx);
+      const msgHash = sha512_256(unsignedTx);
       const sig = signature.signatureVRS.toString('hex')
       const signature_obj = {
         r: sig.substr(2, 64),
