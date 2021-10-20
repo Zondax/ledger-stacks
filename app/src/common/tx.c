@@ -163,3 +163,7 @@ int8_t tx_is_multisig() {
 uint16_t tx_previous_signer_data(uint8_t **data) {
     return parser_previous_signer_data(data);
 }
+
+uint8_t tx_is_transaction() {
+    return parser_is_transaction();
+}

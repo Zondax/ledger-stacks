@@ -88,24 +88,15 @@ impl<'a> PostConditionPrincipal<'a> {
     }
 
     pub fn is_origin(&self) -> bool {
-        match self {
-            Self::Origin => true,
-            _ => false,
-        }
+        matches!(self, Self::Origin)
     }
 
     pub fn is_standard(&self) -> bool {
-        match self {
-            Self::Standard(..) => true,
-            _ => false,
-        }
+        matches!(self, Self::Standard(..))
     }
 
     pub fn is_contract(&self) -> bool {
-        match self {
-            Self::Contract(..) => true,
-            _ => false,
-        }
+        matches!(self, Self::Contract(..))
     }
 
     pub fn origin_address(
@@ -156,7 +147,7 @@ impl FungibleConditionCode {
         }
     }
 
-    pub fn to_str(&self) -> &str {
+    pub fn to_str(self) -> &'static str {
         match self {
             FungibleConditionCode::SentEq => "SentEq",
             FungibleConditionCode::SentGt => "SentGt",
@@ -183,7 +174,7 @@ impl NonfungibleConditionCode {
         }
     }
 
-    pub fn to_str(&self) -> &str {
+    pub fn to_str(self) -> &'static str {
         match self {
             Self::Sent => "Sent",
             Self::NotSent => "NotSent",
@@ -314,24 +305,15 @@ impl<'a> TransactionPostCondition<'a> {
     }
 
     pub fn is_stx(&self) -> bool {
-        match self {
-            Self::STX(..) => true,
-            _ => false,
-        }
+        matches!(self, Self::STX(..))
     }
 
     pub fn is_fungible(&self) -> bool {
-        match self {
-            Self::Fungible(..) => true,
-            _ => false,
-        }
+        matches!(self, Self::Fungible(..))
     }
 
     pub fn is_non_fungible(&self) -> bool {
-        match self {
-            Self::Nonfungible(..) => true,
-            _ => false,
-        }
+        matches!(self, Self::Nonfungible(..))
     }
 
     pub fn tokens_amount(&self) -> Option<u64> {
@@ -655,7 +637,7 @@ mod test {
         let mut address = vec![2u8];
         address.extend_from_slice([2u8; 20].as_ref());
 
-        let addr = StacksAddress(address.as_ref());
+        let addr = StacksAddress(arrayref::array_ref!(address, 0, 21));
         let mut principal = vec![3u8];
         principal.extend_from_slice(addr.0);
         principal.push(11u8); // contract_name len

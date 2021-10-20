@@ -54,9 +54,11 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
 
     crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
 
-    // Checks if this device is allowed to sign this transaction
-    if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
+    // Checks if the data being processed is a transaction and if so, verify this device is allowed to sign this transaction
+    if ( _is_transaction(&parser_state)) {
+        if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
         return parser_invalid_auth_type;
+    }
 
 
     uint8_t numItems = 0;
@@ -130,6 +132,10 @@ uint16_t parser_previous_signer_data(uint8_t **data) {
 
 void parser_resetState() {
     zb_deallocate();
+}
+
+uint8_t parser_is_transaction() {
+    return _is_transaction(&parser_state);
 }
 
 const char *parser_getErrorDescription(parser_error_t err) {
