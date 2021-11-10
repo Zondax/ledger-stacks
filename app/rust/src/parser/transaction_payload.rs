@@ -10,24 +10,26 @@ use nom::{
 use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
+use crate::parser::error::ParserError;
 use crate::parser::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, ParserError, PrincipalData,
+    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, PrincipalData,
     StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
     MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
 };
 
 use crate::parser::c32;
 
+use super::value::{Value, ValueId, BIG_INT_SIZE};
 use crate::parser::ffi::fp_uint64_to_str;
-use crate::parser::value::{Value, BIG_INT_SIZE};
 use crate::{check_canary, is_expert_mode, zxformat};
 
-use super::value::ValueId;
-
 pub const MAX_NUM_ARGS: u32 = 10;
-// The base items in contract_call transactions are
+
+// The items in contract_call transactions are
 // contract_address, contract_name and function_name
 pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
+
+pub const MAX_STRING_ASCII_TO_SHOW: usize = 60;
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq)]
@@ -344,6 +346,22 @@ impl<'a> TransactionContractCall<'a> {
             ValueId::Buffer => zxformat::pageString(out_value, "Buffer".as_bytes(), page_idx),
             ValueId::List => zxformat::pageString(out_value, "List".as_bytes(), page_idx),
             ValueId::Tuple => zxformat::pageString(out_value, "Tuple".as_bytes(), page_idx),
+            ValueId::StringAscii => {
+                // 4 bytes encode the length of the string
+                let len = if payload.len() - 4 > MAX_STRING_ASCII_TO_SHOW {
+                    MAX_STRING_ASCII_TO_SHOW
+                } else {
+                    payload.len()
+                };
+                zxformat::pageString(
+                    out_value,
+                    &payload[4..len], // omit the first 4-bytes as they are the string length
+                    page_idx,
+                )
+            }
+            ValueId::StringUtf8 => {
+                zxformat::pageString(out_value, "StringUtf8".as_bytes(), page_idx)
+            }
         }
     }
 

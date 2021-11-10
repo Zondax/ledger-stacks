@@ -4,19 +4,16 @@ use nom::{
     number::complete::{be_u32, le_u8},
 };
 
-use crate::parser::parser_common::{
-    ClarityName, ContractName, ContractPrincipal, ParserError, StacksAddress, HASH160_LEN,
+use super::error::ParserError;
+use super::parser_common::{
+    ClarityName, ContractName, ContractPrincipal, StacksAddress, HASH160_LEN,
 };
 use arrayvec::ArrayVec;
 
 // Big ints size in bytes
 pub const BIG_INT_SIZE: usize = 16;
 
-// Max buffer length in bytes
-pub const MAX_BUFFER_LEN: usize = 256;
-// The max number of tuple elements
-pub const MAX_TUPLE_ELEMENTS: usize = 4;
-
+// Use to limit recursion when parsing nested clarity values
 pub const DEPTH_LIMIT: u8 = 3;
 
 #[repr(C)]
@@ -39,6 +36,8 @@ pub enum ValueId {
     OptionalSome = 0x0a,
     List = 0x0b,
     Tuple = 0x0c,
+    StringAscii = 0x0d,
+    StringUtf8 = 0x0e,
 }
 
 impl ValueId {
@@ -50,7 +49,7 @@ impl ValueId {
 
     fn from_u8(v: u8) -> Result<Self, ParserError> {
         match v {
-            0x00..=0x0c => unsafe { Ok(core::mem::transmute::<u8, ValueId>(v)) },
+            0x00..=0x0e => unsafe { Ok(core::mem::transmute::<u8, ValueId>(v)) },
             _ => Err(ParserError::parser_invalid_argument_id),
         }
     }
@@ -82,13 +81,13 @@ impl<'a> Value<'a> {
         }
         let mut depth = 0;
 
-        let len = Self::simple_value_len(&mut depth, bytes)
+        let len = Self::value_len_impl(&mut depth, bytes)
             .map(|res| res.1)
             .map_err(|_| ParserError::parser_value_out_of_range)?;
         Ok(len)
     }
 
-    fn simple_value_len(depth: &mut u8, bytes: &'a [u8]) -> nom::IResult<(), usize, ParserError> {
+    fn value_len_impl(depth: &mut u8, bytes: &'a [u8]) -> nom::IResult<(), usize, ParserError> {
         if *depth > DEPTH_LIMIT {
             return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
         }
@@ -116,6 +115,16 @@ impl<'a> Value<'a> {
             ValueId::OptionalNone => 0,
             ValueId::List => Self::list_len(depth, raw).map(|res| res.1)?,
             ValueId::Tuple => Self::tuple_len(depth, raw).map(|res| res.1)?,
+            ValueId::StringAscii | ValueId::StringUtf8 => {
+                let len = be_u32::<'a, ParserError>(raw)
+                    .map_err(|_| ParserError::parser_unexpected_value)?;
+                if id == ValueId::StringAscii && !(len.0[..len.1 as usize]).is_ascii() {
+                    return Err(nom::Err::Error(ParserError::parser_unexpected_type));
+                }
+                // TODO: VAlidate utf8 strings, with core we can do core::str::from_u8().is_ok()
+                // but the implementation relias on static tables,
+                len.1 as usize + 4
+            }
             x => {
                 if raw.is_empty() {
                     return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
@@ -123,7 +132,7 @@ impl<'a> Value<'a> {
                 if x as u8 == raw[0] || raw[0] == ValueId::OptionalNone as u8 {
                     *depth += 1;
                 }
-                Self::simple_value_len(depth, raw).map(|res| res.1)?
+                Self::value_len_impl(depth, raw).map(|res| res.1)?
             }
         };
         Ok(((), len + 1))
@@ -148,7 +157,7 @@ impl<'a> Value<'a> {
             if item_id == ValueId::Tuple {
                 *depth += 1;
             }
-            item_len += Self::simple_value_len(depth, inner).map(|res| res.1)?;
+            item_len += Self::value_len_impl(depth, inner).map(|res| res.1)?;
             // update the raw data so, we parse the next tuple pair
             let (leftover, _) = take(item_len)(raw)?;
             raw = leftover;
@@ -179,7 +188,7 @@ impl<'a> Value<'a> {
             if item_id == ValueId::List {
                 *depth += 1;
             }
-            let item_len = Self::simple_value_len(depth, raw).map(|res| res.1)?;
+            let item_len = Self::value_len_impl(depth, raw).map(|res| res.1)?;
             // update the raw data so, we parse the next tuple pair
             let (leftover, _) = take(item_len)(raw)?;
             raw = leftover;
@@ -204,17 +213,20 @@ mod test {
         let encoded = "0c0000000201610000000000000000000000000000000001016303";
         let bytes = hex::decode(encoded).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::Tuple));
         assert_eq!(bytes.len(), value.0.len());
 
         let encoded2 = "0c0000000d016100000000000000000000000000000000010162000000000000000000000000000000000101630000000000000000000000000000000001016400000000000000000000000000000000010165000000000000000000000000000000000101660000000000000000000000000000000001016700000000000000000000000000000000010168000000000000000000000000000000000101690000000000000000000000000000000001016a0000000000000000000000000000000001016b00000000000000000000000000000000010171000000000000000000000000000000000101760000000000000000000000000000000001";
         let bytes = hex::decode(encoded2).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::Tuple));
         assert_eq!(bytes.len(), value.0.len());
 
         // Tuple containing 3 tuples inside
         let encoded3 = "0c0000000401610c00000002016100000000000000000000000000000000010162000000000000000000000000000000000101620c000000020161000000000000000000000000000000000101620301630c000000020161000000000000000000000000000000000101620301760000000000000000000000000000000001";
         let bytes = hex::decode(encoded3).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::Tuple));
         assert_eq!(bytes.len(), value.0.len());
 
         // this should fail because there are more than DEPTH_LIMIT nested tuples
@@ -229,11 +241,13 @@ mod test {
         let encoded = "0b00000003000000000000000000000000000000000100000000000000000000000000000000020000000000000000000000000000000003";
         let bytes = hex::decode(encoded).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::List));
         assert_eq!(bytes.len(), value.0.len());
 
         let three_nested_list = "0b000000030b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b000000030000000000000000000000000000000001000000000000000000000000000000000200000000000000000000000000000000030b00000003000000000000000000000000000000000100000000000000000000000000000000020000000000000000000000000000000003";
         let bytes = hex::decode(three_nested_list).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::List));
         assert_eq!(bytes.len(), value.0.len());
 
         // should fail, too depth value(4-recursion levels)
@@ -249,11 +263,13 @@ mod test {
             "0b000000030a000000000000000000000000000000000f090a000000000000000000000000000000000f";
         let bytes = hex::decode(encoded).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::List));
         assert_eq!(bytes.len(), value.0.len());
 
         let three_depth = "0a0a0a0100000000000000000000000000000001";
         let bytes = hex::decode(three_depth).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::OptionalSome));
         assert_eq!(bytes.len(), value.0.len());
 
         let five_depth = "0a0a0a0a0a0100000000000000000000000000000001";
@@ -267,6 +283,25 @@ mod test {
         let encoded = "020000001600deadbeef00080919558081fa240400010204080907";
         let bytes = hex::decode(encoded).unwrap();
         let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::Buffer));
         assert_eq!(bytes.len(), value.0.len());
+    }
+
+    #[test]
+    fn test_string_ascii() {
+        // simple list with 3-Options
+        let encoded = "0d0000006d31323334353637383930717766706261727374677a786364767a603c3637383930302d6a6c75793b6d6e656f6b682c2e2f6f6b682c2e2f3e3f7b7d7b7d5b5d5b5d313233343561727374677a78636476617172667374676e65696f613b7975657374726569616f697265736864727374677a78636476617172667374676e65696f613b7975657374726569616f697265736864";
+        let bytes = hex::decode(encoded).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::StringAscii));
+    }
+
+    #[test]
+    fn test_string_utf8() {
+        // simple list with 3-Options
+        let encoded = "0e0000002d436f6e73696465722074686520656e636f64696e67206f6620746865206575726f207369676e2c20e282ac3a20";
+        let bytes = hex::decode(encoded).unwrap();
+        let (_, value) = Value::from_bytes(&bytes).unwrap();
+        assert!(matches!(value.value_id().unwrap(), ValueId::StringUtf8));
     }
 }
