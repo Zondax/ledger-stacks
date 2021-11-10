@@ -323,19 +323,19 @@ impl<'a> TransactionContractCall<'a> {
             }
             ValueId::BoolTrue => zxformat::pageString(out_value, "bool: true".as_bytes(), page_idx),
             ValueId::BoolFalse => {
-                zxformat::pageString(out_value, "bool: false".as_bytes(), page_idx)
+                zxformat::pageString(out_value, "is bool: false".as_bytes(), page_idx)
             }
             ValueId::OptionalNone => {
-                zxformat::pageString(out_value, "Option: None".as_bytes(), page_idx)
+                zxformat::pageString(out_value, "is Option: None".as_bytes(), page_idx)
             }
             ValueId::OptionalSome => {
-                zxformat::pageString(out_value, "Option: Some".as_bytes(), page_idx)
+                zxformat::pageString(out_value, "is Option: Some".as_bytes(), page_idx)
             }
             ValueId::ResponseOk => {
-                zxformat::pageString(out_value, "Result: Ok".as_bytes(), page_idx)
+                zxformat::pageString(out_value, "is Result: Ok".as_bytes(), page_idx)
             }
             ValueId::ResponseErr => {
-                zxformat::pageString(out_value, "Result: Err".as_bytes(), page_idx)
+                zxformat::pageString(out_value, "is Result: Err".as_bytes(), page_idx)
             }
             ValueId::ContractPrincipal | ValueId::StandardPrincipal => {
                 let (_, address) = StacksAddress::from_bytes(payload)
@@ -343,9 +343,9 @@ impl<'a> TransactionContractCall<'a> {
                 let address = address.encoded_address()?;
                 zxformat::pageString(out_value, &address[0..address.len()], page_idx)
             }
-            ValueId::Buffer => zxformat::pageString(out_value, "Buffer".as_bytes(), page_idx),
-            ValueId::List => zxformat::pageString(out_value, "List".as_bytes(), page_idx),
-            ValueId::Tuple => zxformat::pageString(out_value, "Tuple".as_bytes(), page_idx),
+            ValueId::Buffer => zxformat::pageString(out_value, "is Buffer".as_bytes(), page_idx),
+            ValueId::List => zxformat::pageString(out_value, "is List".as_bytes(), page_idx),
+            ValueId::Tuple => zxformat::pageString(out_value, "is Tuple".as_bytes(), page_idx),
             ValueId::StringAscii => {
                 // 4 bytes encode the length of the string
                 let len = if payload.len() - 4 > MAX_STRING_ASCII_TO_SHOW {
@@ -360,7 +360,7 @@ impl<'a> TransactionContractCall<'a> {
                 )
             }
             ValueId::StringUtf8 => {
-                zxformat::pageString(out_value, "StringUtf8".as_bytes(), page_idx)
+                zxformat::pageString(out_value, "is StringUtf8".as_bytes(), page_idx)
             }
         }
     }
