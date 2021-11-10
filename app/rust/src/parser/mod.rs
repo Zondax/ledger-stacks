@@ -1,4 +1,5 @@
 mod c32;
+mod error;
 mod ffi;
 mod message;
 mod parsed_obj;
@@ -9,10 +10,11 @@ mod transaction;
 mod transaction_auth;
 mod transaction_payload;
 mod value;
+pub use error::ParserError;
 pub use ffi::{_getItem, _getNumItems, _parser_init, _read, fp_uint64_to_str};
 pub use message::{ByteString, Message};
 pub use parsed_obj::ParsedObj;
-pub use parser_common::{ParserError, SignerId, TransactionVersion};
+pub use parser_common::{SignerId, TransactionVersion};
 pub use post_condition::{FungibleConditionCode, TransactionPostCondition};
 pub use transaction::Transaction;
 pub use transaction_auth::TransactionAuth;

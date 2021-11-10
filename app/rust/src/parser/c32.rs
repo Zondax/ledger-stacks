@@ -1,4 +1,7 @@
-use crate::parser::parser_common::{ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
+use crate::parser::{
+    error::ParserError,
+    parser_common::{C32_ENCODED_ADDRS_LENGTH, HASH160_LEN},
+};
 use arrayvec::ArrayVec;
 
 #[cfg(any(test, fuzzing))]

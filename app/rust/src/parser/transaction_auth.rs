@@ -6,8 +6,11 @@ use nom::{
 
 use crate::bolos::c_zemu_log_stack;
 use crate::check_canary;
-use crate::parser::parser_common::{ParserError, SignerId};
-use crate::parser::spending_condition::{SpendingConditionSigner, TransactionSpendingCondition};
+use crate::parser::{
+    error::ParserError,
+    parser_common::SignerId,
+    spending_condition::{SpendingConditionSigner, TransactionSpendingCondition},
+};
 
 // The sponsor sentinel length that includes:
 // 21-byte pub_key hash

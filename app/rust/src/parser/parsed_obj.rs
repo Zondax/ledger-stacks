@@ -1,5 +1,5 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
-use crate::parser::{parser_common::ParserError, transaction::Transaction, Message};
+use super::{error::ParserError, transaction::Transaction, Message};
 use crate::{bolos::c_zemu_log_stack, check_canary};
 use nom::error::ErrorKind;
 

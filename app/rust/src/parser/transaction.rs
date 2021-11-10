@@ -10,9 +10,9 @@ use nom::{
 use arrayvec::ArrayVec;
 
 use crate::parser::{
+    error::ParserError,
     parser_common::{
-        ParserError, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH,
-        NUM_SUPPORTED_POST_CONDITIONS,
+        SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, NUM_SUPPORTED_POST_CONDITIONS,
     },
     post_condition::TransactionPostCondition,
     transaction_auth::TransactionAuth,

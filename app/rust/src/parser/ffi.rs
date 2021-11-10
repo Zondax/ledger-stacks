@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 #![allow(clippy::cast_ptr_alignment)]
 
-use crate::parser::{parser_common::ParserError, ParsedObj, TransactionPostCondition};
+use crate::parser::{error::ParserError, ParsedObj, TransactionPostCondition};
 use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
 
 // extern c function for formatting to fixed point number

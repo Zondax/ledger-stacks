@@ -6,9 +6,9 @@ use nom::{
 
 use arrayvec::ArrayVec;
 
+use crate::parser::error::ParserError;
 use crate::parser::parser_common::{
-    HashMode, ParserError, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
-    SIGNATURE_LEN,
+    HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, SIGNATURE_LEN,
 };
 use crate::parser::{c32, ffi::fp_uint64_to_str};
 use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
