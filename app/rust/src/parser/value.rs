@@ -118,6 +118,9 @@ impl<'a> Value<'a> {
             ValueId::StringAscii | ValueId::StringUtf8 => {
                 let len = be_u32::<'a, ParserError>(raw)
                     .map_err(|_| ParserError::parser_unexpected_value)?;
+                if len.0.len() < len.1 as usize {
+                    return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
+                }
                 if id == ValueId::StringAscii && !(len.0[..len.1 as usize]).is_ascii() {
                     return Err(nom::Err::Error(ParserError::parser_unexpected_type));
                 }
