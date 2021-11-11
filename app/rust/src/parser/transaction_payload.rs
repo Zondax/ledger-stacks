@@ -321,7 +321,9 @@ impl<'a> TransactionContractCall<'a> {
                     page_idx,
                 )
             }
-            ValueId::BoolTrue => zxformat::pageString(out_value, "bool: true".as_bytes(), page_idx),
+            ValueId::BoolTrue => {
+                zxformat::pageString(out_value, "is bool: true".as_bytes(), page_idx)
+            }
             ValueId::BoolFalse => {
                 zxformat::pageString(out_value, "is bool: false".as_bytes(), page_idx)
             }
