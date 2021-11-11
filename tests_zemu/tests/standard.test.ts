@@ -564,12 +564,13 @@ describe('Standard', function () {
       const fee = new BN(10)
       const nonce = new BN(0)
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
+      const long_ascii_string = '%s{Lorem} ipsum dolor sit amet, consectetur adipiscing elit. Etiam quis bibendum mauris. Sed ac placerat ante. Donec sodales sapien id nulla convallis egestas'
       const txOptions = {
         anchorMode: AnchorMode.Any,
         contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
-        functionArgs: [stringAsciiCV('%s{Lorem} ipsum dolor sit amet, consectetur adipiscing elit. Etiam quis bibendum mauris. Sed ac placerat ante. Donec sodales sapien id nulla convallis egestas'), uintCV(2), stringUtf8CV('Stacks balance, €: ')],
+        functionArgs: [stringAsciiCV(long_ascii_string), uintCV(2), stringUtf8CV('Stacks balance, €: ')],
         network: network,
         fee: fee,
         nonce: nonce,
@@ -586,7 +587,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-call_with_string_args`, m.name === 'nanos' ? 12 : 11)
+      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-call_with_string_args`, m.name === 'nanos' ? 11 : 11)
 
       const signature = await signatureRequest
       console.log(signature)
