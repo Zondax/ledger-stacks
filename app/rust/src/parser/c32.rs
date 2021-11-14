@@ -1,9 +1,12 @@
-use crate::parser::parser_common::{ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
+use crate::parser::{
+    error::ParserError,
+    parser_common::{C32_ENCODED_ADDRS_LENGTH, HASH160_LEN},
+};
 use arrayvec::ArrayVec;
 
-#[cfg(test)]
+#[cfg(any(test, fuzzing))]
 use sha2::Digest;
-#[cfg(test)]
+#[cfg(any(test, fuzzing))]
 use sha2::Sha256;
 
 pub const C32_ADDRESS_VERSION_MAINNET_SINGLESIG: u8 = 22;
@@ -48,14 +51,14 @@ extern "C" {
     pub fn hash_sha256(in_data: *const u8, in_len: u16, out: *mut u8);
 }
 
-#[cfg(test)]
+#[cfg(any(test, fuzzing))]
 fn double_sha256_checksum(data: &mut [u8]) {
     data.copy_from_slice(Sha256::digest(&data[..21]).as_slice());
     let sha2_2 = Sha256::digest(&data);
     data[20..24].copy_from_slice(&sha2_2.as_slice()[..4]);
 }
 
-#[cfg(not(test))]
+#[cfg(not(any(test, fuzzing)))]
 fn double_sha256_checksum(data: &mut [u8]) {
     let mut output = [0u8; 32];
     unsafe {

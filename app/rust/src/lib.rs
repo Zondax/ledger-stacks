@@ -1,6 +1,7 @@
 #![no_std]
 #![no_builtins]
 #![allow(dead_code, unused_imports)]
+#![deny(unused_crate_dependencies)]
 #![macro_use]
 
 #[cfg(test)]
@@ -8,17 +9,17 @@
 extern crate std;
 
 mod bolos;
-mod parser;
+pub mod parser;
 mod zxformat;
 
 extern crate core;
 
 fn debug(_msg: &str) {}
 
-#[cfg(not(test))]
+#[cfg(not(any(test, fuzzing)))]
 use core::panic::PanicInfo;
 
-#[cfg(not(test))]
+#[cfg(not(any(test, fuzzing)))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
@@ -31,7 +32,7 @@ extern "C" {
 }
 
 pub(crate) fn canary() {
-    #[cfg(not(test))]
+    #[cfg(not(any(test, fuzzing)))]
     unsafe {
         check_canary();
     }
@@ -51,7 +52,7 @@ pub fn pic_internal<T: Sized>(obj: &T) -> &T {
 }
 
 pub fn is_expert_mode() -> bool {
-    if cfg!(test) {
+    if cfg!(any(test, fuzzing)) {
         true
     } else {
         unsafe { app_mode_expert() > 0 }
