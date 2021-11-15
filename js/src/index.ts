@@ -239,4 +239,29 @@ export default class BlockstackApp {
             }, processErrorResponse);
         }, processErrorResponse);
     }
+
+    async sign_msg(path: string, message: string) {
+        const len = message.length
+        const stacks_message = "\x19Stacks Signed Message:\n" + `${len}` + message
+        const blob = Buffer.from(stacks_message)
+        return this.signGetChunks(path, blob).then(chunks => {
+            return this.signSendChunk(1, chunks.length, chunks[0]).then(async response => {
+                let result = {
+                    returnCode: response.returnCode,
+                    errorMessage: response.errorMessage,
+                    postSignHash: null as null | Buffer,
+                    signatureCompact: null as null | Buffer,
+                    signatureDER: null as null | Buffer,
+                };
+                for (let i = 1; i < chunks.length; i += 1) {
+                    // eslint-disable-next-line no-await-in-loop
+                    result = await this.signSendChunk(1 + i, chunks.length, chunks[i]);
+                    if (result.returnCode !== LedgerError.NoErrors) {
+                        break;
+                    }
+                }
+                return result;
+            }, processErrorResponse);
+        }, processErrorResponse);
+    }
 }
