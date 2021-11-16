@@ -477,19 +477,9 @@ describe('Standard', function () {
       expect(testPublicKey).toEqual('02' + expectedPublicKey.slice(2, 2 + 32 * 2))
 
       const msg = "Hello World"
-      const len = msg.length
-      const signedTx = "\x19Stacks Signed Message:\n" + `${len}` + msg
-      console.log(signedTx)
-
-      const unsignedTx = signedTx
-
-      // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
-      // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
-
-      const blob = Buffer.from(unsignedTx)
 
       // Check the signature
-      const signatureRequest = app.sign(path, blob)
+      const signatureRequest = app.sign_msg(path, msg)
 
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
@@ -497,39 +487,17 @@ describe('Standard', function () {
       await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_message`, m.name === 'nanos' ? 1 : 2)
 
       const signature = await signatureRequest
-      // TODO: Complete message signing
-      // current error:
-      // errorMessage: 'Sign/verify error : zxerr_no_data'
+
       console.log(signature)
       expect(signature.returnCode).toEqual(0x9000)
       expect(signature.errorMessage).toEqual('No errors')
 
-      // @ts-ignore
-      //const js_signature = signedTx.auth.spendingCondition?.signature.signature
-
-      //console.log('js_signature ', js_signature)
-      //console.log('ledger-postSignHash: ', signature.postSignHash.toString('hex'))
-      //console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
-      //console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
-      //console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
-
-      // @ts-ignore
-      //unsignedTx.auth.spendingCondition.signature = createMessageSignature(signature.signatureVRS.toString('hex'))
-      //unsignedTx.auth.spendingCondition.signature.signature = signature.signatureVRS.toString('hex');
-
-      console.log('unsignedTx serialized ', unsignedTx.toString('hex'))
-      //
-      // const broadcast = await broadcastTransaction(unsignedTx, network);
-      // console.log(broadcast);
-      //
-      // expect(broadcast.reason).not.toBe("SignatureValidation");
-      //
-      // expect(signature.returnCode).toEqual(0x9000);
-      //
-
       //Verify signature
       const ec = new EC("secp256k1");
-      const msgHash = sha512_256(unsignedTx);
+      const len = msg.length
+      const data = "\x19Stacks Signed Message:\n" + `${len}` + msg
+      console.log(data)
+      const msgHash = sha512_256(data);
       const sig = signature.signatureVRS.toString('hex')
       const signature_obj = {
         r: sig.substr(2, 64),
