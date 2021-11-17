@@ -1,5 +1,5 @@
 [requires]
-jsoncpp/1.9.5@theirix/stable
+jsoncpp/1.9.5
 fmt/6.0.0@bincrafters/stable
 
 [generators]
