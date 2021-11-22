@@ -73,6 +73,7 @@ void h_paging_init() {
     viewdata.itemIdx = 0;
     viewdata.pageIdx = 0;
     viewdata.pageCount = 1;
+    viewdata.itemCount = 0xFF;
 }
 
 bool h_paging_can_increase() {
@@ -185,6 +186,11 @@ void h_review_action() {
 zxerr_t h_review_update_data() {
     if (viewdata.viewfuncGetNumItems == NULL) {
         zemu_log_stack("h_review_update_data - GetNumItems==NULL");
+        return zxerr_no_data;
+    }
+
+    if (viewdata.viewfuncGetItem == NULL) {
+        zemu_log_stack("h_review_update_data - GetItem==NULL");
         return zxerr_no_data;
     }
 
