@@ -194,7 +194,7 @@ zxerr_t h_review_update_data() {
     }
 
     char buffer[20];
-    snprintf(buffer, sizeof(buffer), "update Idx %d/%d", viewdata.itemIdx, viewdata.pageIdx);
+    snprintf(buffer, sizeof(buffer), "update Idx %d/%d/%d", viewdata.itemIdx, viewdata.pageIdx, viewdata.itemCount);
     zemu_log_stack(buffer);
 
 #ifdef INCLUDE_ACTIONS_AS_ITEMS
