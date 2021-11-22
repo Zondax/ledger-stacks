@@ -24,7 +24,8 @@ jobs:
       - name: Build with Clang Static Analyzer
         run: |
           rustup target add thumbv6m-none-eabi
-          scan-build --use-cc=clang -analyze-headers -enable-checker security -enable-checker unix -enable-checker valist -o scan-build --status-bugs make default
+        #scan-build --use-cc=clang -analyze-headers -enable-checker security -enable-checker unix -enable-checker valist -o scan-build --status-bugs make default
+          scan-build --use-cc=clang -analyze-headers -enable-checker valist -o scan-build --status-bugs make default
       - uses: actions/upload-artifact@v2
         if: failure()
         with:
