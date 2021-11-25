@@ -159,6 +159,7 @@ void crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
     address_temp_t address_temp;
 
     cx_hash_sha256(publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
+    zemu_log_stack("***HERE");
     ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, pubKeyHash);         // RIPEMD-160
 
 }
@@ -221,7 +222,6 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
                                             sizeof_field(signature_t, der_signature),
                                             &info);
 
-            signatureLength = 64;
         }
         CATCH_OTHER(e) {
             signatureLength = 0;

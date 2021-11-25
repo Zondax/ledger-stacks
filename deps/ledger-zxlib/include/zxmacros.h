@@ -67,7 +67,9 @@ extern void explicit_bzero(void *s, size_t n) __THROW __nonnull ((1));
 
 __Z_INLINE void strncpy_s(char *dst, const char *src, size_t dstSize) {
     MEMZERO(dst, dstSize);
-    strncpy(dst, src, dstSize - 1);
+    if (dstSize == 0)
+        return;
+    snprintf(dst, dstSize - 1, "%s", src);
 }
 
 #define sizeof_field(type, member) sizeof(((type *)0)->member)

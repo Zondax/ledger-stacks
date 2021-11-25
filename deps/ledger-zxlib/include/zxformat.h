@@ -169,11 +169,15 @@ __Z_INLINE uint8_t fpstr_to_str(char *out, uint16_t outLen, const char *number, 
         if (digits == 0) {
             snprintf(out, outLen, "0");
             return 0;
-        } else if (outLen < digits) {
+        }
+
+        if (outLen < digits) {
             snprintf(out, outLen, "ERR");
             return 1;
         }
-        strcpy(out, number);
+
+        // No need for formatting
+        snprintf(out, outLen, "%s", number);
         return 0;
     }
 
@@ -185,19 +189,19 @@ __Z_INLINE uint8_t fpstr_to_str(char *out, uint16_t outLen, const char *number, 
 
     if (digits <= decimals) {
         // First part
-        strcpy(out, "0.");
+        snprintf(out, outLen, "0.");
         out += 2;
         MEMSET(out, '0', decimals - digits);
         out += decimals - digits;
     } else {
         const size_t shift = digits - decimals;
-        strcpy(out, number);
+        snprintf(out, outLen, "%s", number);
         number += shift;
         out += shift;
         *out++ = '.';
     }
 
-    strcpy(out, number);
+    snprintf(out, outLen, "%s", number);
     return 0;
 }
 

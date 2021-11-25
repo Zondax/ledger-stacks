@@ -196,7 +196,8 @@ void splitValueField() {
     print_value2("");
     uint16_t vlen = strlen(viewdata.value);
     if (vlen > MAX_CHARS_PER_VALUE2_LINE - 1) {
-        strcpy(viewdata.value2, viewdata.value + MAX_CHARS_PER_VALUE_LINE);
+        /*strcpy(viewdata.value2, viewdata.value + MAX_CHARS_PER_VALUE_LINE);*/
+        snprintf(viewdata.value2, MAX_CHARS_PER_VALUE2_LINE, "%s", viewdata.value + MAX_CHARS_PER_VALUE_LINE);
         viewdata.value[MAX_CHARS_PER_VALUE_LINE] = 0;
     }
 }
@@ -211,7 +212,8 @@ void splitValueAddress() {
     print_value2("");
     const uint16_t vlen = strlen(viewdata.value);
     if (vlen > len) {
-        strcpy(viewdata.value2, viewdata.value + len);
+        /*strcpy(viewdata.value2, viewdata.value + len);*/
+        snprintf(viewdata.value2, MAX_CHARS_PER_VALUE2_LINE, "%s", viewdata.value + len);
         viewdata.value[len] = 0;
     }
 }
@@ -228,7 +230,7 @@ max_char_display get_max_char_per_line() {
 }
 
 bool exceed_pixel_in_display(const uint8_t length) {
-    unsigned short strWidth = bagl_compute_line_width((BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER |BAGL_FONT_ALIGNMENT_MIDDLE), 
+    unsigned short strWidth = bagl_compute_line_width((BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER |BAGL_FONT_ALIGNMENT_MIDDLE),
         200, viewdata.value, length, BAGL_ENCODING_LATIN1);
     return (strWidth >= (BAGL_WIDTH-10));
 }
