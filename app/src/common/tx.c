@@ -20,7 +20,6 @@
 #include "parser.h"
 #include <string.h>
 #include "zxmacros.h"
-#include "zbuffer.h"
 
 #if defined(TARGET_NANOX)
 #define RAM_BUFFER_SIZE 8192
@@ -43,7 +42,8 @@ storage_t NV_CONST N_appdata_impl __attribute__ ((aligned(64)));
 #define N_appdata (*(NV_VOLATILE storage_t *)PIC(&N_appdata_impl))
 #endif
 
-parser_context_t ctx_parsed_tx;
+static parser_tx_t tx_obj;
+static parser_context_t ctx_parsed_tx;
 
 void tx_initialize() {
     buffering_init(
@@ -56,10 +56,6 @@ void tx_initialize() {
 
 void tx_reset() {
     buffering_reset();
-}
-
-void tx_reset_state() {
-    parser_resetState();
 }
 
 uint32_t tx_append(unsigned char *buffer, uint32_t length) {
@@ -75,10 +71,16 @@ uint8_t *tx_get_buffer() {
 }
 
 const char *tx_parse() {
+    // uint8_t err = parser_parse(
+    //     &ctx_parsed_tx,
+    //     tx_get_buffer(),
+    //     tx_get_buffer_length());
+
     uint8_t err = parser_parse(
-        &ctx_parsed_tx,
-        tx_get_buffer(),
-        tx_get_buffer_length());
+            &ctx_parsed_tx,
+            tx_get_buffer(),
+            tx_get_buffer_length(),
+            &tx_obj);
 
     if (err != parser_ok) {
         return parser_getErrorDescription(err);

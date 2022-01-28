@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <zxmacros.h>
 #include "parser_txdef.h"
-#include "zbuffer.h"
 #include "parser.h"
 #include "coin.h"
 #include "rslib.h"
@@ -31,7 +30,7 @@ void __assert_fail(const char * assertion, const char * file, unsigned int line,
 
 parser_tx_t parser_state;
 
-parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {
+parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen, parser_tx_t *tx_obj) {
     parser_state.state = NULL;
     parser_state.len = 0;
     CHECK_PARSER_ERR(_parser_init(ctx, data, dataLen, &parser_state.len))
@@ -94,7 +93,7 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems))
     CHECK_APP_CANARY()
 
-    if (displayIdx < 0 || displayIdx >= numItems) {
+    if (displayIdx >= numItems) {
         return parser_no_data;
     }
 

@@ -28,7 +28,7 @@
 #include "crypto.h"
 #include "coin.h"
 #include "zxmacros.h"
-#include "zbuffer.h"
+#include "zxformat.h"
 
 unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
@@ -116,8 +116,7 @@ void extractHDPath(uint32_t rx, uint32_t offset) {
     }
 }
 
-bool process_chunk(volatile uint32_t *tx, uint32_t rx) {
-    UNUSED(tx);
+bool process_chunk(uint32_t rx) {
     const uint8_t payloadType = G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE];
 
     if (rx < OFFSET_DATA) {
@@ -207,7 +206,6 @@ void app_init() {
     BLE_power(1, "Nano X");
 #endif // HAVE_BLE
 
-    zb_init();
 }
 
 #pragma clang diagnostic push

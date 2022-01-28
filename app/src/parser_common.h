@@ -72,6 +72,7 @@ typedef enum {
     parser_invalid_address,
     parser_invalid_token_transfer_type,
     parser_invalid_bytestr_message,
+    parser_crypto_error,
 } parser_error_t;
 
 typedef struct {
