@@ -24,23 +24,23 @@
 
 // This macros are kept for backwards compatibility
 // the most recent SDK has unified implementations and deprecated the original os_***
-#define MEMCPY memmove
+#define MEMCPY memcpy
 #define MEMMOVE memmove
 #define MEMSET memset
 #define MEMCMP memcmp
 #define MEMZERO explicit_bzero
 
 #if defined(TARGET_NANOX)
-    #include "ux.h"
-    #define NV_CONST const
-    #define NV_VOLATILE volatile
-    #define IS_UX_ALLOWED (G_ux_params.len != BOLOS_UX_IGNORE && G_ux_params.len != BOLOS_UX_CONTINUE)
+#include "ux.h"
+#define NV_CONST const
+#define NV_VOLATILE volatile
+#define IS_UX_ALLOWED (G_ux_params.len != BOLOS_UX_IGNORE && G_ux_params.len != BOLOS_UX_CONTINUE)
 #else
-    #include "ux.h"
-    #include "os_io_seproxyhal.h"
-    #define NV_CONST
-    #define NV_VOLATILE
-    #define IS_UX_ALLOWED (G_ux_params.len != BOLOS_UX_IGNORE && G_ux_params.len != BOLOS_UX_CONTINUE)
+#include "ux.h"
+#include "os_io_seproxyhal.h"
+#define NV_CONST
+#define NV_VOLATILE
+#define IS_UX_ALLOWED (G_ux_params.len != BOLOS_UX_IGNORE && G_ux_params.len != BOLOS_UX_CONTINUE)
 #endif
 
 #define CHECK_APP_CANARY() check_app_canary();

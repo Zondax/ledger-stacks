@@ -40,7 +40,8 @@ $(info EXAMPLE_VUE_DIR       : $(EXAMPLE_VUE_DIR))
 $(info TESTS_JS_DIR          : $(TESTS_JS_DIR))
 $(info TESTS_JS_PACKAGE      : $(TESTS_JS_PACKAGE))
 
-DOCKER_IMAGE=zondax/builder-bolos:latest
+DOCKER_IMAGE_ZONDAX=zondax/builder-bolos:latest
+DOCKER_IMAGE_LEDGER=ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:latest
 
 ifdef INTERACTIVE
 INTERACTIVE_SETTING:="-i"
@@ -69,7 +70,13 @@ define run_docker
 	-e SUBSTRATE_PARSER_FULL=$(SUBSTRATE_PARSER_FULL) \
 	-e COIN=$(COIN) \
 	-e APP_TESTING=$(APP_TESTING) \
-	$(DOCKER_IMAGE) "$(2)"
+	$(DOCKER_IMAGE_ZONDAX) "$(2)"
+endef
+
+define run_docker_ledger
+	docker run $(TTY_SETTING) $(INTERACTIVE_SETTING) --rm \
+	-v $(shell pwd):/app \
+	$(DOCKER_IMAGE_LEDGER) "$(1)"
 endef
 
 all:
@@ -90,7 +97,12 @@ deps: check_python
 
 .PHONY: pull
 pull:
-	docker pull $(DOCKER_IMAGE)
+	docker pull $(DOCKER_IMAGE_ZONDAX)
+	docker pull $(DOCKER_IMAGE_LEDGER)
+
+.PHONY: ledger_lint
+ledger_lint:
+	$(call run_docker_ledger,"scan-build --use-cc=clang -analyze-headers -enable-checker security -enable-checker unix -enable-checker valist -o scan-build --status-bugs make default")
 
 .PHONY: build_rustS
 build_rustS:
@@ -147,11 +159,11 @@ delete:
 
 .PHONY: loadX
 loadX:
-	${LEDGER_SRC}/pkg/installer_x.sh load
+	${LEDGER_SRC}/pkg/installer_XL.sh load
 
 .PHONY: deleteX
 deleteX:
-	${LEDGER_SRC}/pkg/installer_x.sh delete
+	${LEDGER_SRC}/pkg/installer_XL.sh delete
 
 .PHONY: show_info_recovery_mode
 show_info_recovery_mode:
