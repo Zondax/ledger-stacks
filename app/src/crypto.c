@@ -18,7 +18,9 @@
 #include "sha512.h"
 #include "coin.h"
 #include "zxmacros.h"
+#include "zxformat.h"
 #include "rslib.h"
+#include "cx_errors.h"
 
 uint8_t version;
 
@@ -32,10 +34,15 @@ bool isTestnet() {
 #if defined(TARGET_NANOS) || defined(TARGET_NANOX)
 #include "cx.h"
 
-void ripemd160(uint8_t *in, uint16_t inLen, uint8_t *out) {
+bool ripemd160(uint8_t *in, uint16_t inLen, uint8_t *out) {
     cx_ripemd160_t rip160;
-    cx_ripemd160_init(&rip160);
-    cx_hash(&rip160.header, CX_LAST, in, inLen, out, CX_RIPEMD160_SIZE);
+    if( cx_ripemd160_init_no_throw(&rip160) == CX_OK &&
+        cx_hash_no_throw(&rip160.header, CX_LAST, in, inLen, out, CX_RIPEMD160_SIZE) == CX_OK) {
+        return true;
+    } else {
+        MEMZERO(out, CX_RIPEMD160_SIZE);
+        return false;
+    }
 }
 
 typedef struct {
@@ -83,11 +90,15 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     MEMZERO(buffer, buffer_len);
     answer_t *const answer = (answer_t *) buffer;
 
-    crypto_extractPublicKey(hdPath, answer->publicKey, sizeof_field(answer_t, publicKey));
+    if(crypto_extractPublicKey(hdPath, answer->publicKey, sizeof_field(answer_t, publicKey)) != zxerr_ok) {
+        return 0;
+    }
 
     address_temp_t address_temp;
 
-    crypto_extractPublicKeyHash(address_temp.hash_ripe, CX_RIPEMD160_SIZE);
+    if(!crypto_extractPublicKeyHash(address_temp.hash_ripe, CX_RIPEMD160_SIZE)) {
+        return 0;
+    }
 
     size_t outLen = sizeof_field(answer_t, address);
     if ( !is_valid_network_version(version) )
@@ -97,15 +108,17 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     return PK_LEN_SECP256K1 + outLen;
 }
 
-void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen) {
+zxerr_t crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen) {
     cx_ecfp_public_key_t cx_publicKey;
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[32];
+    MEMZERO(&cx_publicKey, sizeof(cx_publicKey));
 
     if (pubKeyLen < PK_LEN_SECP256K1) {
-        return;
+        return zxerr_invalid_crypto_settings;
     }
 
+    zxerr_t err = zxerr_ok;
     BEGIN_TRY
     {
         TRY {
@@ -117,6 +130,9 @@ void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *p
             cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);
             cx_ecfp_init_public_key(CX_CURVE_256K1, NULL, 0, &cx_publicKey);
             cx_ecfp_generate_pair(CX_CURVE_256K1, &cx_publicKey, &cx_privateKey, 1);
+        }
+        CATCH_ALL {
+            err = zxerr_unknown;
         }
         FINALLY {
             MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
@@ -134,19 +150,23 @@ void crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *p
         pubKey[31] |= 0x80;
     }
 
-    memcpy(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
+    MEMCPY(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
+    return err;
 }
 
 
-void crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
+bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
 
     if (pubKeyLen < CX_RIPEMD160_SIZE || pubKeyHash == NULL)
-        return;
+        return false;
 
     // gets the raw public key
     uint8_t publicKey[PK_LEN_SECP256K1];
 
-    crypto_extractPublicKey(hdPath, publicKey, PK_LEN_SECP256K1);
+    if (crypto_extractPublicKey(hdPath, publicKey, PK_LEN_SECP256K1) != zxerr_ok) {
+        return false;
+    }
+
     {
         zemu_log("pubKey: ***");
         char buffer[PK_LEN_SECP256K1 * 3];
@@ -159,9 +179,7 @@ void crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
     address_temp_t address_temp;
 
     cx_hash_sha256(publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
-    zemu_log_stack("***HERE");
-    ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, pubKeyHash);         // RIPEMD-160
-
+    return ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, pubKeyHash);         // RIPEMD-160
 }
 
 typedef struct {
