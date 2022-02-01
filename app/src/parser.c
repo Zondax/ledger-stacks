@@ -28,9 +28,14 @@ void __assert_fail(const char * assertion, const char * file, unsigned int line,
 }
 #endif
 
-parser_tx_t parser_state;
+static zxerr_t parser_allocate();
+static zxerr_t parser_deallocate();
 
-parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen, parser_tx_t *tx_obj) {
+parser_tx_t parser_state;
+#define PARSER_BUFFER_SIZE 256
+static uint8_t parser_buffer[PARSER_BUFFER_SIZE];
+
+parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {
     parser_state.state = NULL;
     parser_state.len = 0;
     CHECK_PARSER_ERR(_parser_init(ctx, data, dataLen, &parser_state.len))
@@ -39,7 +44,7 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
         return parser_context_unexpected_size;
     }
 
-    if (zb_allocate(parser_state.len) != zb_no_error || zb_get(&parser_state.state) != zb_no_error ) {
+    if(parser_allocate() != zxerr_ok) {
         return parser_init_context_empty ;
     }
 
@@ -129,8 +134,33 @@ uint16_t parser_previous_signer_data(uint8_t **data) {
     return _previous_signer_data(&parser_state, data);
 }
 
+zxerr_t parser_allocate() {
+    if (parser_state.len % 4 != 0) {
+        parser_state.len += parser_state.len % 4;
+    }
+    if(parser_state.len > PARSER_BUFFER_SIZE) {
+        return zxerr_buffer_too_small;
+    }
+    if(parser_state.state != NULL) {
+        return zxerr_unknown;
+    }
+
+    MEMZERO(parser_buffer, PARSER_BUFFER_SIZE);
+    parser_state.state = (uint8_t *)&parser_buffer;
+    return zxerr_ok;
+}
+
+zxerr_t parser_deallocate() {
+    if(parser_state.state == NULL) {
+        return zxerr_unknown;
+    }
+    parser_state.len = 0;
+    parser_state.state = NULL;
+    return zxerr_ok;
+}
+
 void parser_resetState() {
-    zb_deallocate();
+    parser_deallocate();
 }
 
 uint8_t parser_is_transaction() {
