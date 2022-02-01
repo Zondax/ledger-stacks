@@ -32,6 +32,9 @@ static zxerr_t parser_allocate();
 static zxerr_t parser_deallocate();
 
 parser_tx_t parser_state;
+// This buffer will store parser_state.
+// Its size corresponds to ParsedObj (Rust struct)
+// Maximum required size: 212 bytes
 #define PARSER_BUFFER_SIZE 256
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE];
 
