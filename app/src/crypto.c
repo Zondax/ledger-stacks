@@ -20,6 +20,7 @@
 #include "zxmacros.h"
 #include "zxformat.h"
 #include "rslib.h"
+#include "cx_errors.h"
 
 uint8_t version;
 
@@ -35,7 +36,7 @@ bool isTestnet() {
 
 bool ripemd160(uint8_t *in, uint16_t inLen, uint8_t *out) {
     cx_ripemd160_t rip160;
-    if( cx_ripemd160_init(&rip160) == CX_OK &&
+    if( cx_ripemd160_init_no_throw(&rip160) == CX_OK &&
         cx_hash_no_throw(&rip160.header, CX_LAST, in, inLen, out, CX_RIPEMD160_SIZE) == CX_OK) {
         return true;
     } else {
@@ -107,7 +108,7 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     return PK_LEN_SECP256K1 + outLen;
 }
 
-zxerr_t  crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen) {
+zxerr_t crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen) {
     cx_ecfp_public_key_t cx_publicKey;
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[32];
@@ -129,8 +130,7 @@ zxerr_t  crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_
             cx_ecfp_init_public_key(CX_CURVE_256K1, NULL, 0, &cx_publicKey);
             cx_ecfp_generate_pair(CX_CURVE_256K1, &cx_publicKey, &cx_privateKey, 1);
         }
-        CATCH_ALL
-        {
+        CATCH_ALL {
             err = zxerr_unknown;
         }
         FINALLY {
@@ -165,6 +165,7 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
     if (crypto_extractPublicKey(hdPath, publicKey, PK_LEN_SECP256K1) != zxerr_ok) {
         return false;
     }
+
     {
         zemu_log("pubKey: ***");
         char buffer[PK_LEN_SECP256K1 * 3];
@@ -178,7 +179,6 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
 
     cx_hash_sha256(publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
     return ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, pubKeyHash);         // RIPEMD-160
-
 }
 
 typedef struct {
@@ -201,7 +201,7 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
         return zxerr_out_of_bounds;
     }
 
-    MEMCPY(message_digest, message, CX_SHA256_SIZE);
+    memcpy(message_digest, message, CX_SHA256_SIZE);
     {
         zemu_log("digest: ***");
         char buffer[65];
