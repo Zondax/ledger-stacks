@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <zxmacros.h>
 #include "parser_txdef.h"
-#include "zbuffer.h"
 #include "parser.h"
 #include "coin.h"
 #include "rslib.h"
@@ -29,7 +28,15 @@ void __assert_fail(const char * assertion, const char * file, unsigned int line,
 }
 #endif
 
+static zxerr_t parser_allocate();
+static zxerr_t parser_deallocate();
+
 parser_tx_t parser_state;
+// This buffer will store parser_state.
+// Its size corresponds to ParsedObj (Rust struct)
+// Maximum required size: 212 bytes
+#define PARSER_BUFFER_SIZE 256
+static uint8_t parser_buffer[PARSER_BUFFER_SIZE];
 
 parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {
     parser_state.state = NULL;
@@ -40,7 +47,7 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
         return parser_context_unexpected_size;
     }
 
-    if (zb_allocate(parser_state.len) != zb_no_error || zb_get(&parser_state.state) != zb_no_error ) {
+    if(parser_allocate() != zxerr_ok) {
         return parser_init_context_empty ;
     }
 
@@ -54,9 +61,11 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
 
     crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
 
-    // Checks if this device is allowed to sign this transaction
-    if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
+    // Checks if the data being processed is a transaction and if so, verify this device is allowed to sign this transaction
+    if ( _is_transaction(&parser_state)) {
+        if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
         return parser_invalid_auth_type;
+    }
 
 
     uint8_t numItems = 0;
@@ -74,8 +83,7 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
 }
 
 parser_error_t parser_getNumItems(const parser_context_t *ctx, uint8_t *num_items) {
-    *num_items = _getNumItems(ctx, &parser_state);
-    return parser_ok;
+    return _getNumItems(ctx, &parser_state, num_items);
 }
 
 parser_error_t parser_getItem(const parser_context_t *ctx,
@@ -93,7 +101,7 @@ parser_error_t parser_getItem(const parser_context_t *ctx,
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems))
     CHECK_APP_CANARY()
 
-    if (displayIdx < 0 || displayIdx >= numItems) {
+    if (displayIdx >= numItems) {
         return parser_no_data;
     }
 
@@ -129,8 +137,37 @@ uint16_t parser_previous_signer_data(uint8_t **data) {
     return _previous_signer_data(&parser_state, data);
 }
 
+zxerr_t parser_allocate() {
+    if (parser_state.len % 4 != 0) {
+        parser_state.len += parser_state.len % 4;
+    }
+    if(parser_state.len > PARSER_BUFFER_SIZE) {
+        return zxerr_buffer_too_small;
+    }
+    if(parser_state.state != NULL) {
+        return zxerr_unknown;
+    }
+
+    MEMZERO(parser_buffer, PARSER_BUFFER_SIZE);
+    parser_state.state = (uint8_t *)&parser_buffer;
+    return zxerr_ok;
+}
+
+zxerr_t parser_deallocate() {
+    if(parser_state.state == NULL) {
+        return zxerr_unknown;
+    }
+    parser_state.len = 0;
+    parser_state.state = NULL;
+    return zxerr_ok;
+}
+
 void parser_resetState() {
-    zb_deallocate();
+    parser_deallocate();
+}
+
+uint8_t parser_is_transaction() {
+    return _is_transaction(&parser_state);
 }
 
 const char *parser_getErrorDescription(parser_error_t err) {

@@ -6,9 +6,9 @@ use nom::{
 
 use arrayvec::ArrayVec;
 
+use crate::parser::error::ParserError;
 use crate::parser::parser_common::{
-    HashMode, ParserError, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
-    SIGNATURE_LEN,
+    HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, SIGNATURE_LEN,
 };
 use crate::parser::{c32, ffi::fp_uint64_to_str};
 use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
@@ -24,6 +24,16 @@ const STANDARD_SINGLESIG_AUTH_LEN: usize = 82;
 // 4-byte num auth fields
 // 2-byte num signatures required
 const STANDARD_MULTISIG_AUTH_LEN: usize = 22;
+
+// This includes:
+// - 1-byte hash mode
+// - 20-byte public key hash
+// - 8-byte nonce.
+// - 8-byte fee rate.
+const SPENDING_CONDITION_SIGNER_LEN: usize = 37;
+
+// we take 65-byte signature + 1-byte signature public-key encoding type
+const SINGLE_SPENDING_CONDITION_LEN: usize = 66;
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -60,22 +70,18 @@ pub enum TransactionAuthFieldID {
     SignatureUncompressed = 0x03,
 }
 
+// {FT} Replacer 37 with SPENDING_CONDITION_SIGNER_LEN
 #[repr(C)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct SpendingConditionSigner<'a> {
-    pub data: &'a [u8],
+    pub data: &'a [u8; SPENDING_CONDITION_SIGNER_LEN],
 }
 
 impl<'a> SpendingConditionSigner<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        // This includes:
-        // - 1-byte hash mode
-        // - 20-byte public key hash
-        // - 8-byte nonce.
-        // - 8-byte fee rate.
-        let len = 1 + HASH160_LEN as usize + 8 + 8;
-        let (raw, data) = take(len)(bytes)?;
+        let (raw, _) = take(SPENDING_CONDITION_SIGNER_LEN)(bytes)?;
+        let data = arrayref::array_ref!(bytes, 0, SPENDING_CONDITION_SIGNER_LEN);
         Ok((raw, Self { data }))
     }
 
@@ -149,19 +155,19 @@ impl<'a> SpendingConditionSigner<'a> {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Debug)]
-pub struct SinglesigSpendingCondition<'a>(&'a [u8]);
+#[derive(PartialEq, Debug, Clone)]
+pub struct SinglesigSpendingCondition<'a>(&'a [u8; SINGLE_SPENDING_CONDITION_LEN]);
 
 /// A structure that encodes enough state to authenticate
 /// a transaction's execution against a Stacks address.
 /// public_keys + signatures_required determines the Principal.
 /// nonce is the "check number" for the Principal.
 #[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MultisigSpendingCondition<'a>(&'a [u8]);
 
 #[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SpendingConditionSignature<'a> {
     Singlesig(SinglesigSpendingCondition<'a>),
     Multisig(MultisigSpendingCondition<'a>),
@@ -184,9 +190,9 @@ impl<'a> SpendingConditionSignature<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TransactionSpendingCondition<'a> {
-    signer: SpendingConditionSigner<'a>,
+    pub signer: SpendingConditionSigner<'a>,
     signature: SpendingConditionSignature<'a>,
 }
 
@@ -195,7 +201,8 @@ impl<'a> SinglesigSpendingCondition<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         // we take 65-byte signature + 1-byte signature public-key encoding type
         let len = SIGNATURE_LEN as usize + 1;
-        let (raw, data) = take(len)(bytes)?;
+        let (raw, _) = take(len)(bytes)?;
+        let data = arrayref::array_ref!(bytes, 0, SINGLE_SPENDING_CONDITION_LEN);
         check_canary!();
         Ok((raw, Self(data)))
     }
@@ -231,7 +238,10 @@ impl<'a> MultisigSpendingCondition<'a> {
         let (_, num_fields) = be_u32(bytes)?;
         let mut bytes_count = 4usize;
         for _ in 0..num_fields {
-            match bytes[bytes_count] {
+            match bytes
+                .get(bytes_count)
+                .ok_or(nom::Err::Error(ParserError::parser_value_out_of_range))?
+            {
                 0x00 | 0x01 => {
                     bytes_count += 33 + 1;
                 }
@@ -336,17 +346,11 @@ impl<'a> TransactionSpendingCondition<'a> {
     }
 
     pub fn is_singlesig(&self) -> bool {
-        match self.signature {
-            SpendingConditionSignature::Singlesig(..) => true,
-            _ => false,
-        }
+        matches!(self.signature, SpendingConditionSignature::Singlesig(..))
     }
 
     pub fn is_multisig(&self) -> bool {
-        match self.signature {
-            SpendingConditionSignature::Multisig(..) => true,
-            _ => false,
-        }
+        matches!(self.signature, SpendingConditionSignature::Multisig(..))
     }
 
     pub fn num_auth_fields(&self) -> Option<u32> {
@@ -363,7 +367,7 @@ impl<'a> TransactionSpendingCondition<'a> {
         }
     }
 
-    pub fn init_sighash(&self, buf: &mut [u8]) -> Result<usize, ()> {
+    pub fn init_sighash(&self, buf: &mut [u8]) -> Result<usize, ParserError> {
         let buf_len = buf.len();
 
         if self.is_singlesig() && buf_len >= STANDARD_SINGLESIG_AUTH_LEN {
@@ -387,7 +391,7 @@ impl<'a> TransactionSpendingCondition<'a> {
                 return Ok(STANDARD_MULTISIG_AUTH_LEN);
             }
         }
-        Err(())
+        Err(ParserError::parser_no_data)
     }
 }
 
@@ -420,10 +424,14 @@ mod test {
 
         let spending_condition_p2pkh_uncompressed = TransactionSpendingCondition {
             signer: SpendingConditionSigner {
-                data: spending_condition_signer.as_ref(),
+                data: arrayref::array_ref!(
+                    spending_condition_signer,
+                    0,
+                    SPENDING_CONDITION_SIGNER_LEN
+                ),
             },
             signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition(
-                signature.as_ref(),
+                arrayref::array_ref!(signature, 0, SINGLE_SPENDING_CONDITION_LEN),
             )),
         };
 
@@ -563,10 +571,14 @@ mod test {
 
         let spending_condition_p2pkh_compressed = TransactionSpendingCondition {
             signer: SpendingConditionSigner {
-                data: spending_condition_signer.as_ref(),
+                data: arrayref::array_ref!(
+                    spending_condition_signer,
+                    0,
+                    SPENDING_CONDITION_SIGNER_LEN
+                ),
             },
             signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition(
-                signature.as_ref(),
+                arrayref::array_ref!(signature, 0, SINGLE_SPENDING_CONDITION_LEN),
             )),
         };
 
@@ -724,10 +736,14 @@ mod test {
 
         let spending_condition_p2wpkh_compressed = TransactionSpendingCondition {
             signer: SpendingConditionSigner {
-                data: spending_condition_signer.as_ref(),
+                data: arrayref::array_ref!(
+                    spending_condition_signer,
+                    0,
+                    SPENDING_CONDITION_SIGNER_LEN
+                ),
             },
             signature: SpendingConditionSignature::Singlesig(SinglesigSpendingCondition(
-                signature.as_ref(),
+                arrayref::array_ref!(signature, 0, SINGLE_SPENDING_CONDITION_LEN),
             )),
         };
 

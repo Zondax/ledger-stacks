@@ -54,7 +54,7 @@ COIN=STX
 endif
 
 APPVERSION_M=0
-APPVERSION_N=15
+APPVERSION_N=18
 APPVERSION_P=0
 
 $(info COIN  = [$(COIN)])
@@ -77,10 +77,11 @@ endef
 $(error "$(error_message)")
 endif
 
-APP_LOAD_PARAMS = --appFlags 0x200 --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"  --tlvraw 9F:01
+APP_LOAD_PARAMS = --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'" --tlvraw 9F:01
 DEFINES += HAVE_PENDING_REVIEW_SCREEN
 
 ifeq ($(TARGET_NAME),TARGET_NANOS)
+APP_LOAD_PARAMS += --appFlags 0x000
 APP_STACK_SIZE:=3100
 ICONNAME:=$(CURDIR)/nanos_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_s.elf
@@ -88,6 +89,7 @@ OUTPUT_INSTALLER := $(CURDIR)/pkg/installer_s.sh
 endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOX)
+APP_LOAD_PARAMS += --appFlags 0x200
 SCRIPT_LD:=$(CURDIR)/script_x.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
@@ -139,13 +141,7 @@ DEFINES       += HAVE_BLE_APDU BLE_COMMAND_TIMEOUT_MS=2000
 SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
 else
 # Assume Nano S
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_REGULAR_11PX
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_EXTRABOLD_11PX
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_LIGHT_16PX
-DEFINES       += HAVE_BAGL BAGL_WIDTH=128 BAGL_HEIGHT=32
 DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
-
-SDK_SOURCE_PATH  += lib_bagl
 endif
 
 # X specific

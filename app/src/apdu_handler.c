@@ -54,7 +54,7 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
 }
 
 __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
-    if (!process_chunk(tx, rx)) {
+    if (!process_chunk(rx)) {
         THROW(APDU_CODE_OK);
     }
 

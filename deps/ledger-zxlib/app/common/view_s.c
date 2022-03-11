@@ -23,11 +23,16 @@
 #include "bagl.h"
 #include "zxmacros.h"
 #include "view_templates.h"
+#include "zxutils_ledger.h"
 
 #include <string.h>
 #include <stdio.h>
 
 #if defined(TARGET_NANOS)
+
+#define BAGL_WIDTH 128
+#define BAGL_HEIGHT 32
+#define BAGL_WIDTH_MARGIN 10
 
 void h_expert_toggle();
 void h_expert_update();
@@ -87,8 +92,7 @@ static const bagl_element_t view_error[] = {
     UI_LabelLineScrolling(UIID_LABELSCROLL, 0, 30, 128, UI_11PX, UI_WHITE, UI_BLACK, viewdata.value2),
 };
 
-static unsigned int view_error_button(unsigned int button_mask, unsigned int button_mask_counter) {
-    UNUSED(button_mask_counter);
+static unsigned int view_error_button(unsigned int button_mask, __Z_UNUSED unsigned int button_mask_counter) {
     switch (button_mask) {
         case BUTTON_EVT_RELEASED | BUTTON_LEFT | BUTTON_RIGHT:
         case BUTTON_EVT_RELEASED | BUTTON_LEFT:
@@ -100,8 +104,7 @@ static unsigned int view_error_button(unsigned int button_mask, unsigned int but
     return 0;
 }
 
-static unsigned int view_message_button(unsigned int button_mask, unsigned int button_mask_counter) {
-    UNUSED(button_mask_counter);
+static unsigned int view_message_button(unsigned int button_mask, __Z_UNUSED unsigned int button_mask_counter) {
     switch (button_mask) {
         case BUTTON_EVT_RELEASED | BUTTON_LEFT | BUTTON_RIGHT:
         case BUTTON_EVT_RELEASED | BUTTON_LEFT:
@@ -111,8 +114,7 @@ static unsigned int view_message_button(unsigned int button_mask, unsigned int b
     return 0;
 }
 
-static unsigned int view_review_button(unsigned int button_mask, unsigned int button_mask_counter) {
-    UNUSED(button_mask_counter);
+static unsigned int view_review_button(unsigned int button_mask, __Z_UNUSED unsigned int button_mask_counter) {
     switch (button_mask) {
         case BUTTON_EVT_RELEASED | BUTTON_LEFT | BUTTON_RIGHT:
             h_review_button_both();
@@ -194,24 +196,23 @@ void h_review_button_both() {
 
 void splitValueField() {
     print_value2("");
-    uint16_t vlen = strlen(viewdata.value);
+    const uint16_t vlen = strlen(viewdata.value);
     if (vlen > MAX_CHARS_PER_VALUE2_LINE - 1) {
-        strcpy(viewdata.value2, viewdata.value + MAX_CHARS_PER_VALUE_LINE);
+        snprintf(viewdata.value2, MAX_CHARS_PER_VALUE2_LINE, "%s", viewdata.value + MAX_CHARS_PER_VALUE_LINE);
         viewdata.value[MAX_CHARS_PER_VALUE_LINE] = 0;
     }
 }
-
 void splitValueAddress() {
     uint8_t len = MAX_CHARS_PER_VALUE_LINE;
     bool exceeding_max = exceed_pixel_in_display(len);
-    while(exceeding_max) {
-        len--;
+    while(exceeding_max && len--) {
         exceeding_max = exceed_pixel_in_display(len);
     }
     print_value2("");
     const uint16_t vlen = strlen(viewdata.value);
-    if (vlen > len) {
-        strcpy(viewdata.value2, viewdata.value + len);
+    //if viewdata.value == NULL --> len = 0
+    if (vlen > len && len > 0) {
+        snprintf(viewdata.value2, MAX_CHARS_PER_VALUE2_LINE, "%s", viewdata.value + len);
         viewdata.value[len] = 0;
     }
 }
@@ -219,18 +220,16 @@ void splitValueAddress() {
 max_char_display get_max_char_per_line() {
     uint8_t len = MAX_CHARS_PER_VALUE_LINE;
     bool exceeding_max = exceed_pixel_in_display(len);
-    while(exceeding_max) {
-        len--;
+    while(exceeding_max && len--) {
         exceeding_max = exceed_pixel_in_display(len);
     }
     //MAX_CHARS_PER_VALUE1_LINE is defined this way
-    return 2 * len + 1;
+    return (len > 0) ? (2 * len + 1) : len;
 }
 
 bool exceed_pixel_in_display(const uint8_t length) {
-    unsigned short strWidth = bagl_compute_line_width((BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER |BAGL_FONT_ALIGNMENT_MIDDLE), 
-        200, viewdata.value, length, BAGL_ENCODING_LATIN1);
-    return (strWidth >= (BAGL_WIDTH-10));
+    const unsigned short strWidth = zx_compute_line_width_light(viewdata.value, length);
+    return (strWidth >= (BAGL_WIDTH - BAGL_WIDTH_MARGIN));
 }
 
 //////////////////////////
@@ -298,6 +297,7 @@ void h_expert_update() {
 
 void view_review_show_impl() {
     zemu_log_stack("view_review_show_impl");
+
     h_paging_init();
 
     zxerr_t err = h_review_update_data();

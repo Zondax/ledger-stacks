@@ -20,7 +20,6 @@
 #include "parser.h"
 #include <string.h>
 #include "zxmacros.h"
-#include "zbuffer.h"
 
 #if defined(TARGET_NANOX)
 #define RAM_BUFFER_SIZE 8192
@@ -43,7 +42,7 @@ storage_t NV_CONST N_appdata_impl __attribute__ ((aligned(64)));
 #define N_appdata (*(NV_VOLATILE storage_t *)PIC(&N_appdata_impl))
 #endif
 
-parser_context_t ctx_parsed_tx;
+static parser_context_t ctx_parsed_tx;
 
 void tx_initialize() {
     buffering_init(
@@ -162,4 +161,8 @@ int8_t tx_is_multisig() {
 
 uint16_t tx_previous_signer_data(uint8_t **data) {
     return parser_previous_signer_data(data);
+}
+
+uint8_t tx_is_transaction() {
+    return parser_is_transaction();
 }

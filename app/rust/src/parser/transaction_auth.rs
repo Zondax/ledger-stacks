@@ -4,9 +4,13 @@ use nom::{
     number::complete::{be_u64, le_u8},
 };
 
+use crate::bolos::c_zemu_log_stack;
 use crate::check_canary;
-use crate::parser::parser_common::{ParserError, SignerId};
-use crate::parser::spending_condition::TransactionSpendingCondition;
+use crate::parser::{
+    error::ParserError,
+    parser_common::SignerId,
+    spending_condition::{SpendingConditionSigner, TransactionSpendingCondition},
+};
 
 // The sponsor sentinel length that includes:
 // 21-byte pub_key hash
@@ -14,12 +18,12 @@ use crate::parser::spending_condition::TransactionSpendingCondition;
 // 66-byte signature and signature encoding
 const SPONSOR_SENTINEL_LEN: usize = 21 + 16 + 66;
 
-#[repr(C)]
-#[derive(Debug)]
 /// A Transaction's Authorization structure
 ///
 /// this structure contains the address of the origin account,
 /// signature(s) and signature threshold for the origin account
+#[repr(C)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TransactionAuth<'a> {
     // 0x04
     Standard(TransactionSpendingCondition<'a>),
@@ -59,10 +63,7 @@ impl<'a> TransactionAuth<'a> {
 
     #[inline(never)]
     pub fn is_standard_auth(&self) -> bool {
-        match *self {
-            Self::Standard(_) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Standard(_))
     }
 
     // check just for origin, meaning we support standard transaction only
@@ -73,15 +74,17 @@ impl<'a> TransactionAuth<'a> {
         }
     }
 
-    pub fn origin(&self) -> &TransactionSpendingCondition {
-        match *self {
-            Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => origin,
+    #[inline(always)]
+    pub fn origin(&self) -> &SpendingConditionSigner {
+        match self {
+            Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => &origin.signer,
         }
     }
 
-    pub fn sponsor(&self) -> Option<&TransactionSpendingCondition> {
-        match *self {
-            Self::Sponsored(_, ref sponsor) => Some(sponsor),
+    #[inline(always)]
+    pub fn sponsor(&self) -> Option<&SpendingConditionSigner> {
+        match self {
+            Self::Sponsored(_, ref sponsor) => Some(&sponsor.signer),
             _ => None,
         }
     }
@@ -141,7 +144,7 @@ impl<'a> TransactionAuth<'a> {
         SignerId::Invalid
     }
 
-    pub fn initial_sighash_auth(&self, buf: &mut [u8]) -> Result<usize, ()> {
+    pub fn initial_sighash_auth(&self, buf: &mut [u8]) -> Result<usize, ParserError> {
         match self {
             Self::Standard(ref origin) => origin.init_sighash(buf),
             Self::Sponsored(ref origin, _) => {
@@ -151,9 +154,9 @@ impl<'a> TransactionAuth<'a> {
         }
     }
 
-    pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ()> {
+    pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ParserError> {
         if buf.len() < SPONSOR_SENTINEL_LEN {
-            return Err(());
+            return Err(ParserError::parser_no_data);
         }
         buf.iter_mut()
             .take(SPONSOR_SENTINEL_LEN)

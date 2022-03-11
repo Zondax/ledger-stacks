@@ -33,6 +33,9 @@ import {
   standardPrincipalCV,
   TransactionSigner,
   uintCV,
+  stringAsciiCV,
+  stringUtf8CV,
+  cvToHex
 } from '@stacks/transactions'
 import { StacksTestnet } from '@stacks/network'
 import { ec as EC } from 'elliptic'
@@ -438,6 +441,121 @@ describe('Standard', function () {
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
       await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_standard_contract_call_tx`, m.name === 'nanos' ? 12 : 11)
+
+      const signature = await signatureRequest
+      console.log(signature)
+
+      expect(signature.returnCode).toEqual(0x9000)
+      // TODO: Verify signature
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.each(models)(`sign_message`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = new StacksTestnet()
+    const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
+    const path = "m/44'/5757'/0'/0/0"
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new BlockstackApp(sim.getTransport())
+
+      // Get pubkey and check
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      console.log(pkResponse)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const testPublicKey = pkResponse.publicKey.toString('hex')
+      console.log('publicKey ', testPublicKey)
+
+      // uses the provided privKey to derive a pubKey using stacks API
+      // we expect the derived publicKey to be same as the ledger-app
+      const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey))
+
+      expect(testPublicKey).toEqual('02' + expectedPublicKey.slice(2, 2 + 32 * 2))
+
+      const msg = "Hello World"
+
+      // Check the signature
+      const signatureRequest = app.sign_msg(path, msg)
+
+      // Wait until we are not in the main men
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_message`, m.name === 'nanos' ? 1 : 2)
+
+      const signature = await signatureRequest
+
+      console.log(signature)
+      expect(signature.returnCode).toEqual(0x9000)
+      expect(signature.errorMessage).toEqual('No errors')
+
+      //Verify signature
+      const ec = new EC("secp256k1");
+      const len = msg.length
+      const data = "\x19Stacks Signed Message:\n" + `${len}` + msg
+      console.log(data)
+      const msgHash = sha512_256(data);
+      const sig = signature.signatureVRS.toString('hex')
+      const signature_obj = {
+        r: sig.substr(2, 64),
+        s: sig.substr(66, 64),
+      }
+      //@ts-ignore
+      const signatureOk = ec.verify(msgHash, signature_obj, testPublicKey, "hex");
+      expect(signatureOk).toEqual(true);
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.each(models)(`sign call_with_string_args`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = new StacksTestnet()
+    const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
+    const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new BlockstackApp(sim.getTransport())
+      // Get pubkey and check
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      console.log(pkResponse)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+      const pubKeyStrings = [devicePublicKey]
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = new BN(10)
+      const nonce = new BN(0)
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
+      const long_ascii_string = '%s{Lorem} ipsum dolor sit amet, consectetur adipiscing elit. Etiam quis bibendum mauris. Sed ac placerat ante. Donec sodales sapien id nulla convallis egestas'
+      const txOptions = {
+        anchorMode: AnchorMode.Any,
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'stack-stx',
+        functionArgs: [stringAsciiCV(long_ascii_string), uintCV(2), stringUtf8CV('Stacks balance, €: ')],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const serializeTx = transaction.serialize().toString('hex')
+      console.log("serialized transaction length {}", serializeTx.length)
+
+      const blob = Buffer.from(serializeTx, 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      // Wait until we are not in the main menu
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-call_with_string_args`, m.name === 'nanos' ? 11 : 11)
 
       const signature = await signatureRequest
       console.log(signature)

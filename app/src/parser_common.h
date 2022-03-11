@@ -59,7 +59,6 @@ typedef enum {
     parser_invalid_pubkey_encoding,
     parser_invalid_auth_type,
     parser_invalid_argument_id,
-    parser_invalid_token_transfer_type,
     parser_invalid_transaction_payload,
     parser_invalid_address_version,
     parser_stacks_string_too_long,
@@ -71,6 +70,9 @@ typedef enum {
     parser_unexpected_field,
     parser_value_out_of_range,
     parser_invalid_address,
+    parser_invalid_token_transfer_type,
+    parser_invalid_bytestr_message,
+    parser_crypto_error,
 } parser_error_t;
 
 typedef struct {
