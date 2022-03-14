@@ -18,7 +18,7 @@
   ],
   "dependencies": {
     "@zondax/ledger-blockstack": "link:../js",
-    "@zondax/zemu": "^0.21.1"
+    "@zondax/zemu": "^0.27.0-rc2"
   },
   "devDependencies": {
     "@stacks/network": "^2.0.1",
