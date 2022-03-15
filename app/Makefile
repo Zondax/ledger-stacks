@@ -96,6 +96,14 @@ OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
 OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_x.sh
 endif
 
+ifeq ($(TARGET_NAME),TARGET_NANOS2)
+APP_LOAD_PARAMS += --appFlags 0x200
+SCRIPT_LD:=$(CURDIR)/script_s2.ld
+ICONNAME:=$(CURDIR)/nanox_icon.gif
+OUTPUT_ELF ?= $(CURDIR)/output/app_s2.elf
+OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_s2.sh
+endif
+
 $(info TARGET_NAME  = [$(TARGET_NAME)])
 $(info ICONNAME  = [$(ICONNAME)])
 
@@ -123,7 +131,10 @@ DEFINES       += HAVE_BOLOS_APP_STACK_CANARY
 
 DEFINES       += HAVE_WEBUSB WEBUSB_URL_SIZE_B=0 WEBUSB_URL=""
 
-ifeq ($(TARGET_NAME),TARGET_NANOX)
+ifeq ($(TARGET_NAME),TARGET_NANOS)
+DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
+else
+# Assume Nano X/S+
 DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=300
 
 DEFINES       += HAVE_GLO096
@@ -134,14 +145,13 @@ DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_EXTRABOLD_11PX
 DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_LIGHT_16PX
 
 DEFINES       += HAVE_UX_FLOW
+endif
 
+ifeq ($(TARGET_NAME),TARGET_NANOX)
 DEFINES       += HAVE_BLE
 DEFINES       += HAVE_BLE_APDU BLE_COMMAND_TIMEOUT_MS=2000
 
 SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
-else
-# Assume Nano S
-DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
 endif
 
 # X specific
