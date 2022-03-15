@@ -83,7 +83,8 @@ describe('Standard', function () {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-mainmenu`, [1, 0, 0, 5, -5])
+      //await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-mainmenu`, [1, 0, 0, 5, -5])
+      await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-mainmenu`, [1, 0, 0, 4, -5])
     } finally {
       await sim.close()
     }
@@ -142,7 +143,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-show-address`, m.name === 'nanos' ? 2 : 2)
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-show_address`)
 
       const resp = await respRequest
       console.log(resp)
@@ -232,7 +233,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign`, m.name === 'nanos' ? 8 : 7)
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -351,7 +352,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-multisigTest`, m.name === 'nanos' ? 8 : 7)
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-multisigTest`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -440,7 +441,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_standard_contract_call_tx`, m.name === 'nanos' ? 12 : 11)
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_standard_contract_call_tx`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -484,7 +485,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-sign_message`, m.name === 'nanos' ? 1 : 2)
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_message`)
 
       const signature = await signatureRequest
 
@@ -555,7 +556,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndAccept('.', `${m.prefix.toLowerCase()}-call_with_string_args`, m.name === 'nanos' ? 11 : 11)
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-call_with_string_args`)
 
       const signature = await signatureRequest
       console.log(signature)
