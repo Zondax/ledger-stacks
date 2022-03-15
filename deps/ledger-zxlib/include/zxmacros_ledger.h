@@ -15,7 +15,7 @@
 ********************************************************************************/
 #pragma once
 
-#if defined (TARGET_NANOS) || defined(TARGET_NANOX)
+#if defined (TARGET_NANOS) || defined(TARGET_NANOX) || defined(TARGET_NANOS2)
 
 #include "os.h"
 #include "cx.h"
@@ -24,13 +24,13 @@
 
 // This macros are kept for backwards compatibility
 // the most recent SDK has unified implementations and deprecated the original os_***
-#define MEMCPY memcpy
+#define MEMCPY memmove
 #define MEMMOVE memmove
 #define MEMSET memset
 #define MEMCMP memcmp
 #define MEMZERO explicit_bzero
 
-#if defined(TARGET_NANOX)
+#if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
 #include "ux.h"
 #define NV_CONST const
 #define NV_VOLATILE volatile
