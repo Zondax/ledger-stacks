@@ -1,4 +1,4 @@
-#*******************************************************************************
+#******************************************************************************
 #   Ledger App
 #   (c) 2018-2021 Zondax GmbH
 #   (c) 2017 Ledger
@@ -86,6 +86,7 @@ APP_STACK_SIZE:=3100
 ICONNAME:=$(CURDIR)/nanos_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_s.elf
 OUTPUT_INSTALLER := $(CURDIR)/pkg/installer_s.sh
+RUST_TARGET := thumbv6m-none-eabi
 endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOX)
@@ -94,6 +95,7 @@ SCRIPT_LD:=$(CURDIR)/script_x.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
 OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_x.sh
+RUST_TARGET := thumbv6m-none-eabi
 endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOS2)
@@ -102,6 +104,9 @@ SCRIPT_LD:=$(CURDIR)/script_s2.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF ?= $(CURDIR)/output/app_s2.elf
 OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_s2.sh
+RUST_TARGET := thumbv6m-none-eabi
+# do not use this target as there are known problems with it
+# RUST_TARGET := thumbv8m.main-none-eabi
 endif
 
 $(info TARGET_NAME  = [$(TARGET_NAME)])
@@ -209,7 +214,7 @@ SDK_SOURCE_PATH  += lib_ux
 
 .PHONY: rust
 rust:
-	cd rust && CARGO_HOME="$(CURDIR)/rust/.cargo" cargo build --target thumbv6m-none-eabi --release
+	cd rust && CARGO_HOME="$(CURDIR)/rust/.cargo" cargo build --target $(RUST_TARGET) --release
 
 # Before linking, we need to be sure rust lib is there
 bin/app.elf: rust
