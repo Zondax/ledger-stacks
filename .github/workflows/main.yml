@@ -157,7 +157,7 @@ jobs:
 
   build_package_nanos:
     needs: [ configure, build, build_ledger_nano_S, build_ledger_nano_X,  build_ledger_nano_SP, test_zemu ]
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     container:
       image: zondax/builder-bolos:latest
@@ -198,7 +198,7 @@ jobs:
 
   build_package_nanos_plus:
     needs: [ configure, build, build_ledger_nano_S, build_ledger_nano_X,  build_ledger_nano_SP, test_zemu ]
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     container:
       image: zondax/builder-bolos:latest

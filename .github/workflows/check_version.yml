@@ -1,9 +1,9 @@
-name: "Verify PRs to main"
+name: "Verify PRs to master"
 
 on:
   pull_request:
     branches:
-      - main
+      - master
 
 jobs:
   configure:
