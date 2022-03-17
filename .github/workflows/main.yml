@@ -156,7 +156,7 @@ jobs:
           make zemu_test
 
   build_package_nanos:
-    needs: [ configure, build, build_ledger_nano_S, build_ledger_nano_X,  build_ledger_nano_SP, test_zemu ]
+    needs: [ configure, build, build_nano_S, build_nano_X,  build_nano_SP, test_zemu ]
     if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     container:
@@ -197,7 +197,7 @@ jobs:
           prerelease: false
 
   build_package_nanos_plus:
-    needs: [ configure, build, build_ledger_nano_S, build_ledger_nano_X,  build_ledger_nano_SP, test_zemu ]
+    needs: [ configure, build, build_nano_S, build_nano_X,  build_nano_SP, test_zemu ]
     if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     container:
