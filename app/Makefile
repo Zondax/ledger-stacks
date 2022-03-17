@@ -243,3 +243,9 @@ dep/%.d: %.c Makefile
 .PHONY: listvariants
 listvariants:
 	@echo VARIANTS COIN STX
+
+.PHONY: version
+version:
+	@echo "v$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)" > app.version
+
+
