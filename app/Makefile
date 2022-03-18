@@ -1,4 +1,4 @@
-#*******************************************************************************
+#******************************************************************************
 #   Ledger App
 #   (c) 2018-2021 Zondax GmbH
 #   (c) 2017 Ledger
@@ -54,8 +54,8 @@ COIN=STX
 endif
 
 APPVERSION_M=0
-APPVERSION_N=19
-APPVERSION_P=1
+APPVERSION_N=20
+APPVERSION_P=0
 
 $(info COIN  = [$(COIN)])
 
@@ -86,6 +86,7 @@ APP_STACK_SIZE:=3100
 ICONNAME:=$(CURDIR)/nanos_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_s.elf
 OUTPUT_INSTALLER := $(CURDIR)/pkg/installer_s.sh
+RUST_TARGET := thumbv6m-none-eabi
 endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOX)
@@ -94,6 +95,18 @@ SCRIPT_LD:=$(CURDIR)/script_x.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
 OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_x.sh
+RUST_TARGET := thumbv6m-none-eabi
+endif
+
+ifeq ($(TARGET_NAME),TARGET_NANOS2)
+APP_LOAD_PARAMS += --appFlags 0x200
+SCRIPT_LD:=$(CURDIR)/script_s2.ld
+ICONNAME:=$(CURDIR)/nanox_icon.gif
+OUTPUT_ELF ?= $(CURDIR)/output/app_s2.elf
+OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_s2.sh
+RUST_TARGET := thumbv6m-none-eabi
+# do not use this target as there are known problems with it
+# RUST_TARGET := thumbv8m.main-none-eabi
 endif
 
 $(info TARGET_NAME  = [$(TARGET_NAME)])
@@ -123,7 +136,10 @@ DEFINES       += HAVE_BOLOS_APP_STACK_CANARY
 
 DEFINES       += HAVE_WEBUSB WEBUSB_URL_SIZE_B=0 WEBUSB_URL=""
 
-ifeq ($(TARGET_NAME),TARGET_NANOX)
+ifeq ($(TARGET_NAME),TARGET_NANOS)
+DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
+else
+# Assume Nano X/S+
 DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=300
 
 DEFINES       += HAVE_GLO096
@@ -134,14 +150,13 @@ DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_EXTRABOLD_11PX
 DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_LIGHT_16PX
 
 DEFINES       += HAVE_UX_FLOW
+endif
 
+ifeq ($(TARGET_NAME),TARGET_NANOX)
 DEFINES       += HAVE_BLE
 DEFINES       += HAVE_BLE_APDU BLE_COMMAND_TIMEOUT_MS=2000
 
 SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
-else
-# Assume Nano S
-DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
 endif
 
 # X specific
@@ -199,7 +214,7 @@ SDK_SOURCE_PATH  += lib_ux
 
 .PHONY: rust
 rust:
-	cd rust && CARGO_HOME="$(CURDIR)/rust/.cargo" cargo build --target thumbv6m-none-eabi --release
+	cd rust && CARGO_HOME="$(CURDIR)/rust/.cargo" cargo build --target $(RUST_TARGET) --release
 
 # Before linking, we need to be sure rust lib is there
 bin/app.elf: rust
@@ -228,3 +243,9 @@ dep/%.d: %.c Makefile
 .PHONY: listvariants
 listvariants:
 	@echo VARIANTS COIN STX
+
+.PHONY: version
+version:
+	@echo "v$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)" > app.version
+
+

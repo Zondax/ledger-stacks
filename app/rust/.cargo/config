@@ -1,6 +1,6 @@
 [build]
 
-[target.thumbv6m-none-eabi]
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
 rustflags = [
     "--emit", "asm",
 	"-C", "relocation-model=ropi",
