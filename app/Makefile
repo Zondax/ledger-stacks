@@ -98,7 +98,7 @@ RUST_TARGET := thumbv6m-none-eabi
 endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOS2)
-APP_LOAD_PARAMS += --appFlags 0x200
+APP_LOAD_PARAMS += --appFlags 0x000
 SCRIPT_LD:=$(CURDIR)/script_s2.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF ?= $(CURDIR)/output/app_s2.elf
