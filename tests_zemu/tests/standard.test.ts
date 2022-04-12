@@ -138,7 +138,7 @@ describe('Standard', function () {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new BlockstackApp(sim.getTransport())
 
-      const response = await app.getAuthPubKey("m/888'/0'")
+      const response = await app.getIdentityPubKey("m/888'/0'")
       console.log(response)
       expect(response.returnCode).toEqual(0x9000)
 
