@@ -179,6 +179,23 @@ __Z_INLINE uint8_t app_fill_address(address_kind_e kind) {
     return action_addr_len;
 }
 
+__Z_INLINE uint8_t app_fill_auth_pubkey(address_kind_e kind) {
+    // Put data directly in the apdu buffer
+    MEMZERO(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE);
+
+    switch (kind) {
+        case addr_secp256k1:
+            action_addr_len = crypto_fillAuthkey_secp256k1(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2);
+            break;
+        default:
+            action_addr_len = 0;
+            break;
+    }
+
+    return action_addr_len;
+}
+
+
 __Z_INLINE void app_reply_address() {
     set_code(G_io_apdu_buffer, action_addr_len, APDU_CODE_OK);
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, action_addr_len + 2);
