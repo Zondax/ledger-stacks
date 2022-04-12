@@ -26,6 +26,9 @@ uint8_t version;
 
 uint32_t hdPath[HDPATH_LEN_DEFAULT];
 
+
+uint16_t crypto_getAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len, uint32_t path_len);
+
 bool isTestnet() {
     return hdPath[0] == HDPATH_0_TESTNET &&
            hdPath[1] == HDPATH_1_TESTNET;
@@ -90,7 +93,7 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     MEMZERO(buffer, buffer_len);
     answer_t *const answer = (answer_t *) buffer;
 
-    if(crypto_extractPublicKey(hdPath, answer->publicKey, sizeof_field(answer_t, publicKey)) != zxerr_ok) {
+    if(crypto_extractPublicKey(hdPath, HDPATH_LEN_DEFAULT, answer->publicKey, sizeof_field(answer_t, publicKey)) != zxerr_ok) {
         return 0;
     }
 
@@ -108,13 +111,29 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     return PK_LEN_SECP256K1 + outLen;
 }
 
-zxerr_t crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen) {
+uint16_t crypto_fillAuthkey_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
+    if (buffer_len < sizeof(answer_t)) {
+        return 0;
+    }
+
+    MEMZERO(buffer, buffer_len);
+    answer_t *const answer = (answer_t *) buffer;
+
+    if(crypto_extractPublicKey(hdPath, HDPATH_AUTH_LEN, answer->publicKey, sizeof_field(answer_t, publicKey)) != zxerr_ok) {
+        return 0;
+    }
+
+    return PK_LEN_SECP256K1;
+}
+
+
+zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t *pubKey, uint16_t pubKeyLen) {
     cx_ecfp_public_key_t cx_publicKey;
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[32];
     MEMZERO(&cx_publicKey, sizeof(cx_publicKey));
 
-    if (pubKeyLen < PK_LEN_SECP256K1) {
+    if (pubKeyLen < PK_LEN_SECP256K1 || path_len == 0) {
         return zxerr_invalid_crypto_settings;
     }
 
@@ -124,7 +143,7 @@ zxerr_t crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t
         TRY {
             os_perso_derive_node_bip32(CX_CURVE_256K1,
                                        path,
-                                       HDPATH_LEN_DEFAULT,
+                                       path_len,
                                        privateKeyData, NULL);
 
             cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);
@@ -163,7 +182,7 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
     // gets the raw public key
     uint8_t publicKey[PK_LEN_SECP256K1];
 
-    if (crypto_extractPublicKey(hdPath, publicKey, PK_LEN_SECP256K1) != zxerr_ok) {
+    if (crypto_extractPublicKey(hdPath, HDPATH_LEN_DEFAULT, publicKey, PK_LEN_SECP256K1) != zxerr_ok) {
         return false;
     }
 
