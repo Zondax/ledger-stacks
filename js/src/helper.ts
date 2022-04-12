@@ -7,11 +7,15 @@ export function serializePath(path: string) {
 
   const pathArray = path.split('/');
 
-  if (pathArray.length !== 6) {
-    throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\")");
+  let allocSize = 0;
+
+  if (pathArray.length === 6 || pathArray.length === 3  ) {
+      allocSize = (pathArray.length - 1) * 4;
+  } else {
+      throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\")");
   }
 
-  const buf = Buffer.alloc(20);
+  const buf = Buffer.alloc(allocSize);
 
   for (let i = 1; i < pathArray.length; i += 1) {
     let value = 0;
