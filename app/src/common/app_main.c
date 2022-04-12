@@ -34,6 +34,8 @@ unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
 static bool tx_initialized = false;
 
+void check_path(void);
+
 unsigned char io_event(unsigned char channel) {
     UNUSED(channel);
 
@@ -97,11 +99,23 @@ unsigned short io_exchange_al(unsigned char channel, unsigned short tx_len) {
 }
 
 void extractHDPath(uint32_t rx, uint32_t offset) {
+
+    uint32_t path_len = HDPATH_LEN_DEFAULT;
+
     if ((rx - offset) < sizeof(uint32_t) * HDPATH_LEN_DEFAULT) {
-        THROW(APDU_CODE_WRONG_LENGTH);
+        if ((rx - offset) == sizeof(uint32_t) * HDPATH_AUTH_LEN) {
+            path_len = HDPATH_AUTH_LEN;
+        } else {
+            THROW(APDU_CODE_WRONG_LENGTH);
+        }
     }
 
-    MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * HDPATH_LEN_DEFAULT);
+    MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * path_len);
+
+    check_path();
+}
+
+void check_path() {
 
     bool mainnet = hdPath[0] == HDPATH_0_DEFAULT &&
                          hdPath[1] == HDPATH_1_DEFAULT;
@@ -111,7 +125,9 @@ void extractHDPath(uint32_t rx, uint32_t offset) {
     const bool testnet = hdPath[0] == HDPATH_0_TESTNET &&
                          hdPath[1] == HDPATH_1_TESTNET;
 
-    if (!mainnet && !testnet) {
+    const bool identity_path = hdPath[0] == HDPATH_0_AUTH;
+
+    if (!mainnet && !testnet && !identity_path) {
         THROW(APDU_CODE_DATA_INVALID);
     }
 }

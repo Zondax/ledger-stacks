@@ -33,8 +33,9 @@ extern "C" {
 #define HDPATH_3_DEFAULT     (0u)
 #define HDPATH_4_DEFAULT     (0u)
 
+#define HDPATH_0_AUTH        (0x80000000u | 888)
+
 #define HDPATH_0_ALTERNATIVE  (0x80000000u | 5757)
-#define HDPATH_1_ALTERNATIVE  (0x80000000u | 888)
 
 #define HDPATH_0_TESTNET     (0x80000000u | 0x2cu)
 #define HDPATH_1_TESTNET     (0x80000000u | 0x1u)
