@@ -148,6 +148,14 @@ export default class BlockstackApp {
             .then(processGetAddrResponse, processErrorResponse);
     }
 
+    async getIdentityPubKey(path: string): Promise<ResponseAddress> {
+        const serializedPath = serializePath(path);
+        return this.transport
+            .send(CLA, INS.GET_AUTH_PUBKEY, P1_VALUES.ONLY_RETRIEVE, 0, serializedPath, [0x9000])
+            .then(processGetAddrResponse, processErrorResponse);
+    }
+
+
     async showAddressAndPubKey(path: string, version: AddressVersion): Promise<ResponseAddress> {
         const serializedPath = serializePath(path);
         return this.transport
