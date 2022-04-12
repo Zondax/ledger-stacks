@@ -53,6 +53,14 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     THROW(APDU_CODE_OK);
 }
 
+__Z_INLINE void handleGetAuthPubKey(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    extractHDPath(rx, OFFSET_DATA);
+
+    *tx = app_fill_auth_pubkey(addr_secp256k1);
+    THROW(APDU_CODE_OK);
+}
+
+
 __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     if (!process_chunk(rx)) {
         THROW(APDU_CODE_OK);
@@ -103,6 +111,11 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
 
                 case INS_SIGN_SECP256K1: {
                     handleSignSecp256K1(flags, tx, rx);
+                    break;
+                }
+
+                case INS_GET_AUTH_PUBKEY: {
+                    handleGetAuthPubKey(flags, tx, rx);
                     break;
                 }
 
