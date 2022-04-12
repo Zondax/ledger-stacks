@@ -38,11 +38,12 @@ bool set_network_version(uint8_t version);
 
 bool isTestnet();
 
-zxerr_t crypto_extractPublicKey(const uint32_t path[HDPATH_LEN_DEFAULT], uint8_t *pubKey, uint16_t pubKeyLen);
+zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t *pubKey, uint16_t pubKeyLen);
 
 bool crypto_extractPublicKeyHash(uint8_t *pubKey, uint16_t pubKeyLen);
 
 uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t bufferLen);
+uint16_t crypto_fillAuthkey_secp256k1(uint8_t *buffer, uint16_t bufferLen);
 
 zxerr_t crypto_sign(uint8_t *buffer,
                     uint16_t signatureMaxlen,
