@@ -132,6 +132,24 @@ describe('Standard', function () {
     }
   })
 
+  test.each(models)(`get identify publicKey`, async function (m) {
+    const sim = new Zemu(m.path)
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new BlockstackApp(sim.getTransport())
+
+      const response = await app.getAuthPubKey("m/888'/0'")
+      console.log(response)
+      expect(response.returnCode).toEqual(0x9000)
+
+      const expectedPublicKey = '032243391eaa3ee28ebe8c27076b200ea285571229b3bccecc2c482e47961d8048'
+
+      expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey)
+    } finally {
+      await sim.close()
+    }
+  })
+
   test.each(models)(`show address`, async function (m) {
     const sim = new Zemu(m.path)
     try {
