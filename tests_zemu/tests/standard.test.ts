@@ -138,11 +138,11 @@ describe('Standard', function () {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new BlockstackApp(sim.getTransport())
 
-      const response = await app.getIdentityPubKey("m/888'/0'")
+      const response = await app.getIdentityPubKey("m/888'/0'/0'/1") //m/888'/0'/0'/<account>
       console.log(response)
       expect(response.returnCode).toEqual(0x9000)
 
-      const expectedPublicKey = '032243391eaa3ee28ebe8c27076b200ea285571229b3bccecc2c482e47961d8048'
+      const expectedPublicKey = '023b90e57cf8f868d9f6824d39404b9579f990e2e6e4e7a09566c346b48de57b97'
 
       expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey)
     } finally {
