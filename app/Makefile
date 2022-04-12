@@ -63,7 +63,7 @@ ifeq ($(COIN),STX)
 # Main app configuration
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
-APPPATH = "44'/5757'" --path "5757'"
+APPPATH = "44'/5757'" --path "5757'" --path "888'/0'"
 
 else ifeq ($(COIN),STX_variant1)
 else
