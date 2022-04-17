@@ -119,7 +119,7 @@ uint16_t crypto_fillAuthkey_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     MEMZERO(buffer, buffer_len);
     answer_t *const answer = (answer_t *) buffer;
 
-    if(crypto_extractPublicKey(hdPath, HDPATH_AUTH_LEN, answer->publicKey, sizeof_field(answer_t, publicKey)) != zxerr_ok) {
+    if(crypto_extractPublicKey(hdPath, HDPATH_LEN_AUTH, answer->publicKey, sizeof_field(answer_t, publicKey)) != zxerr_ok) {
         return 0;
     }
 
