@@ -30,7 +30,7 @@
 #include "zxmacros.h"
 
 __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
-    extractHDPath(rx, OFFSET_DATA);
+    extract_default_path(rx, OFFSET_DATA);
 
     uint8_t requireConfirmation = G_io_apdu_buffer[OFFSET_P1];
     uint8_t network = G_io_apdu_buffer[OFFSET_P2];
@@ -54,7 +54,7 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
 }
 
 __Z_INLINE void handleGetAuthPubKey(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
-    extractHDPath(rx, OFFSET_DATA);
+    extract_identity_path(rx, OFFSET_DATA);
 
     *tx = app_fill_auth_pubkey(addr_secp256k1);
     THROW(APDU_CODE_OK);
@@ -62,6 +62,12 @@ __Z_INLINE void handleGetAuthPubKey(volatile uint32_t *flags, volatile uint32_t 
 
 
 __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // check first for the expected path at initialization
+    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
+        extract_default_path(rx, OFFSET_DATA);
+    }
+
+    // process the rest of the chunk as usual
     if (!process_chunk(rx)) {
         THROW(APDU_CODE_OK);
     }
