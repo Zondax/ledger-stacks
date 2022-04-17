@@ -40,7 +40,8 @@ void app_init();
 
 void app_main();
 
-void extractHDPath(uint32_t rx, uint32_t offset);
+void extract_identity_path(uint32_t rx, uint32_t offset);
+void extract_default_path(uint32_t rx, uint32_t offset);
 
 bool process_chunk( uint32_t rx);
 
