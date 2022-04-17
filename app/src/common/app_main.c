@@ -34,7 +34,7 @@ unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
 static bool tx_initialized = false;
 
-void check_path(void);
+void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len);
 
 unsigned char io_event(unsigned char channel) {
     UNUSED(channel);
@@ -98,38 +98,44 @@ unsigned short io_exchange_al(unsigned char channel, unsigned short tx_len) {
     return 0;
 }
 
-void extractHDPath(uint32_t rx, uint32_t offset) {
+void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
 
-    uint32_t path_len = HDPATH_LEN_DEFAULT;
-
-    if ((rx - offset) < sizeof(uint32_t) * HDPATH_LEN_DEFAULT) {
-        if ((rx - offset) == sizeof(uint32_t) * HDPATH_AUTH_LEN) {
-            path_len = HDPATH_AUTH_LEN;
-        } else {
+    if ((rx - offset) < sizeof(uint32_t) * path_len) {
             THROW(APDU_CODE_WRONG_LENGTH);
-        }
     }
 
     MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * path_len);
-
-    check_path();
 }
 
-void check_path() {
+void extract_default_path(uint32_t rx, uint32_t offset) {
 
+    extractHDPath(rx, offset, HDPATH_LEN_DEFAULT);
+
+    // validate
     bool mainnet = hdPath[0] == HDPATH_0_DEFAULT &&
-                         hdPath[1] == HDPATH_1_DEFAULT;
+                   hdPath[1] == HDPATH_1_DEFAULT;
 
     mainnet |= (hdPath[0] == HDPATH_0_ALTERNATIVE);
 
     const bool testnet = hdPath[0] == HDPATH_0_TESTNET &&
                          hdPath[1] == HDPATH_1_TESTNET;
 
-    const bool identity_path = hdPath[0] == HDPATH_0_AUTH;
-
-    if (!mainnet && !testnet && !identity_path) {
+    if (!mainnet && !testnet)
         THROW(APDU_CODE_DATA_INVALID);
-    }
+
+}
+
+void extract_identity_path(uint32_t rx, uint32_t offset) {
+
+    extractHDPath(rx, offset, HDPATH_LEN_AUTH);
+
+    // validate
+    const bool identity_path = hdPath[0] == HDPATH_0_AUTH &&
+                               hdPath[1] == HDPATH_1_AUTH &&
+                               hdPath[2] == HDPATH_2_AUTH;
+    if (!identity_path)
+        THROW(APDU_CODE_DATA_INVALID);
+
 }
 
 bool process_chunk(uint32_t rx) {
@@ -149,7 +155,6 @@ bool process_chunk(uint32_t rx) {
         case 0:
             tx_initialize();
             tx_reset();
-            extractHDPath(rx, OFFSET_DATA);
             tx_initialized = true;
             return false;
         case 1:
