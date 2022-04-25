@@ -34,12 +34,14 @@
 #define INS_GET_VERSION                 0x00
 #define INS_GET_ADDR_SECP256K1          0x01
 #define INS_SIGN_SECP256K1              0x02
+#define INS_GET_AUTH_PUBKEY             0x03
 
 void app_init();
 
 void app_main();
 
-void extractHDPath(uint32_t rx, uint32_t offset);
+void extract_identity_path(uint32_t rx, uint32_t offset);
+void extract_default_path(uint32_t rx, uint32_t offset);
 
 bool process_chunk( uint32_t rx);
 
