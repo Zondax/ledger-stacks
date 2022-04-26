@@ -2,9 +2,8 @@ use core::fmt::{self, Write};
 use nom::{
     branch::permutation,
     bytes::complete::take,
-    combinator::{iterator, map_parser},
-    error::ErrorKind,
-    number::complete::{be_u32, le_u64, le_u8},
+    combinator::iterator,
+    number::complete::{be_u32, le_u8},
 };
 
 use arrayvec::ArrayVec;
@@ -17,10 +16,7 @@ use crate::parser::{
     post_condition::TransactionPostCondition,
     transaction_auth::TransactionAuth,
     transaction_payload::TransactionPayload,
-    value::Value,
 };
-
-use crate::parser::ffi::fp_uint64_to_str;
 
 use crate::{check_canary, zxformat};
 
