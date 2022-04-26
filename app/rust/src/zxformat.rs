@@ -219,7 +219,6 @@ pub fn pageString(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result
 
 #[cfg(test)]
 mod test {
-    extern crate std;
     use super::*;
 
     #[test]

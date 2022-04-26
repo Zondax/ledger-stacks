@@ -1,18 +1,14 @@
 #![no_std]
 #![no_builtins]
-#![allow(dead_code, unused_imports)]
-#![deny(unused_crate_dependencies)]
 #![macro_use]
+#![allow(dead_code)]
+#![deny(unused_crate_dependencies)]
 
-#[cfg(test)]
-#[macro_use]
-extern crate std;
+extern crate no_std_compat as std;
 
 mod bolos;
 pub mod parser;
 mod zxformat;
-
-extern crate core;
 
 fn debug(_msg: &str) {}
 
@@ -57,14 +53,6 @@ pub fn is_expert_mode() -> bool {
     } else {
         unsafe { app_mode_expert() > 0 }
     }
-}
-
-#[macro_export]
-macro_rules! pic {
-    ($obj:expr) => {{
-        use crate::pic_internal;
-        pic_internal(&$obj)
-    }};
 }
 
 #[macro_export]
