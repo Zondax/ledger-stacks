@@ -1,13 +1,7 @@
 #![allow(clippy::missing_safety_doc)]
-use super::{error::ParserError, transaction::Transaction};
-use crate::{
-    bolos::c_zemu_log_stack,
-    check_canary,
-    zxformat::{pageString, Writer},
-};
+use super::error::ParserError;
+use crate::zxformat::{pageString, Writer};
 use core::fmt::Write;
-
-use core::mem::ManuallyDrop;
 
 // The lenght of \x19Stacks Signed Message:
 const BYTE_STRING_HEADER_LEN: usize = "\x19Stacks Signed Message:\n".as_bytes().len();
@@ -15,35 +9,35 @@ const BYTE_STRING_HEADER_LEN: usize = "\x19Stacks Signed Message:\n".as_bytes().
 // The max number of characters we are going to show on the screen
 const MAX_CHARS_TO_SHOW_FROM_MSG: usize = 60;
 
-// We chose an union as later new
-// message types may be added
-// safety: this is memory allocated in C and last the application lifetime
-// and is initialized once. It is the C-side responsability to free the memory. that's why
-// we use repr(C) key word
 #[repr(C)]
-pub union Message<'a> {
+pub enum Message<'a> {
     // leave room for another structured data
-    bstr: ByteString<'a>,
+    ByteStr(ByteString<'a>),
 }
 
 impl<'a> Message<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         let byte_str = ByteString::from_bytes(data)?;
-        Ok(Self { bstr: byte_str })
+        Ok(Message::ByteStr(byte_str))
     }
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        let bstr = ByteString::from_bytes(data)?;
-        self.bstr = bstr;
-        Ok(())
+        if ByteString::maybe_byte_string(data) {
+            *self = Message::ByteStr(ByteString::from_bytes(data)?);
+            Ok(())
+        } else {
+            Err(ParserError::parser_unexpected_type)
+        }
     }
 
     pub fn is_message(data: &'a [u8]) -> bool {
         ByteString::maybe_byte_string(data)
     }
 
-    pub fn num_items(&self) -> Result<u8, ParserError> {
-        unsafe { self.bstr.num_items() }
+    pub fn num_items(&self) -> u8 {
+        match self {
+            Message::ByteStr(bstr) => bstr.num_items(),
+        }
     }
 
     pub fn get_item(
@@ -53,9 +47,8 @@ impl<'a> Message<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        unsafe {
-            self.bstr
-                .get_item(display_idx, out_key, out_value, page_idx)
+        match self {
+            Message::ByteStr(bstr) => bstr.get_item(display_idx, out_key, out_value, page_idx),
         }
     }
 }
@@ -71,10 +64,6 @@ pub struct ByteString<'a> {
 impl<'a> ByteString<'a> {
     pub fn maybe_byte_string(data: &'a [u8]) -> bool {
         Self::contain_header(data)
-    }
-
-    const fn header() -> &'static str {
-        "\x19Stacks Signed Message:\n"
     }
 
     // Checks if the input data contain the byte_string heades at the first bytes
@@ -123,9 +112,9 @@ impl<'a> ByteString<'a> {
         Ok(Self { data, at, len })
     }
 
-    pub const fn num_items(&self) -> Result<u8, ParserError> {
+    pub const fn num_items(&self) -> u8 {
         //One ByteString message to show at least partially
-        Ok(1)
+        1
     }
 
     pub fn get_item(
@@ -157,8 +146,7 @@ impl<'a> ByteString<'a> {
 
 #[cfg(test)]
 mod test {
-    extern crate std;
-    use std::string::String;
+    use std::prelude::v1::*;
 
     use super::*;
 
