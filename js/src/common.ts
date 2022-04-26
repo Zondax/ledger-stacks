@@ -9,6 +9,7 @@ export const INS = {
     GET_ADDR_SECP256K1: 0x01,
     SIGN_SECP256K1: 0x02,
     GET_AUTH_PUBKEY: 0x03,
+    SIGN_JWT_SECP256K1: 0x04,
 };
 
 export const PAYLOAD_TYPE = {
