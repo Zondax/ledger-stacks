@@ -163,6 +163,6 @@ uint16_t tx_previous_signer_data(uint8_t **data) {
     return parser_previous_signer_data(data);
 }
 
-uint8_t tx_is_transaction() {
-    return parser_is_transaction();
+transaction_type_t tx_get_transaction_type(){
+    return parser_get_transaction_type();
 }
