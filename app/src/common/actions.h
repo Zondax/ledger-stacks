@@ -77,7 +77,8 @@ __Z_INLINE void app_sign() {
     uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN];
     zxerr_t err = zxerr_ok;
 
-    const uint8_t is_transaction = tx_is_transaction();
+    const uint8_t transaction_type = tx_get_transaction_type();
+
     // Get the current transaction presig_hash
     err = get_presig_hash(presig_hash, CX_SHA256_SIZE);
 
@@ -119,7 +120,7 @@ __Z_INLINE void app_sign() {
         return;
     }
 
-    if(is_transaction) {
+    if(transaction_type == Transaction) {
         // Calculates the post_sighash
         memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
@@ -143,6 +144,13 @@ __Z_INLINE void app_sign() {
         SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
         SHA512_256_finish(&ctx, hash_temp);
         memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+
+    } else if (transaction_type == Jwt || transaction_type == Message){
+        // just return as a post_sighash the presig_hash
+        // which is the hash of the message or jwt
+        memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
+    } else {
+       err = zxerr_no_data;
     }
 
     if (replyLen == 0) {
@@ -235,22 +243,24 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     MEMZERO(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
     uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
-    // Before hashing the transaction the auth field should be cleared
-    // and the sponsor set to signing sentinel.
-    uint16_t auth_len = 0;
-    auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
+    transaction_type_t tx_typ = tx_get_transaction_type();
+
 
     // Init the hasher
     sha512_256_ctx ctx;
     SHA512_256_init(&ctx);
     SHA512_256_starts(&ctx);
 
-    const uint8_t *message = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
+    const uint8_t *data = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
 
     // Update the hasher with the first and second block of bytes
-    if(tx_is_transaction()) {
+    if( tx_typ == Transaction ) {
+        // Before hashing the transaction the auth field should be cleared
+        // and the sponsor set to signing sentinel.
+        uint16_t auth_len = 0;
+        auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
         // prepare the last transaction block to be hashed
-        SHA512_256_update(&ctx, message, TRANSACTION_FIRST_BLOCK_LEN);
+        SHA512_256_update(&ctx, data, TRANSACTION_FIRST_BLOCK_LEN);
         SHA512_256_update(&ctx, tx_auth, auth_len);
         uint8_t *last_block = NULL;
         uint8_t **last_block_ptr = &last_block;
@@ -264,8 +274,9 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
     } else {
-        const uint16_t messageLength = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
-        SHA512_256_update(&ctx, message, messageLength);
+        // we have byteString or JWT messages. Getting the hash if the same for both types
+        const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
+        SHA512_256_update(&ctx, data, data_len);
         SHA512_256_finish(&ctx, hash);
         return zxerr_ok;
     }
