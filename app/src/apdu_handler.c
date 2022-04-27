@@ -60,13 +60,7 @@ __Z_INLINE void handleGetAuthPubKey(volatile uint32_t *flags, volatile uint32_t 
     THROW(APDU_CODE_OK);
 }
 
-
-__Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
-    // check first for the expected path at initialization
-    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
-        extract_default_path(rx, OFFSET_DATA);
-    }
-
+__Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     // process the rest of the chunk as usual
     if (!process_chunk(rx)) {
         THROW(APDU_CODE_OK);
@@ -87,6 +81,27 @@ __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t 
     view_review_init(tx_getItem, tx_getNumItems, app_sign);
     view_review_show();
     *flags |= IO_ASYNCH_REPLY;
+}
+
+
+__Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // check first for the expected path at initialization
+    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
+        extract_default_path(rx, OFFSET_DATA);
+    }
+
+    SignSecp256K1(flags, tx, rx);
+}
+
+__Z_INLINE void handleSignJwtSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // check first for the expected path at initialization
+    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
+        extract_identity_path(rx, OFFSET_DATA);
+        zemu_log("IDENTITY PATH EXTRACTED\n");
+    }
+
+    zemu_log("CALLING SIGN METHOD\n");
+    SignSecp256K1(flags, tx, rx);
 }
 
 void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
@@ -115,13 +130,18 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                     break;
                 }
 
+                case INS_GET_AUTH_PUBKEY: {
+                    handleGetAuthPubKey(flags, tx, rx);
+                    break;
+                }
+
                 case INS_SIGN_SECP256K1: {
                     handleSignSecp256K1(flags, tx, rx);
                     break;
                 }
 
-                case INS_GET_AUTH_PUBKEY: {
-                    handleGetAuthPubKey(flags, tx, rx);
+                case SIGN_JWT_SECP256K1: {
+                    handleSignJwtSecp256K1(flags, tx, rx);
                     break;
                 }
 
