@@ -165,7 +165,7 @@ export default class BlockstackApp {
             .then(processGetAddrResponse, processErrorResponse);
     }
 
-    async signSendChunk(chunkIdx: number, chunkNum: number, chunk: Buffer, ins: INS): Promise<ResponseSign> {
+    async signSendChunk(chunkIdx: number, chunkNum: number, chunk: Buffer, ins: number): Promise<ResponseSign> {
         let payloadType = PAYLOAD_TYPE.ADD;
         if (chunkIdx === 1) {
             payloadType = PAYLOAD_TYPE.INIT;
