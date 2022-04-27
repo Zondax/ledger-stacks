@@ -252,6 +252,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     SHA512_256_starts(&ctx);
 
     const uint8_t *data = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
+    const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     // Update the hasher with the first and second block of bytes
     if( tx_typ == Transaction ) {
@@ -273,12 +274,16 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_update(&ctx, last_block, last_block_len);
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-    } else {
+    } else if (tx_typ == Message) {
         // we have byteString or JWT messages. Getting the hash if the same for both types
-        const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
         SHA512_256_update(&ctx, data, data_len);
         SHA512_256_finish(&ctx, hash);
         return zxerr_ok;
+    } else if (tx_typ == Jwt) {
+        cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
+        return zxerr_ok;
+    } else {
+        return zxerr_no_data;
     }
 }
 
