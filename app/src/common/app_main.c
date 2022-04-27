@@ -105,6 +105,7 @@ void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
     }
 
     MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * path_len);
+    hdPath_len = path_len;
 }
 
 void extract_default_path(uint32_t rx, uint32_t offset) {
