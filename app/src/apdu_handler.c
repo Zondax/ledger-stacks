@@ -97,10 +97,8 @@ __Z_INLINE void handleSignJwtSecp256K1(volatile uint32_t *flags, volatile uint32
     // check first for the expected path at initialization
     if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
         extract_identity_path(rx, OFFSET_DATA);
-        zemu_log("IDENTITY PATH EXTRACTED\n");
     }
 
-    zemu_log("CALLING SIGN METHOD\n");
     SignSecp256K1(flags, tx, rx);
 }
 
