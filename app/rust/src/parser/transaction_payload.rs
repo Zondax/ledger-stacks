@@ -620,9 +620,8 @@ impl<'a> TransactionPayload<'a> {
 
 #[cfg(test)]
 mod test {
-    extern crate std;
     use super::*;
-    use std::vec::Vec;
+    use std::prelude::v1::*;
 
     #[test]
     fn test_transaction_payload_tokens() {

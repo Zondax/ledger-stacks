@@ -29,6 +29,7 @@ extern "C" {
 #define CHECKSUM_LENGTH             4
 
 extern uint32_t hdPath[HDPATH_LEN_DEFAULT];
+extern uint32_t hdPath_len;
 
 extern address_kind_e addressKind;
 

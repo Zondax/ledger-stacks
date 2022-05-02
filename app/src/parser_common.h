@@ -72,6 +72,7 @@ typedef enum {
     parser_invalid_address,
     parser_invalid_token_transfer_type,
     parser_invalid_bytestr_message,
+    parser_invalid_jwt,
     parser_crypto_error,
 } parser_error_t;
 
@@ -80,6 +81,14 @@ typedef struct {
     uint16_t bufferLen;
     uint16_t offset;
 } parser_context_t;
+
+typedef enum _TransactionType {
+    Transaction,
+    Message,
+    Jwt,
+    Invalid
+} transaction_type_t;
+
 
 #ifdef __cplusplus
 }

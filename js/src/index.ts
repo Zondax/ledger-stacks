@@ -165,7 +165,7 @@ export default class BlockstackApp {
             .then(processGetAddrResponse, processErrorResponse);
     }
 
-    async signSendChunk(chunkIdx: number, chunkNum: number, chunk: Buffer): Promise<ResponseSign> {
+    async signSendChunk(chunkIdx: number, chunkNum: number, chunk: Buffer, ins: number): Promise<ResponseSign> {
         let payloadType = PAYLOAD_TYPE.ADD;
         if (chunkIdx === 1) {
             payloadType = PAYLOAD_TYPE.INIT;
@@ -175,7 +175,7 @@ export default class BlockstackApp {
         }
 
         return this.transport
-            .send(CLA, INS.SIGN_SECP256K1, payloadType, 0, chunk, [
+            .send(CLA, ins, payloadType, 0, chunk, [
                 LedgerError.NoErrors,
                 LedgerError.DataIsInvalid,
                 LedgerError.BadKeyHandle,
@@ -228,7 +228,7 @@ export default class BlockstackApp {
 
     async sign(path: string, message: Buffer) {
         return this.signGetChunks(path, message).then(chunks => {
-            return this.signSendChunk(1, chunks.length, chunks[0]).then(async response => {
+            return this.signSendChunk(1, chunks.length, chunks[0], INS.SIGN_SECP256K1).then(async response => {
                 let result = {
                     returnCode: response.returnCode,
                     errorMessage: response.errorMessage,
@@ -238,7 +238,7 @@ export default class BlockstackApp {
                 };
                 for (let i = 1; i < chunks.length; i += 1) {
                     // eslint-disable-next-line no-await-in-loop
-                    result = await this.signSendChunk(1 + i, chunks.length, chunks[i]);
+                    result = await this.signSendChunk(1 + i, chunks.length, chunks[i], INS.SIGN_SECP256K1);
                     if (result.returnCode !== LedgerError.NoErrors) {
                         break;
                     }
@@ -252,8 +252,9 @@ export default class BlockstackApp {
         const len = message.length
         const stacks_message = "\x19Stacks Signed Message:\n" + `${len}` + message
         const blob = Buffer.from(stacks_message)
+        const ins = INS.SIGN_SECP256K1
         return this.signGetChunks(path, blob).then(chunks => {
-            return this.signSendChunk(1, chunks.length, chunks[0]).then(async response => {
+            return this.signSendChunk(1, chunks.length, chunks[0], ins).then(async response => {
                 let result = {
                     returnCode: response.returnCode,
                     errorMessage: response.errorMessage,
@@ -263,7 +264,32 @@ export default class BlockstackApp {
                 };
                 for (let i = 1; i < chunks.length; i += 1) {
                     // eslint-disable-next-line no-await-in-loop
-                    result = await this.signSendChunk(1 + i, chunks.length, chunks[i]);
+                    result = await this.signSendChunk(1 + i, chunks.length, chunks[i], ins);
+                    if (result.returnCode !== LedgerError.NoErrors) {
+                        break;
+                    }
+                }
+                return result;
+            }, processErrorResponse);
+        }, processErrorResponse);
+    }
+
+    async sign_jwt(path: string, message: string) {
+        const len = message.length
+        const blob = Buffer.from(message)
+        const ins = INS.SIGN_JWT_SECP256K1
+        return this.signGetChunks(path, blob).then(chunks => {
+            return this.signSendChunk(1, chunks.length, chunks[0], ins).then(async response => {
+                let result = {
+                    returnCode: response.returnCode,
+                    errorMessage: response.errorMessage,
+                    postSignHash: null as null | Buffer,
+                    signatureCompact: null as null | Buffer,
+                    signatureDER: null as null | Buffer,
+                };
+                for (let i = 1; i < chunks.length; i += 1) {
+                    // eslint-disable-next-line no-await-in-loop
+                    result = await this.signSendChunk(1 + i, chunks.length, chunks[i], ins);
                     if (result.returnCode !== LedgerError.NoErrors) {
                         break;
                     }

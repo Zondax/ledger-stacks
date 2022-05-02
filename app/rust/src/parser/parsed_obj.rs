@@ -1,15 +1,17 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
+
+use super::Jwt;
 use super::{error::ParserError, transaction::Transaction, Message};
-use crate::{bolos::c_zemu_log_stack, check_canary};
-use nom::error::ErrorKind;
 
 use core::mem::ManuallyDrop;
 
-#[repr(C)]
+#[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Tag {
     Transaction,
     Message,
+    Jwt,
+    Invalid,
 }
 
 // safety: this is memory allocated in C and last the application lifetime
@@ -19,6 +21,7 @@ pub enum Tag {
 pub union Obj<'a> {
     tx: ManuallyDrop<Transaction<'a>>,
     msg: ManuallyDrop<Message<'a>>,
+    jwt: ManuallyDrop<Jwt<'a>>,
 }
 
 #[repr(C)]
@@ -33,12 +36,17 @@ impl<'a> ParsedObj<'a> {
             return Err(ParserError::parser_no_data);
         }
         // we expect a transaction
-        let mut tag = Tag::Transaction;
+        let tag;
 
         if Message::is_message(data) {
             tag = Tag::Message;
+        } else if Jwt::is_jwt(data) {
+            tag = Tag::Jwt;
+        } else {
+            tag = Tag::Transaction;
         }
-        let obj = Obj::from_bytes(data)?;
+
+        let obj = Obj::from_bytes(data, tag)?;
         Ok(Self { tag, obj })
     }
 
@@ -48,14 +56,18 @@ impl<'a> ParsedObj<'a> {
         }
 
         // we expect a transaction
-        self.tag = Tag::Transaction;
+        self.tag = Tag::Invalid;
 
         unsafe {
-            if !Message::is_message(data) {
-                self.obj.read_tx(data)
-            } else {
+            if Message::is_message(data) {
                 self.tag = Tag::Message;
                 self.obj.read_msg(data)
+            } else if Jwt::is_jwt(data) {
+                self.tag = Tag::Jwt;
+                self.obj.read_jwt(data)
+            } else {
+                self.tag = Tag::Transaction;
+                self.obj.read_tx(data)
             }
         }
     }
@@ -64,7 +76,9 @@ impl<'a> ParsedObj<'a> {
         unsafe {
             match self.tag {
                 Tag::Transaction => self.obj.transaction().num_items(),
-                Tag::Message => self.obj.message().num_items(),
+                Tag::Message => Ok(self.obj.message().num_items()),
+                Tag::Jwt => Ok(self.obj.jwt().num_items()),
+                _ => Err(ParserError::parser_unexpected_error),
             }
         }
     }
@@ -87,6 +101,8 @@ impl<'a> ParsedObj<'a> {
                     .obj
                     .message()
                     .get_item(display_idx, key, value, page_idx),
+                Tag::Jwt => self.obj.jwt().get_item(display_idx, key, value, page_idx),
+                _ => Err(ParserError::parser_unexpected_error),
             }
         }
     }
@@ -94,10 +110,19 @@ impl<'a> ParsedObj<'a> {
     pub fn is_transaction(&self) -> bool {
         matches!(self.tag, Tag::Transaction)
     }
+
     // For now we support only ByteString messages
     // but this later new data types could be to added
     pub fn is_message(&self) -> bool {
         matches!(self.tag, Tag::Message)
+    }
+
+    pub fn is_jwt(&self) -> bool {
+        matches!(self.tag, Tag::Jwt)
+    }
+
+    pub fn get_type(&mut self) -> Tag {
+        self.tag
     }
 
     #[inline(always)]
@@ -121,9 +146,18 @@ impl<'a> ParsedObj<'a> {
         }
     }
 
+    pub fn jwt(&mut self) -> Option<&mut Jwt<'a>> {
+        unsafe {
+            if self.tag == Tag::Jwt {
+                Some(self.obj.jwt())
+            } else {
+                None
+            }
+        }
+    }
+
     #[cfg(any(test, fuzzing))]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
-        extern crate std;
         use std::*;
         let mut key = [0u8; 64];
         let mut value = [0u8; 64];
@@ -150,13 +184,18 @@ impl<'a> ParsedObj<'a> {
 }
 
 impl<'a> Obj<'a> {
-    pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
-        if Message::is_message(data) {
-            let msg = ManuallyDrop::new(Message::from_bytes(data)?);
-            Ok(Self { msg })
-        } else {
-            let tx = ManuallyDrop::new(Transaction::from_bytes(data)?);
-            Ok(Self { tx })
+    pub fn from_bytes(data: &'a [u8], tag: Tag) -> Result<Self, ParserError> {
+        match tag {
+            Tag::Transaction => Ok(Self {
+                tx: ManuallyDrop::new(Transaction::from_bytes(data)?),
+            }),
+            Tag::Message => Ok(Self {
+                msg: ManuallyDrop::new(Message::from_bytes(data)?),
+            }),
+            Tag::Jwt => Ok(Self {
+                jwt: ManuallyDrop::new(Jwt::from_bytes(data)?),
+            }),
+            _ => Err(ParserError::parser_unexpected_type),
         }
     }
     pub unsafe fn read_tx(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
@@ -167,6 +206,10 @@ impl<'a> Obj<'a> {
         (&mut *self.msg).read(data)
     }
 
+    pub unsafe fn read_jwt(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        (&mut *self.jwt).read(data)
+    }
+
     #[inline(always)]
     pub unsafe fn transaction(&mut self) -> &mut Transaction<'a> {
         &mut *self.tx
@@ -175,22 +218,21 @@ impl<'a> Obj<'a> {
     pub unsafe fn message(&mut self) -> &mut Message<'a> {
         &mut *self.msg
     }
+
+    pub unsafe fn jwt(&mut self) -> &mut Jwt<'a> {
+        &mut *self.jwt
+    }
 }
 
 #[cfg(test)]
 mod test {
-    extern crate std;
     use serde::{Deserialize, Serialize};
-    use serde_json::{Result, Value};
-    use std::vec::Vec;
+    use std::prelude::v1::*;
 
     use super::*;
 
     use crate::parser::*;
-    use std::fs;
     use std::path::PathBuf;
-    use std::string::String;
-    use std::string::ToString;
 
     #[derive(Serialize, Deserialize)]
     struct StxTransaction {
@@ -233,6 +275,16 @@ mod test {
         let data = format!("\x19Stacks Signed Message:\n{}{}", msg.len(), msg);
         let mut parsed_obj = ParsedObj::from_bytes(data.as_bytes()).expect("Invalid input data");
         ParsedObj::validate(&mut parsed_obj).unwrap();
+    }
+
+    #[test]
+    fn read_jwt() {
+        let data = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ==";
+        let mut parsed_obj =
+            ParsedObj::from_bytes(data.as_bytes()).expect("Invalid jwt input data");
+        ParsedObj::validate(&mut parsed_obj).unwrap();
+        parsed_obj.read(data.as_bytes()).unwrap();
+        assert!(parsed_obj.tag == Tag::Jwt);
     }
 
     #[test]

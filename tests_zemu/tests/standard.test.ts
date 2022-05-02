@@ -43,6 +43,7 @@ import { AnchorMode } from '@stacks/transactions/src/constants'
 //import {recoverPublicKey} from "noble-secp256k1";
 
 const sha512_256 = require('js-sha512').sha512_256
+const sha256 = require('js-sha256').sha256
 const BN = require('bn.js')
 
 const Resolve = require('path').resolve
@@ -526,6 +527,62 @@ describe('Standard', function () {
       }
       //@ts-ignore
       const signatureOk = ec.verify(msgHash, signature_obj, testPublicKey, "hex");
+      expect(signatureOk).toEqual(true);
+    } finally {
+      await sim.close()
+    }
+  })
+
+ test.each(models)(`sign_jwt`, async function (m) {
+    const sim = new Zemu(m.path)
+    const path = "m/888'/0'/0'/1"
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new BlockstackApp(sim.getTransport())
+
+      const jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ=="
+
+      const pkResponse = await app.getIdentityPubKey(path)
+
+      // Check the signature
+      const signatureRequest = app.sign_jwt(path, jwt)
+
+      // Wait until we are not in the main men
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_jwt`)
+
+      const signature = await signatureRequest
+
+      console.log(signature)
+      expect(signature.returnCode).toEqual(0x9000)
+      expect(signature.errorMessage).toEqual('No errors')
+
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const testPublicKey = pkResponse.publicKey.toString('hex')
+      console.log('publicKey ', testPublicKey)
+
+      const jwt_hash = sha256(jwt)
+
+      //Verify signature
+
+      // Verify we sign the same hash
+      const postSignHash = signature.postSignHash.toString('hex')
+      console.log("postSignHash: ", postSignHash)
+
+      expect(jwt_hash).toEqual(postSignHash);
+
+      const ec = new EC("secp256k1");
+      const len = jwt.length
+      const sig = signature.signatureVRS.toString('hex')
+      const signature_obj = {
+        r: sig.substr(2, 64),
+        s: sig.substr(66, 64),
+      }
+      //@ts-ignore
+      const signatureOk = ec.verify(postSignHash, signature_obj, testPublicKey, "hex");
       expect(signatureOk).toEqual(true);
     } finally {
       await sim.close()

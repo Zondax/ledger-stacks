@@ -35,6 +35,7 @@
 #define INS_GET_ADDR_SECP256K1          0x01
 #define INS_SIGN_SECP256K1              0x02
 #define INS_GET_AUTH_PUBKEY             0x03
+#define SIGN_JWT_SECP256K1              0x04
 
 void app_init();
 

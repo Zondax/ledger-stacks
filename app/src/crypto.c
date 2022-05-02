@@ -25,9 +25,7 @@
 uint8_t version;
 
 uint32_t hdPath[HDPATH_LEN_DEFAULT];
-
-
-uint16_t crypto_getAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len, uint32_t path_len);
+uint32_t hdPath_len;
 
 bool isTestnet() {
     return hdPath[0] == HDPATH_0_TESTNET &&
@@ -173,7 +171,6 @@ zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t
     return err;
 }
 
-
 bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
 
     if (pubKeyLen < CX_RIPEMD160_SIZE || pubKeyHash == NULL)
@@ -244,7 +241,7 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
             // Generate keys
             os_perso_derive_node_bip32(CX_CURVE_256K1,
                                        hdPath,
-                                       HDPATH_LEN_DEFAULT,
+                                       hdPath_len,
                                        privateKeyData, NULL);
 
             cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);

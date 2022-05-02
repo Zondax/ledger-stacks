@@ -62,7 +62,7 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
     crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
 
     // Checks if the data being processed is a transaction and if so, verify this device is allowed to sign this transaction
-    if ( _is_transaction(&parser_state)) {
+    if ( parser_get_transaction_type() == Transaction ) {
         if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
         return parser_invalid_auth_type;
     }
@@ -166,8 +166,8 @@ void parser_resetState() {
     parser_deallocate();
 }
 
-uint8_t parser_is_transaction() {
-    return _is_transaction(&parser_state);
+transaction_type_t parser_get_transaction_type(){
+    return _transaction_type(&parser_state);
 }
 
 const char *parser_getErrorDescription(parser_error_t err) {
@@ -248,6 +248,10 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Value out of range";
         case parser_invalid_address:
             return "Invalid address format";
+        case parser_invalid_bytestr_message:
+            return "Invalid message signing format";
+        case parser_invalid_jwt:
+            return "Invalid json web token";
         default:
             return "Unrecognized error code";
     }
