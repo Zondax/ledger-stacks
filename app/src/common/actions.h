@@ -150,7 +150,11 @@ __Z_INLINE void app_sign() {
         // which is the hash of the message or jwt
         memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
     } else {
-       err = zxerr_no_data;
+        err = zxerr_no_data;
+        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
+        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        return;
     }
 
     if (replyLen == 0) {
