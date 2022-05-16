@@ -139,11 +139,11 @@ describe('Standard', function () {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new BlockstackApp(sim.getTransport())
 
-      const response = await app.getIdentityPubKey("m/888'/0'/0'/1") //m/888'/0'/0'/<account>
+      const response = await app.getIdentityPubKey("m/888'/0'/19") //m/888'/0'/<account>
       console.log(response)
       expect(response.returnCode).toEqual(0x9000)
 
-      const expectedPublicKey = '023b90e57cf8f868d9f6824d39404b9579f990e2e6e4e7a09566c346b48de57b97'
+      const expectedPublicKey = '02ab551821f7a7373b40b5f53547096df9ddd1c6dd8e410f8a87f6cacc7a4314cc'
 
       expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey)
     } finally {
@@ -535,7 +535,7 @@ describe('Standard', function () {
 
  test.each(models)(`sign_jwt`, async function (m) {
     const sim = new Zemu(m.path)
-    const path = "m/888'/0'/0'/1"
+    const path = "m/888'/0'/1"
 
     try {
       await sim.start({ ...defaultOptions, model: m.name })
