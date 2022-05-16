@@ -25,8 +25,8 @@ extern "C" {
 #define CLA                  0x09
 
 #define HDPATH_LEN_DEFAULT   5
-// support m/888'/0'/0'/<account> path
-#define HDPATH_LEN_AUTH      4
+// support m/888'/0'/<account> path
+#define HDPATH_LEN_AUTH      3
 
 #define HDPATH_0_DEFAULT     (0x80000000u | 0x2cu)
 #define HDPATH_1_DEFAULT     (0x80000000u | 5757)
@@ -36,7 +36,6 @@ extern "C" {
 
 #define HDPATH_0_AUTH        (0x80000000u | 888)
 #define HDPATH_1_AUTH        (0x80000000u | 0)
-#define HDPATH_2_AUTH        (0x80000000u | 0)
 
 #define HDPATH_0_ALTERNATIVE  (0x80000000u | 5757)
 

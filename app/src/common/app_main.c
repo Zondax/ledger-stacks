@@ -132,8 +132,7 @@ void extract_identity_path(uint32_t rx, uint32_t offset) {
 
     // validate
     const bool identity_path = hdPath[0] == HDPATH_0_AUTH &&
-                               hdPath[1] == HDPATH_1_AUTH &&
-                               hdPath[2] == HDPATH_2_AUTH;
+                               hdPath[1] == HDPATH_1_AUTH;
     if (!identity_path)
         THROW(APDU_CODE_DATA_INVALID);
 
