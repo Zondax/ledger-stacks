@@ -14,8 +14,9 @@
  *  limitations under the License.
  ******************************************************************************* */
 
-import Zemu, { DEFAULT_START_OPTIONS, DeviceModel } from '@zondax/zemu'
+import Zemu, { DEFAULT_START_OPTIONS } from '@zondax/zemu'
 import BlockstackApp from '@zondax/ledger-blockstack'
+import { APP_SEED, models } from './common'
 
 import {
   AddressVersion,
@@ -46,13 +47,6 @@ const sha512_256 = require('js-sha512').sha512_256
 const sha256 = require('js-sha256').sha256
 const BN = require('bn.js')
 
-const Resolve = require('path').resolve
-const APP_PATH_S = Resolve('../app/output/app_s.elf')
-const APP_PATH_X = Resolve('../app/output/app_x.elf')
-const APP_PATH_SP = Resolve('../app/output/app_s2.elf')
-
-const APP_SEED = 'equip will roof matter pink blind book anxiety banner elbow sun young'
-
 const defaultOptions = {
   ...DEFAULT_START_OPTIONS,
   logging: true,
@@ -61,12 +55,6 @@ const defaultOptions = {
 }
 
 jest.setTimeout(60000)
-
-const models: DeviceModel[] = [
-  { name: 'nanos', prefix: 'S', path: APP_PATH_S },
-  { name: 'nanox', prefix: 'X', path: APP_PATH_X },
-  { name: 'nanosp', prefix: 'SP', path: APP_PATH_SP },
-]
 
 beforeAll(async () => {
   await Zemu.checkAndPullImage()
