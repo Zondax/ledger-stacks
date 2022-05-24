@@ -53,9 +53,7 @@ ifndef COIN
 COIN=STX
 endif
 
-APPVERSION_M=0
-APPVERSION_N=22
-APPVERSION_P=6
+include $(CURDIR)/Makefile.version
 
 $(info COIN  = [$(COIN)])
 
