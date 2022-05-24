@@ -147,9 +147,19 @@ zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t
             cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);
             cx_ecfp_init_public_key(CX_CURVE_256K1, NULL, 0, &cx_publicKey);
             cx_ecfp_generate_pair(CX_CURVE_256K1, &cx_publicKey, &cx_privateKey, 1);
+
+            // Format pubkey
+            for (int i = 0; i < 32; i++) {
+                pubKey[i] = cx_publicKey.W[64 - i];
+            }
+            cx_publicKey.W[0] = cx_publicKey.W[64] & 1 ? 0x03 : 0x02; // "Compress" public key in place
+            if ((cx_publicKey.W[32] & 1) != 0) {
+                pubKey[31] |= 0x80;
+            }
+            MEMCPY(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
         }
         CATCH_ALL {
-            err = zxerr_unknown;
+            err = zxerr_ledger_api_error;
         }
         FINALLY {
             MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
@@ -158,16 +168,6 @@ zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t
     }
     END_TRY;
 
-    // Format pubkey
-    for (int i = 0; i < 32; i++) {
-        pubKey[i] = cx_publicKey.W[64 - i];
-    }
-    cx_publicKey.W[0] = cx_publicKey.W[64] & 1 ? 0x03 : 0x02; // "Compress" public key in place
-    if ((cx_publicKey.W[32] & 1) != 0) {
-        pubKey[31] |= 0x80;
-    }
-
-    MEMCPY(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
     return err;
 }
 
@@ -234,6 +234,7 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
 
     signature_t *const signature = (signature_t *) buffer;
 
+    zxerr_t zxerr = zxerr_ok;
     BEGIN_TRY
     {
         TRY
@@ -257,8 +258,9 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
                                             &info);
 
         }
-        CATCH_OTHER(e) {
+        CATCH_ALL {
             signatureLength = 0;
+            zxerr = zxerr_ledger_api_error;
         };
         FINALLY {
             MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
@@ -267,8 +269,8 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
     }
     END_TRY;
 
-    if (signatureLength == 0) {
-        return zxerr_ledger_api_error;
+    if(zxerr != zxerr_ok) {
+        return zxerr;
     }
 
     err_convert_e err = convertDERtoRSV(signature->der_signature, info,  signature->r, signature->s, &signature->v);
@@ -283,7 +285,7 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
                sizeof_field(signature_t, post_sighash) +
                signatureLength;
 
-    return zxerr_ok;
+    return zxerr;
 }
 
 #endif
