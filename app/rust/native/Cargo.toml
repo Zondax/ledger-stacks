@@ -9,7 +9,8 @@ resolver = "2"
 
 [lib]
 name = "rslib"
-crate-type = ["staticlib"]
+crate-type = ["rlib"]
+path = "../src/lib.rs"
 
 [dependencies]
 no-std-compat = { version = "0.4.1" }
