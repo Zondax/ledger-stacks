@@ -1,6 +1,13 @@
 name: Build
-on: [ push ]
-
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    branches:
+      - master
+      - develop
 jobs:
   configure:
     runs-on: ubuntu-latest
