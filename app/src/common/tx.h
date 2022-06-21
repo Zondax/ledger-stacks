@@ -78,4 +78,4 @@ uint16_t tx_last_tx_block(uint8_t ** last_tx_block);
 // for signing a multisig transaction
 uint16_t tx_previous_signer_data(uint8_t **data);
 
-uint8_t tx_is_transaction();
+transaction_type_t tx_get_transaction_type();

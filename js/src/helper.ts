@@ -1,4 +1,6 @@
 const HARDENED = 0x80000000;
+const DEFAULT_DER_PATH_LEN = 6;
+const IDENTITY_DER_PATH_LEN = 4; // m/888'/0'/<account>
 
 export function serializePath(path: string) {
   if (!path.startsWith('m')) {
@@ -7,11 +9,15 @@ export function serializePath(path: string) {
 
   const pathArray = path.split('/');
 
-  if (pathArray.length !== 6) {
-    throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\")");
+  let allocSize = 0;
+
+  if (pathArray.length === DEFAULT_DER_PATH_LEN || pathArray.length === IDENTITY_DER_PATH_LEN  ) {
+      allocSize = (pathArray.length - 1) * 4;
+  } else {
+      throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\" or \"m/888'/0'/<account>\")");
   }
 
-  const buf = Buffer.alloc(20);
+  const buf = Buffer.alloc(allocSize);
 
   for (let i = 1; i < pathArray.length; i += 1) {
     let value = 0;

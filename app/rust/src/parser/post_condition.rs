@@ -570,16 +570,9 @@ impl<'a> TransactionPostCondition<'a> {
 
 #[cfg(test)]
 mod test {
-    extern crate std;
-    use serde::{Deserialize, Serialize};
-    use serde_json::{Result, Value};
 
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::string::String;
-    use std::string::ToString;
-    use std::vec::Vec;
+    use std::prelude::v1::*;
 
     #[test]
     fn test_stx_postcondition() {

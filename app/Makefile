@@ -53,9 +53,7 @@ ifndef COIN
 COIN=STX
 endif
 
-APPVERSION_M=0
-APPVERSION_N=20
-APPVERSION_P=2
+include $(CURDIR)/Makefile.version
 
 $(info COIN  = [$(COIN)])
 
@@ -63,7 +61,7 @@ ifeq ($(COIN),STX)
 # Main app configuration
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
-APPPATH = "44'/5757'" --path "5757'"
+APPPATH = "44'/5757'" --path "5757'" --path "888'/0'"
 
 else ifeq ($(COIN),STX_variant1)
 else

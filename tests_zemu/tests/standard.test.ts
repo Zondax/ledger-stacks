@@ -14,8 +14,9 @@
  *  limitations under the License.
  ******************************************************************************* */
 
-import Zemu, { DEFAULT_START_OPTIONS, DeviceModel } from '@zondax/zemu'
+import Zemu, { DEFAULT_START_OPTIONS } from '@zondax/zemu'
 import BlockstackApp from '@zondax/ledger-blockstack'
+import { APP_SEED, models } from './common'
 
 import {
   AddressVersion,
@@ -43,14 +44,8 @@ import { AnchorMode } from '@stacks/transactions/src/constants'
 //import {recoverPublicKey} from "noble-secp256k1";
 
 const sha512_256 = require('js-sha512').sha512_256
+const sha256 = require('js-sha256').sha256
 const BN = require('bn.js')
-
-const Resolve = require('path').resolve
-const APP_PATH_S = Resolve('../app/output/app_s.elf')
-const APP_PATH_X = Resolve('../app/output/app_x.elf')
-const APP_PATH_SP = Resolve('../app/output/app_s2.elf')
-
-const APP_SEED = 'equip will roof matter pink blind book anxiety banner elbow sun young'
 
 const defaultOptions = {
   ...DEFAULT_START_OPTIONS,
@@ -60,12 +55,6 @@ const defaultOptions = {
 }
 
 jest.setTimeout(60000)
-
-const models: DeviceModel[] = [
-  { name: 'nanos', prefix: 'S', path: APP_PATH_S },
-  { name: 'nanox', prefix: 'X', path: APP_PATH_X },
-  { name: 'nanosp', prefix: 'SP', path: APP_PATH_SP },
-]
 
 beforeAll(async () => {
   await Zemu.checkAndPullImage()
@@ -127,6 +116,24 @@ describe('Standard', function () {
 
       expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey)
       expect(response.address).toEqual(expectedAddr)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.each(models)(`get identify publicKey`, async function (m) {
+    const sim = new Zemu(m.path)
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new BlockstackApp(sim.getTransport())
+
+      const response = await app.getIdentityPubKey("m/888'/0'/19") //m/888'/0'/<account>
+      console.log(response)
+      expect(response.returnCode).toEqual(0x9000)
+
+      const expectedPublicKey = '02ab551821f7a7373b40b5f53547096df9ddd1c6dd8e410f8a87f6cacc7a4314cc'
+
+      expect(response.publicKey.toString('hex')).toEqual(expectedPublicKey)
     } finally {
       await sim.close()
     }
@@ -508,6 +515,62 @@ describe('Standard', function () {
       }
       //@ts-ignore
       const signatureOk = ec.verify(msgHash, signature_obj, testPublicKey, "hex");
+      expect(signatureOk).toEqual(true);
+    } finally {
+      await sim.close()
+    }
+  })
+
+ test.each(models)(`sign_jwt`, async function (m) {
+    const sim = new Zemu(m.path)
+    const path = "m/888'/0'/1"
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new BlockstackApp(sim.getTransport())
+
+      const jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ=="
+
+      const pkResponse = await app.getIdentityPubKey(path)
+
+      // Check the signature
+      const signatureRequest = app.sign_jwt(path, jwt)
+
+      // Wait until we are not in the main men
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_jwt`)
+
+      const signature = await signatureRequest
+
+      console.log(signature)
+      expect(signature.returnCode).toEqual(0x9000)
+      expect(signature.errorMessage).toEqual('No errors')
+
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const testPublicKey = pkResponse.publicKey.toString('hex')
+      console.log('publicKey ', testPublicKey)
+
+      const jwt_hash = sha256(jwt)
+
+      //Verify signature
+
+      // Verify we sign the same hash
+      const postSignHash = signature.postSignHash.toString('hex')
+      console.log("postSignHash: ", postSignHash)
+
+      expect(jwt_hash).toEqual(postSignHash);
+
+      const ec = new EC("secp256k1");
+      const len = jwt.length
+      const sig = signature.signatureVRS.toString('hex')
+      const signature_obj = {
+        r: sig.substr(2, 64),
+        s: sig.substr(66, 64),
+      }
+      //@ts-ignore
+      const signatureOk = ec.verify(postSignHash, signature_obj, testPublicKey, "hex");
       expect(signatureOk).toEqual(true);
     } finally {
       await sim.close()

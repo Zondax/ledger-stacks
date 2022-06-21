@@ -52,6 +52,7 @@ pub enum ParserError {
     parser_invalid_address,
     parser_invalid_token_transfer_type,
     parser_invalid_bytestr_message,
+    parser_invalid_jwt,
 }
 
 impl From<ErrorKind> for ParserError {

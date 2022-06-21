@@ -1,6 +1,6 @@
 {
   "name": "@zondax/ledger-blockstack",
-  "version": "0.1.0",
+  "version": "0.22.5",
   "description": "Node API for Blockstack App (Ledger Nano S/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,9 +21,8 @@
   "homepage": "https://github.com/zondax/ledger-blockstack",
   "dependencies": {
     "@babel/runtime": "^7.12.5",
-    "@ledgerhq/hw-transport": "^5.39.1",
-    "@types/ledgerhq__hw-transport": "^4.21.3",
-    "@stacks/transactions": "^1.0.1"
+    "@ledgerhq/hw-transport": "^5.51.1",
+    "@stacks/transactions": "^4.1.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.12.10",
@@ -32,12 +31,13 @@
     "@babel/plugin-transform-runtime": "^7.12.10",
     "@babel/preset-env": "^7.12.11",
     "@blockstack/prettier-config": "^0.0.6",
+    "@types/ledgerhq__hw-transport": "^4.21.3",
     "babel-eslint": "^10.1.0",
-    "bip32": "^2.0.5",
+    "bip32": "^2.0.6",
     "bip39": "^3.0.2",
     "blake2": "^4.0.0",
     "core-js": "^3.8.3",
-    "crypto-js": "4.0.0",
+    "crypto-js": "^4.0.0",
     "eslint": "^7.18.0",
     "eslint-config-airbnb-base": "^14.1.0",
     "eslint-config-prettier": "^7.2.0",

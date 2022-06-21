@@ -397,15 +397,8 @@ impl<'a> TransactionSpendingCondition<'a> {
 
 #[cfg(test)]
 mod test {
-    use serde::{Deserialize, Serialize};
-    use serde_json::{Result, Value};
-
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::string::String;
-    use std::string::ToString;
-    use std::vec::Vec;
+    use std::prelude::v1::*;
 
     #[test]
     fn test_spending_condition_p2pkh() {

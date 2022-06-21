@@ -30,7 +30,7 @@
 #include "zxmacros.h"
 
 __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
-    extractHDPath(rx, OFFSET_DATA);
+    extract_default_path(rx, OFFSET_DATA);
 
     uint8_t requireConfirmation = G_io_apdu_buffer[OFFSET_P1];
     uint8_t network = G_io_apdu_buffer[OFFSET_P2];
@@ -53,7 +53,15 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     THROW(APDU_CODE_OK);
 }
 
-__Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+__Z_INLINE void handleGetAuthPubKey(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    extract_identity_path(rx, OFFSET_DATA);
+
+    *tx = app_fill_auth_pubkey(addr_secp256k1);
+    THROW(APDU_CODE_OK);
+}
+
+__Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // process the rest of the chunk as usual
     if (!process_chunk(rx)) {
         THROW(APDU_CODE_OK);
     }
@@ -73,6 +81,25 @@ __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t 
     view_review_init(tx_getItem, tx_getNumItems, app_sign);
     view_review_show();
     *flags |= IO_ASYNCH_REPLY;
+}
+
+
+__Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // check first for the expected path at initialization
+    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
+        extract_default_path(rx, OFFSET_DATA);
+    }
+
+    SignSecp256K1(flags, tx, rx);
+}
+
+__Z_INLINE void handleSignJwtSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // check first for the expected path at initialization
+    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
+        extract_identity_path(rx, OFFSET_DATA);
+    }
+
+    SignSecp256K1(flags, tx, rx);
 }
 
 void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
@@ -97,12 +124,34 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                 }
 
                 case INS_GET_ADDR_SECP256K1: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
                     handleGetAddrSecp256K1(flags, tx, rx);
                     break;
                 }
 
+                case INS_GET_AUTH_PUBKEY: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
+                    handleGetAuthPubKey(flags, tx, rx);
+                    break;
+                }
+
                 case INS_SIGN_SECP256K1: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
                     handleSignSecp256K1(flags, tx, rx);
+                    break;
+                }
+
+                case SIGN_JWT_SECP256K1: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
+                    handleSignJwtSecp256K1(flags, tx, rx);
                     break;
                 }
 

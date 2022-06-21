@@ -3,10 +3,12 @@ on:
   push:
     branches:
       - master
+      - main
       - develop
   pull_request:
     branches:
       - master
+      - main
       - develop
 jobs:
   configure:
@@ -164,7 +166,7 @@ jobs:
 
   build_package_nanos:
     needs: [ configure, build, build_nano_S, build_nano_X,  build_nano_SP, test_zemu ]
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
       image: zondax/builder-bolos:latest
@@ -205,7 +207,7 @@ jobs:
 
   build_package_nanos_plus:
     needs: [ configure, build, build_nano_S, build_nano_X,  build_nano_SP, test_zemu ]
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
       image: zondax/builder-bolos:latest

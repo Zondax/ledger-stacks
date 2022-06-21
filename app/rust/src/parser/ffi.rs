@@ -1,8 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 #![allow(clippy::cast_ptr_alignment)]
 
-use crate::parser::{error::ParserError, ParsedObj, TransactionPostCondition};
-use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
+use crate::parser::{error::ParserError, ParsedObj, Tag};
 
 // extern c function for formatting to fixed point number
 extern "C" {
@@ -242,11 +241,11 @@ pub unsafe extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> u8 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _is_transaction(tx_t: *const parse_tx_t) -> u8 {
+pub unsafe extern "C" fn _transaction_type(tx_t: *const parse_tx_t) -> Tag {
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
-        obj.is_transaction() as u8
+        obj.get_type()
     } else {
-        false as _
+        Tag::Invalid
     }
 }
 
