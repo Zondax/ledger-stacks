@@ -5,6 +5,7 @@ use nom::{
     combinator::{iterator, map_parser},
     error::ErrorKind,
     number::complete::{be_i128, be_u128, be_u32, be_u64, le_u8},
+    sequence::tuple,
 };
 
 use arrayvec::ArrayVec;
@@ -178,6 +179,7 @@ impl<'a> Arguments<'a> {
         while idx < num_args as usize {
             let (bytes, value) =
                 Value::from_bytes(leftover).map_err(|_| ParserError::parser_invalid_argument_id)?;
+
             leftover = bytes;
             if idx == at {
                 return Ok(value);
@@ -197,7 +199,8 @@ impl<'a> TransactionContractCall<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (raw, _) = StacksAddress::from_bytes(bytes)?;
-        let (raw2, _) = permutation((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
+        // get contract name and function name.
+        let (raw2, _) = tuple((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
         let (leftover, _) = Arguments::from_bytes(raw2)?;
         let len = bytes.len() - leftover.len();
         let (_, data) = take(len)(bytes)?;
