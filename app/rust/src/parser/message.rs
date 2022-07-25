@@ -3,8 +3,8 @@ use super::error::ParserError;
 use crate::zxformat::{pageString, Writer};
 use core::fmt::Write;
 
-// The lenght of \x19Stacks Signed Message:
-const BYTE_STRING_HEADER_LEN: usize = "\x19Stacks Signed Message:\n".as_bytes().len();
+// The lenght of \x18Stacks Signed Message:
+const BYTE_STRING_HEADER_LEN: usize = "\x18Stacks Signed Message:\n".as_bytes().len();
 
 // The max number of characters we are going to show on the screen
 const MAX_CHARS_TO_SHOW_FROM_MSG: usize = 60;
@@ -68,8 +68,7 @@ impl<'a> ByteString<'a> {
 
     // Checks if the input data contain the byte_string heades at the first bytes
     fn contain_header(data: &[u8]) -> bool {
-        //let msg_bytes = Self::header().as_bytes();
-        let msg_bytes = "\x19Stacks Signed Message:\n".as_bytes();
+        let msg_bytes = "\x18Stacks Signed Message:\n".as_bytes();
         data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == msg_bytes
     }
 
@@ -151,7 +150,7 @@ mod test {
     use super::*;
 
     fn built_message(len: usize, data: &str) -> String {
-        format!("\x19Stacks Signed Message:\n{}{}", len, data)
+        format!("\x18Stacks Signed Message:\n{}{}", len, data)
     }
 
     #[test]
@@ -202,13 +201,13 @@ mod test {
 
     #[test]
     fn test_only_text() {
-        let msg = ByteString::from_bytes("\x19Stacks Signed Message:\nHello_world".as_bytes());
+        let msg = ByteString::from_bytes("\x18Stacks Signed Message:\nHello_world".as_bytes());
         assert!(msg.is_err());
     }
 
     #[test]
     fn test_only_header() {
-        let msg = ByteString::from_bytes("\x19Stacks Signed Message:\n".as_bytes());
+        let msg = ByteString::from_bytes("\x18Stacks Signed Message:\n".as_bytes());
         assert!(msg.is_err());
     }
 }
