@@ -108,9 +108,9 @@ impl<'a> Value<'a> {
             ValueId::BoolTrue | ValueId::BoolFalse => 0,
             ValueId::StandardPrincipal => HASH160_LEN as usize + 1,
             ValueId::ContractPrincipal => {
-                let contract = ContractPrincipal::read_as_bytes(raw)
+                let (_, contract_bytes) = ContractPrincipal::read_as_bytes(raw)
                     .map_err(|_| ParserError::parser_unexpected_value)?;
-                contract.0.len()
+                contract_bytes.len()
             }
             ValueId::OptionalNone => 0,
             ValueId::List => Self::list_len(depth, raw).map(|res| res.1)?,
@@ -138,6 +138,7 @@ impl<'a> Value<'a> {
                 Self::value_len_impl(depth, raw).map(|res| res.1)?
             }
         };
+
         Ok(((), len + 1))
     }
 
