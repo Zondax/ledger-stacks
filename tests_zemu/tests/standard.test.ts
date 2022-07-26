@@ -505,7 +505,7 @@ describe('Standard', function () {
       //Verify signature
       const ec = new EC("secp256k1");
       const len = msg.length
-      const data = "\x18Stacks Signed Message:\n" + `${len}` + msg
+      const data = "\x17Stacks Signed Message:\n" + `${len}` + msg
       console.log(data)
       const msgHash = sha512_256(data);
       const sig = signature.signatureVRS.toString('hex')
