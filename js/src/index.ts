@@ -250,7 +250,7 @@ export default class BlockstackApp {
 
     async sign_msg(path: string, message: string) {
         const len = message.length
-        const stacks_message = "\x18Stacks Signed Message:\n" + `${len}` + message
+        const stacks_message = "\x17Stacks Signed Message:\n" + `${len}` + message
         const blob = Buffer.from(stacks_message)
         const ins = INS.SIGN_SECP256K1
         return this.signGetChunks(path, blob).then(chunks => {
