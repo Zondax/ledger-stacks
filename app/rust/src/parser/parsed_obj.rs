@@ -272,7 +272,7 @@ mod test {
     #[test]
     fn read_message() {
         let msg = "Hello World";
-        let data = format!("\x18Stacks Signed Message:\n{}{}", msg.len(), msg);
+        let data = format!("\x17Stacks Signed Message:\n{}{}", msg.len(), msg);
         let mut parsed_obj = ParsedObj::from_bytes(data.as_bytes()).expect("Invalid input data");
         ParsedObj::validate(&mut parsed_obj).unwrap();
     }

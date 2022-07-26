@@ -127,7 +127,8 @@ impl<'a> ByteString<'a> {
                 .write_str("Sign Message")
                 .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
 
-            pageString(out_value, &self.data[self.at..self.len], page_idx)
+            let len = self.at + self.len;
+            pageString(out_value, &self.data[self.at..len], page_idx)
         } else {
             Err(ParserError::parser_display_idx_out_of_range)
         }
