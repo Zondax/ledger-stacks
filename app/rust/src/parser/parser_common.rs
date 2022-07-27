@@ -268,15 +268,10 @@ impl<'a> ContractPrincipal<'a> {
     }
 
     pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
-        if bytes.len() > HASH160_LEN + 1 {
-            let name_len = bytes[HASH160_LEN + 1];
-            // we take all the bytes that comprises a contract principal
-            // they are 1-byte hash mode, 20-bytes hash, 1-byte name length, upto 128-byte name length
-            let (raw, principal) = take(HASH160_LEN + 1 + name_len as usize + 1)(bytes)?;
-            Ok((raw, principal))
-        } else {
-            Err(nom::Err::Error(ParserError::parser_value_out_of_range))
-        }
+        let (rem, _) = Self::from_bytes(bytes)?;
+        let len = bytes.len() - rem.len();
+        let (rem, self_bytes) = take(len)(bytes)?;
+        Ok((rem, self_bytes))
     }
 }
 

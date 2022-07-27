@@ -159,8 +159,8 @@ impl<'a> ParsedObj<'a> {
     #[cfg(any(test, fuzzing))]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
         use std::*;
-        let mut key = [0u8; 64];
-        let mut value = [0u8; 64];
+        let mut key = [0u8; 100];
+        let mut value = [0u8; 100];
         let mut page_idx = 0;
         let mut display_idx = 0;
 
@@ -272,7 +272,7 @@ mod test {
     #[test]
     fn read_message() {
         let msg = "Hello World";
-        let data = format!("\x19Stacks Signed Message:\n{}{}", msg.len(), msg);
+        let data = format!("\x17Stacks Signed Message:\n{}{}", msg.len(), msg);
         let mut parsed_obj = ParsedObj::from_bytes(data.as_bytes()).expect("Invalid input data");
         ParsedObj::validate(&mut parsed_obj).unwrap();
     }
@@ -534,7 +534,6 @@ mod test {
             .unwrap();
         let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[0..sponsor_addrs.len()]).unwrap();
         assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
-        //assert!(ParsedObj::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -576,8 +575,6 @@ mod test {
         let origin_addr = origin.signer_address(transaction.version).unwrap();
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
         assert_eq!(json.sender, origin_addr);
-
-        //assert!(ParsedObj::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -629,8 +626,6 @@ mod test {
         let addr = condition.get_principal_address().unwrap();
         let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
         assert_eq!(json.post_condition_principal, Some(principal_addr.into()));
-
-        //assert!(ParsedObj::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -680,7 +675,6 @@ mod test {
         let sponsor_addrs = sponsor.signer_address(transaction.version).unwrap();
         let sponsor_addrs = core::str::from_utf8(&sponsor_addrs[..sponsor_addrs.len()]).unwrap();
         assert_eq!(json.sponsor_addrs.unwrap(), sponsor_addrs);
-        //assert!(ParsedObj::validate(&mut transaction).is_ok());
     }
 
     #[test]
@@ -732,7 +726,17 @@ mod test {
         let addr = condition.get_principal_address().unwrap();
         let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
         assert_eq!(json.post_condition_principal, Some(principal_addr.into()));
+    }
 
-        //assert!(ParsedObj::validate(&mut transaction).is_ok());
+    #[test]
+    fn parse_contract_call_tx() {
+        let bytes_str = "0000000001040061e115b4463fb27425e80fa8e3e2616b4e5a17e40000000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003020000000200021661e115b4463fb27425e80fa8e3e2616b4e5a17e40500000000000f4240010316e685b016b3b6cd9ebf35f38e5ae29392e2acd51d0a616c65782d7661756c7416e685b016b3b6cd9ebf35f38e5ae29392e2acd51d176167653030302d676f7665726e616e63652d746f6b656e04616c657803000000001a6e83360216e685b016b3b6cd9ebf35f38e5ae29392e2acd51d11737761702d68656c7065722d76312d30330b737761702d68656c706572000000040616e685b016b3b6cd9ebf35f38e5ae29392e2acd51d0a746f6b656e2d777374780616e685b016b3b6cd9ebf35f38e5ae29392e2acd51d176167653030302d676f7665726e616e63652d746f6b656e0100000000000000000000000005f5e1000a010000000000000000000000001a6e8336";
+        let bytes = hex::decode(&bytes_str).unwrap();
+
+        let mut transaction = ParsedObj::from_bytes(&bytes).unwrap();
+        transaction.read(&bytes).unwrap();
+        ParsedObj::validate(&mut transaction).unwrap();
+        let transaction = transaction.transaction().unwrap();
+        assert_eq!(transaction.origin_fee(), 0);
     }
 }
