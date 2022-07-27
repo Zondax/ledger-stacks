@@ -29,6 +29,8 @@
 #include "coin.h"
 #include "zxmacros.h"
 
+#define REPLY_APDU 0x03
+
 __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     extract_default_path(rx, OFFSET_DATA);
 
@@ -43,7 +45,7 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
         app_fill_address(addr_secp256k1);
 
         view_review_init(addr_getItem, addr_getNumItems, app_reply_address);
-        view_review_show();
+        view_review_show(REPLY_APDU);
 
         *flags |= IO_ASYNCH_REPLY;
         return;
@@ -79,7 +81,7 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
 
     CHECK_APP_CANARY()
     view_review_init(tx_getItem, tx_getNumItems, app_sign);
-    view_review_show();
+    view_review_show(REPLY_APDU);
     *flags |= IO_ASYNCH_REPLY;
 }
 
