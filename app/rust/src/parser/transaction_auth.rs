@@ -1,10 +1,5 @@
-use nom::{
-    bytes::complete::take,
-    error::ErrorKind,
-    number::complete::{be_u64, le_u8},
-};
+use nom::number::complete::le_u8;
 
-use crate::bolos::c_zemu_log_stack;
 use crate::check_canary;
 use crate::parser::{
     error::ParserError,

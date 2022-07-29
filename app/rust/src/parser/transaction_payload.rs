@@ -1,9 +1,6 @@
-use core::fmt::{self, Write};
+use core::fmt::Write;
 use nom::{
-    branch::permutation,
     bytes::complete::take,
-    combinator::{iterator, map_parser},
-    error::ErrorKind,
     number::complete::{be_i128, be_u128, be_u32, be_u64, le_u8},
     sequence::tuple,
 };
@@ -13,15 +10,12 @@ use numtoa::NumToA;
 
 use crate::parser::error::ParserError;
 use crate::parser::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, PrincipalData,
-    StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
-    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
+    ClarityName, ContractName, PrincipalData, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
 };
 
 use crate::parser::c32;
 
-use super::value::{Value, ValueId, BIG_INT_SIZE};
-use crate::parser::ffi::fp_uint64_to_str;
+use super::value::{Value, ValueId};
 use crate::{check_canary, is_expert_mode, zxformat};
 
 pub const MAX_NUM_ARGS: u32 = 10;
