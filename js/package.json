@@ -1,24 +1,24 @@
 {
-  "name": "@zondax/ledger-blockstack",
-  "version": "0.22.8",
+  "name": "@zondax/ledger-stacks",
+  "version": "0.22.9",
   "description": "Node API for Blockstack App (Ledger Nano S/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zondax/ledger-blockstack.git"
+    "url": "git+https://github.com/zondax/ledger-stacks.git"
   },
   "keywords": [
     "Ledger",
     "Javascript",
-    "Blockstack"
+    "Stacks"
   ],
   "author": "Zondax GmbH",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/zondax/ledger-blockstack/issues"
+    "url": "https://github.com/zondax/ledger-stacks/issues"
   },
-  "homepage": "https://github.com/zondax/ledger-blockstack",
+  "homepage": "https://github.com/zondax/ledger-stacks",
   "dependencies": {
     "@babel/runtime": "^7.12.5",
     "@ledgerhq/hw-transport": "^5.51.1",

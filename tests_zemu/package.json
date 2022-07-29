@@ -10,14 +10,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Zondax/ledger-blockstack"
+    "url": "git+https://github.com/Zondax/ledger-stacks"
   },
   "keywords": [
     "Zondax",
     "Ledger"
   ],
   "dependencies": {
-    "@zondax/ledger-blockstack": "link:../js",
+    "@zondax/ledger-stacks": "link:../js",
     "@zondax/zemu": "^0.32.0"
   },
   "devDependencies": {
@@ -43,6 +43,7 @@
     "prettier": "^2.3.2",
     "secp256k1": "^4.0.2",
     "ts-jest": "^27.0.5",
-    "typescript": "^4.4.2"
+    "typescript": "^4.4.2",
+    "varuint-bitcoin": "^1.1.2"
   }
 }
