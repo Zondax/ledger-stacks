@@ -10,11 +10,7 @@ const FF_PREFIX: u8 = 0xff;
 // for more detail
 pub fn read_varint(input: &[u8]) -> Result<(&[u8], u64), nom::Err<ParserError>> {
     // read len prefix
-    #[cfg(test)]
-    std::println!("*bytes {:?}", input);
     let (rem, prefix) = le_u8(input)?;
-    #[cfg(test)]
-    std::println!("len {}", prefix);
 
     // check prefix
     match prefix {
