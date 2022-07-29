@@ -1,14 +1,10 @@
 use nom::{
     bytes::complete::take,
-    error::ErrorKind,
     number::complete::{be_u32, le_u8},
 };
 
 use super::error::ParserError;
-use super::parser_common::{
-    ClarityName, ContractName, ContractPrincipal, StacksAddress, HASH160_LEN,
-};
-use arrayvec::ArrayVec;
+use super::parser_common::{ClarityName, ContractPrincipal, HASH160_LEN};
 
 // Big ints size in bytes
 pub const BIG_INT_SIZE: usize = 16;

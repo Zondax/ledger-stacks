@@ -1,4 +1,4 @@
-use core::fmt::{self, Write};
+use core::fmt::Write;
 use nom::{
     branch::permutation,
     bytes::complete::take,
