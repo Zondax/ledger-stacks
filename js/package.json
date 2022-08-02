@@ -1,6 +1,6 @@
 {
   "name": "@zondax/ledger-stacks",
-  "version": "0.22.9",
+  "version": "0.23.0",
   "description": "Node API for Blockstack App (Ledger Nano S/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
