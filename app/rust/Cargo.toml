@@ -15,7 +15,6 @@ crate-type = ["staticlib"]
 no-std-compat = { version = "0.4.1" }
 numtoa = "0.2.4"
 arrayref = "0.3.6"
-lexical-core = { version = "0.8", features = ["parse-integers"], default-features = false }
 base64 = {version = "0.13.0", default-features = false }
 hex = { version = "0.4", default-features = false }
 

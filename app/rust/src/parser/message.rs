@@ -1,7 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
-use super::error::ParserError;
+use super::{error::ParserError, read_varint};
 use crate::zxformat::{pageString, Writer};
 use core::fmt::Write;
+use nom::bytes::complete::take;
 
 // The lenght of \x17Stacks Signed Message:
 const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().len();
@@ -52,11 +53,7 @@ impl<'a> Message<'a> {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct ByteString<'a> {
-    data: &'a [u8],
-    at: usize,
-    len: usize,
-}
+pub struct ByteString<'a>(&'a [u8]);
 
 impl<'a> ByteString<'a> {
     pub fn maybe_byte_string(data: &'a [u8]) -> bool {
@@ -69,43 +66,26 @@ impl<'a> ByteString<'a> {
         data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == msg_bytes
     }
 
-    fn msg_len(data: &'a [u8]) -> Result<(usize, usize), ParserError> {
+    // returns the message content
+    fn get_msg(data: &'a [u8]) -> Result<&'a [u8], ParserError> {
         if data.is_empty() || !data.is_ascii() {
             return Err(ParserError::parser_invalid_bytestr_message);
         }
-        let mut digit_count = 0usize;
-        let mut len;
-        for (index, c) in data.iter().enumerate() {
-            if (*c as char).is_ascii_digit() {
-                digit_count += 1;
 
-                len = lexical_core::parse::<usize>(&data[..=index])
-                    .map_err(|_| ParserError::parser_value_out_of_range)?;
+        let (rem, len) =
+            read_varint(data).map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+        let (_, message_content) = take::<_, _, ParserError>(len as usize)(rem)
+            .map_err(|_| ParserError::parser_invalid_bytestr_message)?;
 
-                let data_len = data.len() - digit_count;
-
-                // no trailing zeros
-                if len == 0 && data_len > 1 {
-                    return Err(ParserError::parser_invalid_bytestr_message);
-                }
-
-                if len == data_len {
-                    return Ok((digit_count, len));
-                }
-            } else {
-                break;
-            }
-        }
-        Err(ParserError::parser_invalid_bytestr_message)
+        Ok(message_content)
     }
 
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if !Self::contain_header(data) {
             return Err(ParserError::parser_invalid_bytestr_message);
         }
-        let (at, len) = Self::msg_len(&data[BYTE_STRING_HEADER_LEN..])?;
-        let at = BYTE_STRING_HEADER_LEN + at;
-        Ok(Self { data, at, len })
+        let message = Self::get_msg(&data[BYTE_STRING_HEADER_LEN..])?;
+        Ok(Self(message))
     }
 
     pub const fn num_items(&self) -> u8 {
@@ -127,8 +107,7 @@ impl<'a> ByteString<'a> {
                 .write_str("Sign Message")
                 .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
 
-            let len = self.at + self.len;
-            pageString(out_value, &self.data[self.at..len], page_idx)
+            pageString(out_value, self.0, page_idx)
         } else {
             Err(ParserError::parser_display_idx_out_of_range)
         }
@@ -141,15 +120,20 @@ mod test {
 
     use super::*;
 
-    fn built_message(len: usize, data: &str) -> String {
-        format!("\x17Stacks Signed Message:\n{}{}", len, data)
+    fn built_message(len: usize, data: &str) -> Vec<u8> {
+        let header = "\x17Stacks Signed Message:\n".as_bytes();
+        let mut vec = vec![];
+        vec.extend_from_slice(header);
+        vec.push(len as u8);
+        vec.extend_from_slice(data.as_bytes());
+        vec
     }
 
     #[test]
     fn test_non_ascii_byte_string() {
         let no_ascii = "Test-love: ❤️";
         let no_ascii = built_message(no_ascii.len(), no_ascii);
-        let msg = ByteString::from_bytes(no_ascii.as_bytes());
+        let msg = ByteString::from_bytes(&no_ascii);
         assert!(msg.is_err());
     }
 
@@ -157,37 +141,37 @@ mod test {
     fn test_valid_byte_string() {
         let data = "byte_string_valid";
         let m = built_message(data.len(), data);
-        let msg = ByteString::from_bytes(m.as_bytes());
+        let msg = ByteString::from_bytes(&m);
         assert!(msg.is_ok());
         let msg = msg.unwrap();
-        assert_eq!(&msg.data[msg.at..], data.as_bytes());
+        assert_eq!(msg.0, data.as_bytes());
     }
 
     #[test]
     fn test_valid_starts_with_number() {
         let data = "1_byte_string_valid";
         let m = built_message(data.len(), data);
-        let msg = ByteString::from_bytes(m.as_bytes());
+        let msg = ByteString::from_bytes(&m);
         assert!(msg.is_ok());
         let msg = msg.unwrap();
-        assert_eq!(&msg.data[msg.at..], data.as_bytes());
+        assert_eq!(msg.0, data.as_bytes());
     }
 
     #[test]
     fn test_empty_byte_string() {
         let data = "";
         let m = built_message(data.len(), data);
-        let msg = ByteString::from_bytes(m.as_bytes());
+        let msg = ByteString::from_bytes(&m);
         assert!(msg.is_ok());
         let msg = msg.unwrap();
-        assert_eq!(&msg.data[msg.at..], data.as_bytes());
+        assert_eq!(msg.0, data.as_bytes());
     }
 
     #[test]
     fn test_wrong_len_byte_string() {
         let m = "byte_string_valid";
         let m = built_message(34, m);
-        let msg = ByteString::from_bytes(m.as_bytes());
+        let msg = ByteString::from_bytes(&m);
         assert!(msg.is_err());
     }
 

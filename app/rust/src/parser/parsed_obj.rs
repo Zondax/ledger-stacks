@@ -271,9 +271,9 @@ mod test {
 
     #[test]
     fn read_message() {
-        let msg = "Hello World";
-        let data = format!("\x17Stacks Signed Message:\n{}{}", msg.len(), msg);
-        let mut parsed_obj = ParsedObj::from_bytes(data.as_bytes()).expect("Invalid input data");
+        let blob = "17537461636b73205369676e6564204d6573736167653a0a0b48656c6c6f20576f726c64";
+        let blob = hex::decode(blob).unwrap();
+        let mut parsed_obj = ParsedObj::from_bytes(&blob).expect("Invalid input data");
         ParsedObj::validate(&mut parsed_obj).unwrap();
     }
 

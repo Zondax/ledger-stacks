@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]
 
 use core::fmt::{self, Write};
-use nom::error::ParseError;
 
 use crate::parser::{fp_uint64_to_str, ParserError};
 

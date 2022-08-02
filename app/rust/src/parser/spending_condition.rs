@@ -1,17 +1,16 @@
 use nom::{
     bytes::complete::take,
-    error::ErrorKind,
-    number::complete::{be_u16, be_u32, be_u64, le_u8},
+    number::complete::{be_u16, be_u32, be_u64},
 };
 
 use arrayvec::ArrayVec;
 
+use crate::parser::c32;
 use crate::parser::error::ParserError;
 use crate::parser::parser_common::{
-    HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, SIGNATURE_LEN,
+    HashMode, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, SIGNATURE_LEN,
 };
-use crate::parser::{c32, ffi::fp_uint64_to_str};
-use crate::{bolos::c_zemu_log_stack, check_canary, zxformat};
+use crate::{check_canary, zxformat};
 
 // this includes:
 // 16-byte origin fee and nonce
