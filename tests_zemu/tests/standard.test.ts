@@ -508,7 +508,7 @@ describe('Standard', function () {
       const len = encode(msg.length)
       const data = "\x17Stacks Signed Message:\n" + `${len}` + msg
       console.log(data)
-      const msgHash = sha512_256(data);
+      const msgHash = sha256(data);
       const sig = signature.signatureVRS.toString('hex')
       const signature_obj = {
         r: sig.substr(2, 64),
