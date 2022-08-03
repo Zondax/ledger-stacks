@@ -278,12 +278,8 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_update(&ctx, last_block, last_block_len);
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-    } else if (tx_typ == Message) {
-        // we have byteString or JWT messages. Getting the hash if the same for both types
-        SHA512_256_update(&ctx, data, data_len);
-        SHA512_256_finish(&ctx, hash);
-        return zxerr_ok;
-    } else if (tx_typ == Jwt) {
+    } else if (tx_typ == Message || tx_typ == Jwt) {
+        // we have byteString or JWT messages. The hash is the same for both types
         cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
         return zxerr_ok;
     } else {
