@@ -1,19 +1,16 @@
 use arrayvec::ArrayVec;
-use core::fmt::{self, Write};
+use core::fmt::Write;
 use nom::{
     bytes::complete::take,
-    error::ErrorKind,
     number::complete::{be_u64, le_u8},
 };
 
 use super::error::ParserError;
 
 use super::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, StacksAddress,
-    C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS,
-    STX_DECIMALS,
+    AssetInfo, ContractName, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, STX_DECIMALS,
 };
-use crate::parser::{c32, fp_uint64_to_str, value::Value};
+use crate::parser::value::Value;
 use crate::zxformat;
 
 #[repr(u8)]

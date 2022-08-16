@@ -1,10 +1,8 @@
-use core::fmt::{self, Write};
+use core::fmt::Write;
 use nom::{
-    branch::permutation,
     bytes::complete::take,
-    combinator::{iterator, map_parser},
-    error::ErrorKind,
     number::complete::{be_i128, be_u128, be_u32, be_u64, le_u8},
+    sequence::tuple,
 };
 
 use arrayvec::ArrayVec;
@@ -12,15 +10,12 @@ use numtoa::NumToA;
 
 use crate::parser::error::ParserError;
 use crate::parser::parser_common::{
-    u8_with_limits, AssetInfo, AssetInfoId, ClarityName, ContractName, PrincipalData,
-    StacksAddress, StacksString, StandardPrincipal, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
-    MAX_STACKS_STRING_LEN, MAX_STRING_LEN, NUM_SUPPORTED_POST_CONDITIONS, STX_DECIMALS,
+    ClarityName, ContractName, PrincipalData, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
 };
 
 use crate::parser::c32;
 
-use super::value::{Value, ValueId, BIG_INT_SIZE};
-use crate::parser::ffi::fp_uint64_to_str;
+use super::value::{Value, ValueId};
 use crate::{check_canary, is_expert_mode, zxformat};
 
 pub const MAX_NUM_ARGS: u32 = 10;
@@ -178,6 +173,7 @@ impl<'a> Arguments<'a> {
         while idx < num_args as usize {
             let (bytes, value) =
                 Value::from_bytes(leftover).map_err(|_| ParserError::parser_invalid_argument_id)?;
+
             leftover = bytes;
             if idx == at {
                 return Ok(value);
@@ -197,7 +193,8 @@ impl<'a> TransactionContractCall<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (raw, _) = StacksAddress::from_bytes(bytes)?;
-        let (raw2, _) = permutation((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
+        // get contract name and function name.
+        let (raw2, _) = tuple((ContractName::from_bytes, ClarityName::from_bytes))(raw)?;
         let (leftover, _) = Arguments::from_bytes(raw2)?;
         let len = bytes.len() - leftover.len();
         let (_, data) = take(len)(bytes)?;

@@ -15,8 +15,9 @@
  ******************************************************************************* */
 
 import Zemu, { DEFAULT_START_OPTIONS } from '@zondax/zemu'
-import BlockstackApp from '@zondax/ledger-blockstack'
+import BlockstackApp from '@zondax/ledger-stacks'
 import { APP_SEED, models } from './common'
+import {encode} from 'varuint-bitcoin';
 
 import {
   AddressVersion,
@@ -504,10 +505,10 @@ describe('Standard', function () {
 
       //Verify signature
       const ec = new EC("secp256k1");
-      const len = msg.length
-      const data = "\x19Stacks Signed Message:\n" + `${len}` + msg
+      const len = encode(msg.length)
+      const data = "\x17Stacks Signed Message:\n" + `${len}` + msg
       console.log(data)
-      const msgHash = sha512_256(data);
+      const msgHash = sha256(data);
       const sig = signature.signatureVRS.toString('hex')
       const signature_obj = {
         r: sig.substr(2, 64),
