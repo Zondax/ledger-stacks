@@ -1,7 +1,7 @@
 {
   "name": "@zondax/ledger-stacks",
-  "version": "0.23.1",
-  "description": "Node API for Blockstack App (Ledger Nano S/X)",
+  "version": "1.0.1",
+  "description": "Node API for Stacks App (Ledger Nano S/S+/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "repository": {
@@ -13,7 +13,7 @@
     "Javascript",
     "Stacks"
   ],
-  "author": "Zondax GmbH",
+  "author": "Zondax AG",
   "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/zondax/ledger-stacks/issues"

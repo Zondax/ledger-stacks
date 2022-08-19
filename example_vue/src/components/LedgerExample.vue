@@ -36,8 +36,8 @@
 <script>
 
 import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
-import BlockstackApp from "@zondax/ledger-blockstack"
-import {LedgerError} from "@zondax/ledger-blockstack"
+import StacksApp from "@zondax/ledger-stacks"
+import {LedgerError} from "@zondax/ledger-stacks"
 import {StacksTestnet} from "@stacks/network";
 import {makeUnsignedSTXTokenTransfer} from "@stacks/transactions";
 import BN from "bn.js";
@@ -80,7 +80,7 @@ export default {
 
       try {
         this.deviceLog = [];
-        const app = new BlockstackApp(transport);
+        const app = new StacksApp(transport);
 
         // now it is possible to access all commands in the app
         const response = await app.getVersion();
@@ -106,7 +106,7 @@ export default {
       const transport = await this.getTransport();
       try {
         this.deviceLog = [];
-        const app = new BlockstackApp(transport);
+        const app = new StacksApp(transport);
 
         // now it is possible to access all commands in the app
         const response = await app.getAppInfo();
@@ -125,7 +125,7 @@ export default {
       const transport = await this.getTransport();
       try {
         this.deviceLog = [];
-        const app = new BlockstackApp(transport);
+        const app = new StacksApp(transport);
 
         let response = await app.getVersion();
         this.log(`App Version ${response.major}.${response.minor}.${response.patch}`);
@@ -152,7 +152,7 @@ export default {
       const transport = await this.getTransport();
       this.deviceLog = [];
       try {
-        const app = new BlockstackApp(transport);
+        const app = new StacksApp(transport);
 
         let response = await app.getVersion();
         this.log(`App Version ${response.major}.${response.minor}.${response.patch}`);
@@ -179,7 +179,7 @@ export default {
 
       try {
         this.deviceLog = [];
-        const app = new BlockstackApp(transport);
+        const app = new StacksApp(transport);
 
         const network = new StacksTestnet();
         const path = "m/44'/5757'/0'/0/0";

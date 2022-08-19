@@ -50,7 +50,7 @@
 // The data required to calculate the post_sighash hash
 // 32-byte presig_hash calculated above
 // 1-byte publicKey encoding. It seems to be 0x00(compressed)
-// according to the blockstack's rust implementation
+// according to the stacks's rust implementation
 #define POST_SIGNHASH_DATA_LEN CX_SHA256_SIZE + 1
 
 // The previous signer signature data and post_sig_hash

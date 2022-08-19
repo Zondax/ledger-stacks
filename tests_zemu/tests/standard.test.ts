@@ -15,7 +15,7 @@
  ******************************************************************************* */
 
 import Zemu, { DEFAULT_START_OPTIONS } from '@zondax/zemu'
-import BlockstackApp from '@zondax/ledger-stacks'
+import StacksApp from '@zondax/ledger-stacks'
 import { APP_SEED, models } from './common'
 import {encode} from 'varuint-bitcoin';
 
@@ -86,7 +86,7 @@ describe('Standard', function () {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
       const resp = await app.getVersion()
 
       console.log(resp)
@@ -106,7 +106,7 @@ describe('Standard', function () {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       const response = await app.getAddressAndPubKey("m/44'/5757'/5'/0/0", AddressVersion.MainnetSingleSig)
       console.log(response)
@@ -126,7 +126,7 @@ describe('Standard', function () {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       const response = await app.getIdentityPubKey("m/888'/0'/19") //m/888'/0'/<account>
       console.log(response)
@@ -144,7 +144,7 @@ describe('Standard', function () {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       // Derivation path. First 3 items are automatically hardened!
       const path = "m/44'/5757'/5'/0/3"
@@ -184,7 +184,7 @@ describe('Standard', function () {
 
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       // Get pubkey and check
       const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
@@ -291,7 +291,7 @@ describe('Standard', function () {
 
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       // Get pubkey and check
       const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
@@ -417,7 +417,7 @@ describe('Standard', function () {
     const path = "m/44'/5757'/0'/0/0"
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
       // Get pubkey and check
       const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
       console.log(pkResponse)
@@ -471,7 +471,7 @@ describe('Standard', function () {
 
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       // Get pubkey and check
       const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
@@ -528,7 +528,7 @@ describe('Standard', function () {
 
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
 
       const jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ=="
 
@@ -586,7 +586,7 @@ describe('Standard', function () {
     const path = "m/44'/5757'/0'/0/0"
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      const app = new BlockstackApp(sim.getTransport())
+      const app = new StacksApp(sim.getTransport())
       // Get pubkey and check
       const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
       console.log(pkResponse)

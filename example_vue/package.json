@@ -11,7 +11,7 @@
     "@stacks/network": "^1.0.1",
     "@stacks/transactions": "^1.0.1",
     "@ledgerhq/hw-transport-webusb": "^5.34.1",
-    "@zondax/ledger-blockstack": "^0.1.0",
+    "@zondax/ledger-stacks": "^1.0.1",
     "lodash-es": "^4.17.20",
     "core-js": "^3.8.1",
     "bn.js": "^5.1.3",
