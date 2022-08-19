@@ -1,5 +1,5 @@
 /** ******************************************************************************
- *  (c) 2019-2020 Zondax GmbH
+ *  (c) 2019-2022 Zondax AG
  *  (c) 2016-2017 Ledger
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
  ******************************************************************************* */
 import Transport from '@ledgerhq/hw-transport';
 import {serializePath} from './helper';
-import {ResponseBase, ResponseAddress, ResponseAppInfo, ResponseSign, ResponseVersion} from './types';
+import {ResponseAddress, ResponseAppInfo, ResponseSign, ResponseVersion} from './types';
 import {
     CHUNK_SIZE,
     CLA,
@@ -55,7 +55,7 @@ function processGetAddrResponse(response: Buffer) {
     };
 }
 
-export default class BlockstackApp {
+export default class StacksApp {
     transport;
 
     constructor(transport: Transport) {
@@ -86,7 +86,7 @@ export default class BlockstackApp {
     }
 
     async signGetChunks(path: string, message: Buffer) {
-        return BlockstackApp.prepareChunks(serializePath(path), message);
+        return StacksApp.prepareChunks(serializePath(path), message);
     }
 
     async getVersion(): Promise<ResponseVersion> {
