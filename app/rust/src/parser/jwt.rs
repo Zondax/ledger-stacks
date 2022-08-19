@@ -7,7 +7,7 @@ use crate::{
 use core::{fmt::Write, str};
 use hex::encode_to_slice;
 
-const MAX_BASE64_HEADER_LEN: usize = 50;
+const MAX_BASE64_HEADER_LEN: usize = 250;
 
 fn decode_data(input: &[u8], output: &mut [u8]) -> Result<usize, ParserError> {
     let estimate_len = (input.len() + 3) / 4;
@@ -47,7 +47,7 @@ pub struct Jwt<'a> {
 pub struct JwtHeader<'a>(&'a [u8]);
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, serde::Deserialize)]
 pub struct Header<'a> {
     typ: &'a str,
     alg: &'a str,
@@ -55,17 +55,15 @@ pub struct Header<'a> {
 
 impl<'a> Header<'a> {
     fn is_valid(&self) -> bool {
-        self.typ == "JWT" && self.alg == "ES256K"
+        // "JWT"
+        let typ = [b'J', b'W', b'T'];
+        // "ES256K"
+        let algo = [b'E', b'S', b'2', b'5', b'6', b'K'];
+        self.typ.as_bytes() == typ && self.alg.as_bytes() == algo
     }
 }
 
 impl<'a> JwtHeader<'a> {
-    fn is_valid(s: &str) -> bool {
-        //let base_header: Result<Header, _> = serde_json_core::from_slice(self.0).map(|(h, _)| h);
-        let valid_header = r#"{"typ":"JWT","alg":"ES256K"}"#;
-        s == valid_header
-    }
-
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if !data.is_ascii() {
             return Err(ParserError::parser_unexpected_type);
@@ -74,14 +72,14 @@ impl<'a> JwtHeader<'a> {
         let mut header_bytes = [0u8; MAX_BASE64_HEADER_LEN];
 
         let len = decode_data(data, header_bytes.as_mut())?;
-        let s = core::str::from_utf8(header_bytes[..len].as_ref())
+        let header: Header = serde_json_core::from_slice(&header_bytes[..len])
+            .map(|(h, _)| h)
             .map_err(|_| ParserError::parser_invalid_jwt)?;
 
-        if JwtHeader::is_valid(s) {
-            Ok(Self(data))
-        } else {
-            Err(ParserError::parser_invalid_jwt)
+        if !header.is_valid() {
+            return Err(ParserError::parser_invalid_jwt);
         }
+        Ok(Self(data))
     }
 }
 
@@ -247,13 +245,5 @@ mod test {
         println!("jwt: {}", jwt);
 
         Jwt::from_bytes(jwt.as_bytes()).unwrap();
-    }
-
-    #[test]
-    fn custom_header() {
-        let header = Header::with_other(Some("call".to_string()));
-        let payload = Payload::new();
-        let jwt = create_jwt(header, payload);
-        assert!(Jwt::from_bytes(jwt.as_bytes()).is_err());
     }
 }
