@@ -45,7 +45,7 @@ export enum LedgerError {
   BadKeyHandle = 0x6a80,
   InvalidP1P2 = 0x6b00,
   InstructionNotSupported = 0x6d00,
-  AppDoesNotSeemToBeOpen = 0x6e00,
+  AppDoesNotSeemToBeOpen = 0x6e01,
   UnknownError = 0x6f00,
   SignVerifyError = 0x6f01,
 }

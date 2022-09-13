@@ -1,6 +1,6 @@
 {
   "name": "@zondax/ledger-stacks",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Node API for Stacks App (Ledger Nano S/S+/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
