@@ -11,10 +11,10 @@ export function serializePath(path: string) {
 
   let allocSize = 0;
 
-  if (pathArray.length === DEFAULT_DER_PATH_LEN || pathArray.length === IDENTITY_DER_PATH_LEN  ) {
-      allocSize = (pathArray.length - 1) * 4;
+  if (pathArray.length === DEFAULT_DER_PATH_LEN || pathArray.length === IDENTITY_DER_PATH_LEN) {
+    allocSize = (pathArray.length - 1) * 4;
   } else {
-      throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\" or \"m/888'/0'/<account>\")");
+    throw new Error("Invalid path. (e.g \"m/44'/5757'/5'/0/3\" or \"m/888'/0'/<account>\")");
   }
 
   const buf = Buffer.alloc(allocSize);
