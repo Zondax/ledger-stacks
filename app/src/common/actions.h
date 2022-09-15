@@ -221,7 +221,7 @@ __Z_INLINE void app_reply_error() {
 __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
 
     // get the previous signer post_sig_hash and validate it
-    uint8_t reconstructed_post_sig_hash[CX_SHA256_SIZE];
+    uint8_t reconstructed_post_sig_hash[CX_SHA512_SIZE];
 
     sha512_256_ctx ctx;
     SHA512_256_init(&ctx);

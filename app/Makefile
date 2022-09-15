@@ -27,9 +27,9 @@ all: bin/app.elf
 	@echo "#!/usr/bin/env bash" > $(OUTPUT_INSTALLER)
 	@echo "APPNAME=\"${APPNAME}\"" >> $(OUTPUT_INSTALLER)
 	@echo "APPVERSION=\"${APPVERSION}\"" >> $(OUTPUT_INSTALLER)
-	@echo "APPPATH=\""${APPPATH_INSTALLER}"\"" >> $(OUTPUT_INSTALLER)
-	@echo "LOAD_PARAMS=($$(echo "${APP_LOAD_PARAMS}" | sed -e "s|"${APPNAME}"|\""${APPNAME}"\"|"))" >> $(OUTPUT_INSTALLER)
-	@echo "DELETE_PARAMS=($$(echo "${COMMON_DELETE_PARAMS}" | sed -e "s|"${APPNAME}"|\""${APPNAME}"\"|"))" >> $(OUTPUT_INSTALLER)
+	@echo "APPPATH=\""${APPPATH}"\"" >> $(OUTPUT_INSTALLER)
+	@echo "LOAD_PARAMS=($$(echo "${APP_LOAD_PARAMS_INSTALLER}" | sed -e "s|"${APPNAME}"|\""${APPNAME}"\"|" | sed "s/\\\'//g"))" >> $(OUTPUT_INSTALLER)
+	@echo "DELETE_PARAMS=($$(echo "${COMMON_DELETE_PARAMS}" | sed -e "s|"${APPNAME}"|\""${APPNAME}"\"|" ))" >> $(OUTPUT_INSTALLER)
 	@echo "APPHEX=\"" >> $(OUTPUT_INSTALLER)
 	@cat $(CURDIR)/bin/app.hex >> $(OUTPUT_INSTALLER)
 	@echo "\"" >> $(OUTPUT_INSTALLER)
@@ -40,8 +40,6 @@ all: bin/app.elf
 	@rm $(CURDIR)/output/app.elf
 
 include $(BOLOS_SDK)/Makefile.defines
-
-#DEFINES += APP_SECRET_MODE_ENABLED
 
 $(info ************ TARGET_NAME  = [$(TARGET_NAME)])
 
@@ -62,7 +60,7 @@ ifeq ($(COIN),STX)
 # Main app configuration
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
-APPPATH = "44'/5757'" --path "5757" --path "888'/0'"
+APPPATH = "44'/5757'" --path "5757'" --path "888'/0'"
 APPPATH_INSTALLER = "44'/5757'" --path 5757\' --path "888'/0'"
 
 else ifeq ($(COIN),STX_variant1)
@@ -78,9 +76,11 @@ $(error "$(error_message)")
 endif
 
 APP_LOAD_PARAMS = --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
+APP_LOAD_PARAMS_INSTALLER = --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH_INSTALLER} --path "44'/1'"
 
 ifeq ($(TARGET_NAME),TARGET_NANOS)
 APP_LOAD_PARAMS += --appFlags 0x000
+APP_LOAD_PARAMS_INSTALLER += --appFlags 0x000
 APP_STACK_SIZE:=3100
 ICONNAME:=$(CURDIR)/nanos_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_s.elf
@@ -90,6 +90,7 @@ endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOX)
 APP_LOAD_PARAMS += --appFlags 0x200
+APP_LOAD_PARAMS_INSTALLER += --appFlags 0x200
 SCRIPT_LD:=$(CURDIR)/script_x.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
@@ -99,6 +100,7 @@ endif
 
 ifeq ($(TARGET_NAME),TARGET_NANOS2)
 APP_LOAD_PARAMS += --appFlags 0x000
+APP_LOAD_PARAMS_INSTALLER += --appFlags 0x000
 SCRIPT_LD:=$(CURDIR)/script_s2.ld
 ICONNAME:=$(CURDIR)/nanox_icon.gif
 OUTPUT_ELF ?= $(CURDIR)/output/app_s2.elf
