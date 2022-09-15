@@ -18,7 +18,7 @@
   ],
   "dependencies": {
     "@zondax/ledger-stacks": "link:../js",
-    "@zondax/zemu": "^0.32.0"
+    "@zondax/zemu": "^0.33.1"
   },
   "devDependencies": {
     "@stacks/network": "^2.0.1",
