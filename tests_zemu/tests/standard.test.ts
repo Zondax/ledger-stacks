@@ -127,7 +127,6 @@ describe('Standard', function () {
     try {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new StacksApp(sim.getTransport())
-
       const response = await app.getIdentityPubKey("m/888'/0'/19") //m/888'/0'/<account>
       console.log(response)
       expect(response.returnCode).toEqual(0x9000)
@@ -529,7 +528,6 @@ describe('Standard', function () {
     try {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new StacksApp(sim.getTransport())
-
       const jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ=="
 
       const pkResponse = await app.getIdentityPubKey(path)

@@ -29,8 +29,8 @@ import {
   PKLEN,
   processErrorResponse,
 } from './common';
-import { encode } from 'varuint-bitcoin';
 
+import { encode } from 'varuint-bitcoin';
 import type { AddressVersion } from '@stacks/transactions';
 
 export { LedgerError };
