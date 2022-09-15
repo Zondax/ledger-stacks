@@ -1,4 +1,3 @@
-
 name: CI
 
 on:
@@ -39,7 +38,7 @@ jobs:
       - name: Build with Clang Static Analyzer
         run: |
           # we need to install clang-tools which
-          # contains the scan-build tool which is a static 
+          # contains the scan-build tool which is a static
           # analyzer use to scan C code.
           sudo apt-get -qy install clang-tools
           scan-build --use-cc=clang -analyze-headers -enable-checker security -enable-checker unix -enable-checker valist -o scan-build --status-bugs make all
