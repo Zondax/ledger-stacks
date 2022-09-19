@@ -2,13 +2,14 @@ name: Build
 on:
   push:
     branches:
+      - master
       - main
       - develop
   pull_request:
     branches:
+      - master
       - main
       - develop
-
 jobs:
   configure:
     runs-on: ubuntu-latest
