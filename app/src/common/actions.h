@@ -50,7 +50,7 @@
 // The data required to calculate the post_sighash hash
 // 32-byte presig_hash calculated above
 // 1-byte publicKey encoding. It seems to be 0x00(compressed)
-// according to the blockstack's rust implementation
+// according to the stacks's rust implementation
 #define POST_SIGNHASH_DATA_LEN CX_SHA256_SIZE + 1
 
 // The previous signer signature data and post_sig_hash
@@ -221,7 +221,7 @@ __Z_INLINE void app_reply_error() {
 __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
 
     // get the previous signer post_sig_hash and validate it
-    uint8_t reconstructed_post_sig_hash[CX_SHA256_SIZE];
+    uint8_t reconstructed_post_sig_hash[CX_SHA512_SIZE];
 
     sha512_256_ctx ctx;
     SHA512_256_init(&ctx);

@@ -71,3 +71,4 @@ TODO\.md
 /certs/server.cert
 /certs/server.key
 /yarn.lock
+package-lock.json

@@ -1,4 +1,4 @@
-# Blockstack App
+# Stacks App
 
 ## General structure
 
