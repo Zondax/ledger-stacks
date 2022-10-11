@@ -50,7 +50,7 @@
 // The data required to calculate the post_sighash hash
 // 32-byte presig_hash calculated above
 // 1-byte publicKey encoding. It seems to be 0x00(compressed)
-// according to the blockstack's rust implementation
+// according to the stacks's rust implementation
 #define POST_SIGNHASH_DATA_LEN CX_SHA256_SIZE + 1
 
 // The previous signer signature data and post_sig_hash
@@ -221,7 +221,7 @@ __Z_INLINE void app_reply_error() {
 __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
 
     // get the previous signer post_sig_hash and validate it
-    uint8_t reconstructed_post_sig_hash[CX_SHA256_SIZE];
+    uint8_t reconstructed_post_sig_hash[CX_SHA512_SIZE];
 
     sha512_256_ctx ctx;
     SHA512_256_init(&ctx);
@@ -278,12 +278,8 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_update(&ctx, last_block, last_block_len);
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-    } else if (tx_typ == Message) {
-        // we have byteString or JWT messages. Getting the hash if the same for both types
-        SHA512_256_update(&ctx, data, data_len);
-        SHA512_256_finish(&ctx, hash);
-        return zxerr_ok;
-    } else if (tx_typ == Jwt) {
+    } else if (tx_typ == Message || tx_typ == Jwt) {
+        // we have byteString or JWT messages. The hash is the same for both types
         cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
         return zxerr_ok;
     } else {

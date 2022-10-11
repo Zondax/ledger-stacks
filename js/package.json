@@ -1,28 +1,29 @@
 {
-  "name": "@zondax/ledger-blockstack",
-  "version": "0.22.5",
-  "description": "Node API for Blockstack App (Ledger Nano S/X)",
+  "name": "@zondax/ledger-stacks",
+  "version": "1.0.2",
+  "description": "Node API for Stacks App (Ledger Nano S/S+/X)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zondax/ledger-blockstack.git"
+    "url": "git+https://github.com/zondax/ledger-stacks.git"
   },
   "keywords": [
     "Ledger",
     "Javascript",
-    "Blockstack"
+    "Stacks"
   ],
-  "author": "Zondax GmbH",
+  "author": "Zondax AG",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/zondax/ledger-blockstack/issues"
+    "url": "https://github.com/zondax/ledger-stacks/issues"
   },
-  "homepage": "https://github.com/zondax/ledger-blockstack",
+  "homepage": "https://github.com/zondax/ledger-stacks",
   "dependencies": {
     "@babel/runtime": "^7.12.5",
-    "@ledgerhq/hw-transport": "^5.51.1",
-    "@stacks/transactions": "^4.1.0"
+    "@ledgerhq/hw-transport": "^6.27.2",
+    "@stacks/transactions": "^4.1.0",
+    "varuint-bitcoin": "^1.1.2"
   },
   "devDependencies": {
     "@babel/cli": "^7.12.10",
@@ -38,11 +39,11 @@
     "blake2": "^4.0.0",
     "core-js": "^3.8.3",
     "crypto-js": "^4.0.0",
-    "eslint": "^7.18.0",
-    "eslint-config-airbnb-base": "^14.1.0",
-    "eslint-config-prettier": "^7.2.0",
+    "eslint": "^8.23.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-import": "^2.20.2",
-    "eslint-plugin-prettier": "^3.3.1",
+    "eslint-plugin-prettier": "^4.2.1",
     "index.js": "^0.0.3",
     "prettier": "^2.0.4",
     "secp256k1": "^4.0.0",
@@ -56,19 +57,8 @@
     "node_modules",
     "dist"
   ],
-  "postcss": {
-    "plugins": {
-      "autoprefixer": {}
-    }
-  },
-  "browserslist": [
-    "> 1%",
-    "last 2 versions"
-  ],
   "files": [
-    "dist/*",
-    "LICENSE",
-    "yarn.lock"
+    "dist/*"
   ],
   "publishConfig": {
     "access": "public"

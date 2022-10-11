@@ -1,14 +1,10 @@
 use nom::{
     bytes::complete::take,
-    error::ErrorKind,
     number::complete::{be_u32, le_u8},
 };
 
 use super::error::ParserError;
-use super::parser_common::{
-    ClarityName, ContractName, ContractPrincipal, StacksAddress, HASH160_LEN,
-};
-use arrayvec::ArrayVec;
+use super::parser_common::{ClarityName, ContractPrincipal, HASH160_LEN};
 
 // Big ints size in bytes
 pub const BIG_INT_SIZE: usize = 16;
@@ -108,9 +104,9 @@ impl<'a> Value<'a> {
             ValueId::BoolTrue | ValueId::BoolFalse => 0,
             ValueId::StandardPrincipal => HASH160_LEN as usize + 1,
             ValueId::ContractPrincipal => {
-                let contract = ContractPrincipal::read_as_bytes(raw)
+                let (_, contract_bytes) = ContractPrincipal::read_as_bytes(raw)
                     .map_err(|_| ParserError::parser_unexpected_value)?;
-                contract.0.len()
+                contract_bytes.len()
             }
             ValueId::OptionalNone => 0,
             ValueId::List => Self::list_len(depth, raw).map(|res| res.1)?,
@@ -138,6 +134,7 @@ impl<'a> Value<'a> {
                 Self::value_len_impl(depth, raw).map(|res| res.1)?
             }
         };
+
         Ok(((), len + 1))
     }
 
