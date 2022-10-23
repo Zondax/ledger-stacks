@@ -68,14 +68,19 @@ impl<'a> ByteString<'a> {
 
     // returns the message content
     fn get_msg(data: &'a [u8]) -> Result<&'a [u8], ParserError> {
-        if data.is_empty() || !data.is_ascii() {
-            return Err(ParserError::parser_invalid_bytestr_message);
+        if data.is_empty() {
+            return Err(ParserError::parser_unexpected_buffer_end);
         }
 
         let (rem, len) =
             read_varint(data).map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+
         let (_, message_content) = take::<_, _, ParserError>(len as usize)(rem)
             .map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+
+        if !message_content.is_ascii() {
+            return Err(ParserError::parser_invalid_bytestr_message);
+        }
 
         Ok(message_content)
     }
