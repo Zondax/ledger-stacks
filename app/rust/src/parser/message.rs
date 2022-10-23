@@ -6,6 +6,10 @@ use nom::bytes::complete::take;
 
 // The lenght of \x17Stacks Signed Message:
 const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().len();
+// Truncates an ascii
+// message to around this size, as we need to change special characters
+// like /t or /r with spaces.
+const MAX_ASCII_LEN: usize = 270;
 
 #[repr(C)]
 pub enum Message<'a> {
@@ -105,17 +109,46 @@ impl<'a> ByteString<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        if display_idx != 0 {
+            return Err(ParserError::parser_display_idx_out_of_range);
+        }
+
         let mut writer_key = Writer::new(out_key);
 
-        if display_idx == 0 {
-            writer_key
-                .write_str("Sign Message")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+        let mut msg = [0; MAX_ASCII_LEN + 3];
+        let suffix = [b'.'; 3];
 
-            pageString(out_value, self.0, page_idx)
+        // look for special characters [\b..=\r]
+        // and replace them with space b' '
+        let msg_iter = self.0.iter().map(|c| {
+            if (*c >= 0x08) && (*c <= b'\r') {
+                b' '
+            } else {
+                *c
+            }
+        });
+
+        let mut copy_len = if self.0.len() > MAX_ASCII_LEN {
+            msg[MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len()].copy_from_slice(&suffix[..]);
+            MAX_ASCII_LEN
         } else {
-            Err(ParserError::parser_display_idx_out_of_range)
+            self.0.len()
+        };
+
+        msg.iter_mut()
+            .take(copy_len)
+            .zip(msg_iter)
+            .for_each(|(r, m)| *r = m);
+
+        if copy_len >= MAX_ASCII_LEN {
+            copy_len += suffix.len()
         }
+
+        writer_key
+            .write_str("Sign Message")
+            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+
+        pageString(out_value, &msg[..copy_len], page_idx)
     }
 }
 
