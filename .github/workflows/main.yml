@@ -24,6 +24,7 @@ jobs:
           submodules: true
       - name: Install deps
         run: |
+          pip install testresources
           sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 10
           make deps
       - run: cmake -DCMAKE_BUILD_TYPE=Debug . && make
