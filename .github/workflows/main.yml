@@ -1,6 +1,10 @@
 name: Build
 on:
   push:
+    branches:
+      - master
+      - main
+      - develop
   pull_request:
     branches:
       - master
@@ -24,6 +28,8 @@ jobs:
           submodules: true
       - name: Install deps
         run: |
+          pip install testresources
+          sudo apt update
           sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 10
           make deps
       - run: cmake -DCMAKE_BUILD_TYPE=Debug . && make
@@ -49,11 +55,11 @@ jobs:
           cd ./app/rust
           cargo clippy --version
           cargo clippy --all-features --all-targets || true
-      #      - name: audit
-      #        run: |
-      #          cd ./app/rust
-      #          cargo audit --version
-      #          cargo audit
+      - name: audit
+        run: |
+          cd ./app/rust
+          cargo audit --version
+          cargo audit
       - name: run tests
         run: |
           cd ./app/rust
