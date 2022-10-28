@@ -18,12 +18,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  scan-build:
-    name: Clang Static Analyzer
+  configure:
     runs-on: ubuntu-latest
+    outputs:
+      uid_gid: ${{ steps.get-user.outputs.uid_gid }}
+    steps:
+      - id: get-user
+        run: echo "::set-output name=uid_gid::$(id -u):$(id -g)"
 
-    container:
-      image: ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:latest
+  scan-build:
+    needs: configure
+    runs-on: ubuntu-latest
+    name: Clang Static Analyzer
 
     steps:
       - uses: actions/checkout@v2
@@ -32,8 +38,11 @@ jobs:
 
       - name: Build with Clang Static Analyzer
         run: |
-          rustup target add thumbv6m-none-eabi
-          scan-build --use-cc=clang -analyze-headers -enable-checker security -enable-checker unix -enable-checker valist -o scan-build --status-bugs make default
+          # we need to install clang-tools which
+          # contains the scan-build tool which is a static 
+          # analyzer use to scan C code.
+          sudo apt-get -qy install clang-tools
+          scan-build --use-cc=clang -analyze-headers -enable-checker security -enable-checker unix -enable-checker valist -o scan-build --status-bugs make all
       - uses: actions/upload-artifact@v2
         if: failure()
         with:
