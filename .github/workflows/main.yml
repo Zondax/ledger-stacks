@@ -28,9 +28,10 @@ jobs:
           submodules: true
       - name: Install deps
         run: |
+          pip install testresources
+          sudo apt update
           sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 10
           make deps
-          brew install conan
       - run: cmake -DCMAKE_BUILD_TYPE=Debug . && make
       - run: GTEST_COLOR=1 ASAN_OPTIONS=detect_leaks=0 ctest -VV
 
@@ -54,11 +55,11 @@ jobs:
           cd ./app/rust
           cargo clippy --version
           cargo clippy --all-features --all-targets || true
-#      - name: audit
-#        run: |
-#          cd ./app/rust
-#          cargo audit --version
-#          cargo audit
+      - name: audit
+        run: |
+          cd ./app/rust
+          cargo audit --version
+          cargo audit
       - name: run tests
         run: |
           cd ./app/rust
@@ -148,7 +149,7 @@ jobs:
       - name: Install node
         uses: actions/setup-node@v2
         with:
-          node-version: '14.17.0'
+          node-version: "16"
       - name: Install yarn
         run: |
           npm install -g yarn
@@ -165,7 +166,8 @@ jobs:
           make zemu_test
 
   build_package_nanos:
-    needs: [ configure, build, build_nano_S, build_nano_X,  build_nano_SP, test_zemu ]
+    needs:
+      [configure, build, build_nano_S, build_nano_X, build_nano_SP, test_zemu]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
@@ -206,7 +208,8 @@ jobs:
           prerelease: false
 
   build_package_nanos_plus:
-    needs: [ configure, build, build_nano_S, build_nano_X,  build_nano_SP, test_zemu ]
+    needs:
+      [configure, build, build_nano_S, build_nano_X, build_nano_SP, test_zemu]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
