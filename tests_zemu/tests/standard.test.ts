@@ -37,7 +37,6 @@ import {
   uintCV,
   stringAsciiCV,
   stringUtf8CV,
-  cvToHex
 } from '@stacks/transactions'
 import { StacksTestnet } from '@stacks/network'
 import { ec as EC } from 'elliptic'
@@ -640,4 +639,5 @@ describe('Standard', function () {
       await sim.close()
     }
   })
+
 })
