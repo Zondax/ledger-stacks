@@ -1,9 +1,7 @@
-#![allow(non_camel_case_types, non_upper_case_globals, non_snake_case)]
 #![allow(clippy::upper_case_acronyms)]
-use nom::{
-    bytes::complete::take,
-    number::complete::{be_u32, le_u8},
-};
+use core::convert::TryFrom;
+
+use nom::{bytes::complete::take, number::complete::le_u8};
 
 use crate::parser::{c32, error::ParserError};
 
@@ -21,8 +19,16 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 // handle
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
-pub const MAX_STACKS_STRING_LEN: usize = 256;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
+
+// A recursion limit use to control ram usage when parsing
+// contract-call arguments that comes in a transaction
+pub const TX_DEPTH_LIMIT: u8 = 3;
+
+// Use to limit recursion when parsing nested clarity values that comes as part of a structured
+// message. the limit is higher than the one use when parsing contract-args in transactions
+// as the ram usage there is higher.
+pub const MAX_DEPTH: u8 = 20;
 
 /// Stacks transaction versions
 #[repr(u8)]
@@ -32,22 +38,24 @@ pub enum TransactionVersion {
     Testnet = 0x80,
 }
 
+impl TryFrom<u8> for TransactionVersion {
+    type Error = ParserError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::Mainnet),
+            0x80 => Ok(Self::Testnet),
+            _ => Err(ParserError::parser_unexpected_value),
+        }
+    }
+}
+
 impl TransactionVersion {
     #[inline(never)]
-    pub fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let version_res = le_u8(bytes)?;
-        let tx_version =
-            Self::from_u8(version_res.1).ok_or(ParserError::parser_unexpected_error)?;
-        Ok((version_res.0, tx_version))
-    }
-
-    #[inline(never)]
-    fn from_u8(v: u8) -> Option<Self> {
-        match v {
-            0x00 => Some(Self::Mainnet),
-            0x80 => Some(Self::Testnet),
-            _ => None,
-        }
+    pub fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+        let (rem, version) = le_u8(bytes)?;
+        let tx_version = Self::try_from(version)?;
+        Ok((rem, tx_version))
     }
 }
 
@@ -59,15 +67,17 @@ pub enum AssetInfoId {
     NonfungibleAsset = 2,
 }
 
-impl AssetInfoId {
-    #[inline(never)]
-    pub fn from_u8(b: u8) -> Option<AssetInfoId> {
-        match b {
-            0 => Some(AssetInfoId::STX),
-            1 => Some(AssetInfoId::FungibleAsset),
-            2 => Some(AssetInfoId::NonfungibleAsset),
-            _ => None,
-        }
+impl TryFrom<u8> for AssetInfoId {
+    type Error = ParserError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let s = match value {
+            0 => AssetInfoId::STX,
+            1 => AssetInfoId::FungibleAsset,
+            2 => AssetInfoId::NonfungibleAsset,
+            _ => return Err(ParserError::parser_unexpected_value),
+        };
+        Ok(s)
     }
 }
 
@@ -158,66 +168,69 @@ impl HashMode {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct StacksString<'a>(&'a [u8]);
-
-impl<'a> StacksString<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let len = be_u32(bytes)?;
-        let string_len = len.1 as usize;
-        if string_len > MAX_STACKS_STRING_LEN && !crate::is_expert_mode() {
-            return Err(nom::Err::Error(ParserError::parser_stacks_string_too_long));
-        }
-        let string = take(string_len)(len.0)?;
-        Ok((string.0, Self(string.1)))
-    }
-}
-
 // contract name with valid charactes being
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct ContractName<'a>(pub &'a [u8]);
+pub struct ContractName<'a>(ClarityName<'a>);
 
 impl<'a> ContractName<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let len = u8_with_limits(MAX_STRING_LEN, bytes)
-            .map_err(|_| ParserError::parser_invalid_contract_name)?;
-        let nameLen = len.1;
-        let name = take(nameLen as usize)(len.0)?;
-        // TODO: Verify if the name has valid characters
-        Ok((name.0, Self(name.1)))
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+        let (rem, name) = ClarityName::from_bytes(bytes)?;
+
+        // we are using the ClarityName inner type to wrap-up the parsing which is the same for
+        // Contrac names, but the docs do not say nothing about what is a valid clarity name either
+        // ascii or utf8 values, lets check it here.
+        if !name.0.is_ascii() {
+            return Err(ParserError::parser_invalid_contract_name.into());
+        }
+
+        Ok((rem, Self(name)))
+    }
+
+    pub fn name(&'a self) -> &'a [u8] {
+        self.0.name()
+    }
+
+    pub fn len(&self) -> usize {
+        self.name().len()
     }
 }
 
-// Represent a clarity contract name with valid characters being
-// ^[a-zA-Z]([a-zA-Z0-9]|[-_!?+<>=/*])*$|^[-+=/*]$|^[<>]=?$
+// A clarity value used in tuples
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClarityName<'a>(pub &'a [u8]);
 
 impl<'a> ClarityName<'a> {
+    const MAX_LEN: u8 = 128;
+
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let len = u8_with_limits(MAX_STRING_LEN, bytes)
-            .map_err(|_| ParserError::parser_invalid_asset_name)?;
-        let name_len = len.1;
-        let name = take(name_len as usize)(len.0)?;
-        // TODO: Verify if the name has valid characters
-        Ok((name.0, Self(name.1)))
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+        let (rem, name) = Self::read_as_bytes(bytes)?;
+        // Omit the first byte as it is the encoded length
+        Ok((rem, Self(&name[1..])))
     }
 
     #[inline(never)]
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
-        let len = u8_with_limits(MAX_STRING_LEN, bytes)
-            .map_err(|_| ParserError::parser_invalid_asset_name)?;
-        let name_len = len.1 as usize;
-        let (raw, name_bytes) = take(name_len + 1)(len.0)?;
-        // TODO: Verify if the name has valid characters
-        Ok((raw, name_bytes))
+    pub fn read_as_bytes(bytes: &'a [u8]) -> Result<(&[u8], &[u8]), nom::Err<ParserError>> {
+        let (_, len) = le_u8(bytes)?;
+
+        if len >= Self::MAX_LEN {
+            return Err(ParserError::parser_value_out_of_range.into());
+        }
+
+        // include the 1-byte len
+        take(len + 1)(bytes)
+    }
+
+    pub fn name(&'a self) -> &'a [u8] {
+        self.0
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -238,96 +251,5 @@ impl<'a> StacksAddress<'a> {
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         c32::c32_address(self.0[0], &self.0[1..])
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct StandardPrincipal<'a>(pub &'a [u8]);
-
-impl<'a> StandardPrincipal<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, address) = take(HASH160_LEN + 1usize)(bytes)?;
-        Ok((raw, Self(address)))
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct ContractPrincipal<'a>(StandardPrincipal<'a>, ContractName<'a>);
-impl<'a> ContractPrincipal<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let address = StandardPrincipal::from_bytes(bytes)?;
-        let name = ContractName::from_bytes(address.0)?;
-        Ok((name.0, Self(address.1, name.1)))
-    }
-
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
-        let (rem, _) = Self::from_bytes(bytes)?;
-        let len = bytes.len() - rem.len();
-        let (rem, self_bytes) = take(len)(bytes)?;
-        Ok((rem, self_bytes))
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct PrincipalData<'a> {
-    pub data: (StandardPrincipal<'a>, Option<ContractName<'a>>),
-}
-
-impl<'a> PrincipalData<'a> {
-    #[inline(never)]
-    pub fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, principal) = StandardPrincipal::from_bytes(bytes)?;
-        Ok((
-            raw,
-            Self {
-                data: (principal, None),
-            },
-        ))
-    }
-
-    #[inline(never)]
-    pub fn contract_principal_from_bytes(
-        bytes: &'a [u8],
-    ) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, address) = StandardPrincipal::from_bytes(bytes)?;
-        let (raw2, name) = ContractName::from_bytes(raw)?;
-        Ok((
-            raw2,
-            Self {
-                data: (address, Some(name)),
-            },
-        ))
-    }
-
-    pub fn version(&self) -> u8 {
-        (self.data.0).0[0]
-    }
-
-    pub fn raw_address(&self) -> &[u8] {
-        &(self.data.0).0[1..]
-    }
-
-    #[inline(never)]
-    pub fn encoded_address(
-        &self,
-    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
-        let version = self.version();
-        let address = self.raw_address();
-        c32::c32_address(version, address)
-    }
-}
-
-/******************************* NOM parser combinators *******************************************/
-
-pub fn u8_with_limits(limit: u8, bytes: &[u8]) -> nom::IResult<&[u8], u8, ParserError> {
-    if !bytes.is_empty() && bytes[0] <= limit {
-        le_u8(bytes)
-    } else {
-        Err(nom::Err::Error(ParserError::parser_value_out_of_range))
     }
 }
