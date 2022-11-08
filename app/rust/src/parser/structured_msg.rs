@@ -40,7 +40,7 @@ impl<'a> Domain<'a> {
             items += 1;
         }
 
-        if items != tuple.num_elements() {
+        if items != tuple.num_elements() || items != Self::LEN {
             return Err(ParserError::parser_invalid_structured_msg.into());
         }
 
