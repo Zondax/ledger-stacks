@@ -137,6 +137,13 @@ uint16_t parser_previous_signer_data(uint8_t **data) {
     return _previous_signer_data(&parser_state, data);
 }
 
+zxerr_t parser_structured_msg_hash(uint8_t *out, uint16_t out_len){
+    if (_structured_msg_hash(&parser_state, out, out_len) != parser_ok) {
+        return zxerr_buffer_too_small;
+    }
+    return zxerr_ok;
+}
+
 zxerr_t parser_allocate() {
     if (parser_state.len % 4 != 0) {
         parser_state.len += parser_state.len % 4;
@@ -252,6 +259,12 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Invalid message signing format";
         case parser_invalid_jwt:
             return "Invalid json web token";
+        case parser_invalid_structured_msg:
+            return "Invalid structured message";
+        case parser_recursion_limit: 
+            return "Recursion limit reached while parsing";
+        case parser_invalid_token_transfer_principal:
+            return "Invalid token transfer principal";
         default:
             return "Unrecognized error code";
     }
