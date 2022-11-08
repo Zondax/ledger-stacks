@@ -46,12 +46,6 @@ const defaultOptions = {
   X11: false,
 }
 
-jest.setTimeout(60000)
-
-beforeAll(async () => {
-  await Zemu.checkAndPullImage()
-})
-
 const DOMAIN = tupleCV({
     'name': stringAsciiCV("Stacks"),
     'version': stringAsciiCV("1.0.0"),
