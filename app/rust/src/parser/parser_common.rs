@@ -141,18 +141,22 @@ pub enum HashMode {
     P2WSH = 0x03,
 }
 
-impl HashMode {
-    #[inline(never)]
-    pub fn from_u8(n: u8) -> Option<HashMode> {
-        match n {
-            x if x == HashMode::P2PKH as u8 => Some(HashMode::P2PKH),
-            x if x == HashMode::P2WPKH as u8 => Some(HashMode::P2WPKH),
-            x if x == HashMode::P2SH as u8 => Some(HashMode::P2SH),
-            x if x == HashMode::P2WSH as u8 => Some(HashMode::P2WSH),
-            _ => None,
-        }
-    }
+impl TryFrom<u8> for HashMode {
+    type Error = ParserError;
 
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let mode = match value {
+            x if x == HashMode::P2PKH as u8 => HashMode::P2PKH,
+            x if x == HashMode::P2WPKH as u8 => HashMode::P2WPKH,
+            x if x == HashMode::P2SH as u8 => HashMode::P2SH,
+            x if x == HashMode::P2WSH as u8 => HashMode::P2WSH,
+            _ => return Err(ParserError::parser_invalid_hash_mode),
+        };
+        Ok(mode)
+    }
+}
+
+impl HashMode {
     pub fn to_version_mainnet(self) -> u8 {
         match self {
             HashMode::P2PKH => c32::C32_ADDRESS_VERSION_MAINNET_SINGLESIG,
@@ -180,7 +184,7 @@ impl<'a> ContractName<'a> {
         let (rem, name) = ClarityName::from_bytes(bytes)?;
 
         // we are using the ClarityName inner type to wrap-up the parsing which is the same for
-        // Contrac names, but the docs do not say nothing about what is a valid clarity name either
+        // Contract names, but the docs do not say nothing about what is a valid clarity name either
         // ascii or utf8 values, lets check it here.
         if !name.0.is_ascii() {
             return Err(ParserError::parser_invalid_contract_name.into());
