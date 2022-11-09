@@ -12,34 +12,25 @@ const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().
 const MAX_ASCII_LEN: usize = 270;
 
 #[repr(C)]
-pub enum Message<'a> {
-    // leave room for another structured data
-    ByteStr(ByteString<'a>),
-}
+pub struct Message<'a>(ByteString<'a>);
 
 impl<'a> Message<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
-        let byte_str = ByteString::from_bytes(data)?;
-        Ok(Message::ByteStr(byte_str))
+        ByteString::from_bytes(data).map(|msg| Self(msg))
     }
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        if ByteString::maybe_byte_string(data) {
-            *self = Message::ByteStr(ByteString::from_bytes(data)?);
-            Ok(())
-        } else {
-            Err(ParserError::parser_unexpected_type)
-        }
+        ByteString::from_bytes(data).map(|msg| {
+            self.0 = msg;
+        })
     }
 
     pub fn is_message(data: &'a [u8]) -> bool {
-        ByteString::maybe_byte_string(data)
+        ByteString::is_msg(data)
     }
 
     pub fn num_items(&self) -> u8 {
-        match self {
-            Message::ByteStr(bstr) => bstr.num_items(),
-        }
+        self.0.num_items()
     }
 
     pub fn get_item(
@@ -49,9 +40,7 @@ impl<'a> Message<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        match self {
-            Message::ByteStr(bstr) => bstr.get_item(display_idx, out_key, out_value, page_idx),
-        }
+        self.0.get_item(display_idx, out_key, out_value, page_idx)
     }
 }
 
@@ -60,14 +49,14 @@ impl<'a> Message<'a> {
 pub struct ByteString<'a>(&'a [u8]);
 
 impl<'a> ByteString<'a> {
-    pub fn maybe_byte_string(data: &'a [u8]) -> bool {
+    pub fn is_msg(data: &'a [u8]) -> bool {
         Self::contain_header(data)
     }
 
     // Checks if the input data contain the byte_string heades at the first bytes
     fn contain_header(data: &[u8]) -> bool {
-        let msg_bytes = "\x17Stacks Signed Message:\n".as_bytes();
-        data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == msg_bytes
+        let header = "\x17Stacks Signed Message:\n".as_bytes();
+        data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == header
     }
 
     // returns the message content

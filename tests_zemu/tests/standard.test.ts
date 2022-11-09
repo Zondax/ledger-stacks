@@ -37,7 +37,6 @@ import {
   uintCV,
   stringAsciiCV,
   stringUtf8CV,
-  cvToHex
 } from '@stacks/transactions'
 import { StacksTestnet } from '@stacks/network'
 import { ec as EC } from 'elliptic'
@@ -54,12 +53,6 @@ const defaultOptions = {
   custom: `-s "${APP_SEED}"`,
   X11: false,
 }
-
-jest.setTimeout(60000)
-
-beforeAll(async () => {
-  await Zemu.checkAndPullImage()
-})
 
 describe('Standard', function () {
   test.each(models)('can start and stop container', async function (m) {
@@ -640,4 +633,5 @@ describe('Standard', function () {
       await sim.close()
     }
   })
+
 })

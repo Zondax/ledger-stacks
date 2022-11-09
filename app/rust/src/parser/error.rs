@@ -11,7 +11,7 @@ use nom::error::{ErrorKind, ParseError as NomError};
 /// purposes
 pub enum ParserError {
     // Generic errors
-    parser_ok = 0,
+    parser_ok,
     parser_no_data,
     parser_init_context_empty,
     parser_display_idx_out_of_range,
@@ -22,7 +22,11 @@ pub enum ParserError {
     parser_context_mismatch,
     parser_context_unexpected_size,
     parser_context_invalid_chars,
+    parser_context_unknown_prefix,
     // Required fields
+    parser_required_nonce,
+    parser_required_method,
+    ////////////////////////
     // Coin specific
     parser_post_condition_failed,
     parser_invalid_contract_name,
@@ -38,7 +42,6 @@ pub enum ParserError {
     parser_invalid_pubkey_encoding,
     parser_invalid_auth_type,
     parser_invalid_argument_id,
-    parser_invalid_token_transfer_principal,
     parser_invalid_transaction_payload,
     parser_invalid_address_version,
     parser_stacks_string_too_long,
@@ -53,6 +56,10 @@ pub enum ParserError {
     parser_invalid_token_transfer_type,
     parser_invalid_bytestr_message,
     parser_invalid_jwt,
+    parser_invalid_structured_msg,
+    parser_crypto_error,
+    parser_invalid_token_transfer_principal,
+    parser_recursion_limit,
 }
 
 impl From<ErrorKind> for ParserError {
@@ -81,5 +88,15 @@ impl<I> NomError<I> for ParserError {
 impl From<ParserError> for nom::Err<ParserError> {
     fn from(error: ParserError) -> Self {
         nom::Err::Error(error)
+    }
+}
+
+impl From<nom::Err<Self>> for ParserError {
+    fn from(e: nom::Err<Self>) -> Self {
+        match e {
+            nom::Err::Error(e) => e,
+            nom::Err::Failure(e) => e,
+            nom::Err::Incomplete(_) => Self::parser_unexpected_buffer_end,
+        }
     }
 }

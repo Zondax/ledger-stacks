@@ -1,3 +1,5 @@
+use core::convert::TryFrom;
+
 use nom::{
     bytes::complete::take,
     number::complete::{be_u16, be_u32, be_u64},
@@ -85,7 +87,7 @@ impl<'a> SpendingConditionSigner<'a> {
     }
 
     pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
-        HashMode::from_u8(self.data[0]).ok_or(ParserError::parser_invalid_hash_mode)
+        HashMode::try_from(self.data[0])
     }
 
     fn to_mainnet_address(

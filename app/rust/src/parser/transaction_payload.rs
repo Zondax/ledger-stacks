@@ -1,17 +1,18 @@
 use core::fmt::Write;
 use nom::{
     bytes::complete::take,
-    number::complete::{be_i128, be_u128, be_u32, be_u64, le_u8},
+    number::complete::{be_u32, be_u64, le_u8},
     sequence::tuple,
 };
 
 use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
-use crate::parser::error::ParserError;
-use crate::parser::parser_common::{
+use super::{
     ClarityName, ContractName, PrincipalData, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+    TX_DEPTH_LIMIT,
 };
+use crate::parser::error::ParserError;
 
 use crate::parser::c32;
 
@@ -143,19 +144,18 @@ pub struct Arguments<'a>(&'a [u8]);
 
 impl<'a> Arguments<'a> {
     #[inline(never)]
-    fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (_, num_args) = be_u32(bytes)?;
-        if num_args > MAX_NUM_ARGS && !is_expert_mode() {
-            return Err(nom::Err::Error(
-                ParserError::parser_invalid_transaction_payload,
-            ));
-        }
-        // here we take the leftover bytes
-        // because they are meant to be the argument values and there should not be
-        // more data after the args.
-        let (raw, args) = take(bytes.len())(bytes)?;
+    fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         check_canary!();
-        Ok((raw, Self(args)))
+
+        let (_, num_args) = be_u32(bytes)?;
+
+        if num_args > MAX_NUM_ARGS && !is_expert_mode() {
+            return Err(ParserError::parser_invalid_transaction_payload.into());
+        }
+
+        // take all bytes as there must not be more data after the arguments
+        // returning an empty remain data
+        Ok((&bytes[..0], Self(bytes)))
     }
 
     pub fn num_args(&self) -> Result<u32, ParserError> {
@@ -166,13 +166,16 @@ impl<'a> Arguments<'a> {
 
     pub fn argument_at(&self, at: usize) -> Result<Value<'a>, ParserError> {
         check_canary!();
+
         let mut idx = 0;
         let num_args = self.num_args()?;
+
         // skip the first 4-bytes
         let mut leftover = &self.0[4..];
+
         while idx < num_args as usize {
-            let (bytes, value) =
-                Value::from_bytes(leftover).map_err(|_| ParserError::parser_invalid_argument_id)?;
+            let (bytes, value) = Value::from_bytes::<TX_DEPTH_LIMIT>(leftover)
+                .map_err(|_| ParserError::parser_invalid_argument_id)?;
 
             leftover = bytes;
             if idx == at {
@@ -202,11 +205,11 @@ impl<'a> TransactionContractCall<'a> {
         Ok((leftover, Self(data)))
     }
 
-    pub fn contract_name(&self) -> Result<&[u8], ParserError> {
+    pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
         let at = HASH160_LEN + 1;
         ContractName::from_bytes(&self.0[at..])
-            .map(|res| (res.1).0)
-            .map_err(|_| ParserError::parser_invalid_contract_name)
+            .map(|(_, name)| name)
+            .map_err(|e| e.into())
     }
 
     pub fn function_name(&self) -> Result<&[u8], ParserError> {
@@ -243,7 +246,7 @@ impl<'a> TransactionContractCall<'a> {
         let contract_name = self.contract_name()?;
         if (addr == "SP000000000000000000002Q6VF78".as_bytes()
             || addr == "ST000000000000000000002AMW42H".as_bytes())
-            && contract_name == "pox".as_bytes()
+            && contract_name.name() == "pox".as_bytes()
         {
             let name = self.function_name()?;
             if name == "stack-stx".as_bytes() {
@@ -264,7 +267,7 @@ impl<'a> TransactionContractCall<'a> {
     }
 
     fn get_contract_call_args(
-        &self,
+        &'a self,
         display_idx: u8,
         out_key: &mut [u8],
         out_value: &mut [u8],
@@ -291,30 +294,32 @@ impl<'a> TransactionContractCall<'a> {
                 .write_str(arg_num_str)
                 .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
         }
-        let payload = value.payload()?;
-        match value.value_id()? {
+
+        // return the value content including the valueID
+        let payload = value.payload();
+
+        match value.value_id() {
             ValueId::Int => {
-                let val = be_i128::<'a, ParserError>(payload)
-                    .map(|res| res.1)
-                    .map_err(|_| ParserError::parser_unexpected_error)?;
+                let value = value.int().ok_or(ParserError::parser_unexpected_error)?;
                 let mut buff = [0u8; 39];
+
                 zxformat::pageString(
                     out_value,
-                    val.numtoa_str(10, &mut buff).as_bytes(),
+                    value.numtoa_str(10, &mut buff).as_bytes(),
                     page_idx,
                 )
             }
             ValueId::UInt => {
-                let val = be_u128::<'a, ParserError>(payload)
-                    .map(|res| res.1)
-                    .map_err(|_| ParserError::parser_unexpected_error)?;
+                let value = value.uint().ok_or(ParserError::parser_unexpected_error)?;
                 let mut buff = [0u8; 39];
+
                 if arg_num == 0 {
                     self.label_stacking_value(out_key)?;
                 }
+
                 zxformat::pageString(
                     out_value,
-                    val.numtoa_str(10, &mut buff).as_bytes(),
+                    value.numtoa_str(10, &mut buff).as_bytes(),
                     page_idx,
                 )
             }
@@ -358,6 +363,7 @@ impl<'a> TransactionContractCall<'a> {
                     page_idx,
                 )
             }
+
             ValueId::StringUtf8 => {
                 zxformat::pageString(out_value, "is StringUtf8".as_bytes(), page_idx)
             }
@@ -401,7 +407,7 @@ impl<'a> TransactionContractCall<'a> {
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 let name = self.contract_name()?;
                 check_canary!();
-                zxformat::pageString(out_value, name, page_idx)
+                zxformat::pageString(out_value, name.name(), page_idx)
             }
             // Function-name
             2 => {
@@ -446,10 +452,10 @@ impl<'a> TransactionSmartContract<'a> {
         Ok((Default::default(), Self(bytes)))
     }
 
-    pub fn contract_name(&self) -> Result<&[u8], ParserError> {
+    pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
         ContractName::from_bytes(self.0)
-            .map(|res| (res.1).0)
-            .map_err(|_| ParserError::parser_invalid_contract_name)
+            .map(|(_, res)| res)
+            .map_err(|e| e.into())
     }
 
     #[inline(never)]
@@ -469,7 +475,7 @@ impl<'a> TransactionSmartContract<'a> {
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
                 check_canary!();
                 let name = self.contract_name()?;
-                zxformat::pageString(out_value, name, page_idx)
+                zxformat::pageString(out_value, name.name(), page_idx)
             }
             _ => Err(ParserError::parser_value_out_of_range),
         }
@@ -535,10 +541,10 @@ impl<'a> TransactionPayload<'a> {
         matches!(self, &Self::ContractCall(_))
     }
 
-    pub fn contract_name(&self) -> Option<&[u8]> {
+    pub fn contract_name(&'a self) -> Option<ContractName<'a>> {
         match self {
-            Self::SmartContract(ref contract) => contract.contract_name().ok(),
-            Self::ContractCall(ref contract) => contract.contract_name().ok(),
+            Self::SmartContract(contract) => contract.contract_name().ok(),
+            Self::ContractCall(contract) => contract.contract_name().ok(),
             _ => None,
         }
     }

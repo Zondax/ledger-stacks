@@ -120,41 +120,49 @@ __Z_INLINE void app_sign() {
         return;
     }
 
-    if(transaction_type == Transaction) {
-        // Calculates the post_sighash
-        memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
+    switch (transaction_type) {
+        case Transaction: {
+            // Calculates the post_sighash
+            memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
-        // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
-        post_sighash_data[CX_SHA256_SIZE] = 0x00;
+            // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
+            post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
-        // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
-        uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+            // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
+            uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
-        // Now get the presig_hash
-        sha512_256_ctx ctx;
-        SHA512_256_init(&ctx);
-        SHA512_256_starts(&ctx);
+            // Now get the presig_hash
+            sha512_256_ctx ctx;
+            SHA512_256_init(&ctx);
+            SHA512_256_starts(&ctx);
 
-        // sighash + pubkey encoding
-        SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
-        // the signature's v value
-        SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
+            // sighash + pubkey encoding
+            SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
+            // the signature's v value
+            SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
 
-        // the signature's rs values
-        SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
-        SHA512_256_finish(&ctx, hash_temp);
-        memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+            // the signature's rs values
+            SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
+            SHA512_256_finish(&ctx, hash_temp);
+            memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+            break;
 
-    } else if (transaction_type == Jwt || transaction_type == Message){
-        // just return as a post_sighash the presig_hash
-        // which is the hash of the message or jwt
-        memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
-    } else {
-        err = zxerr_no_data;
-        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
-        return;
+        }
+        case Message:
+        case Jwt:
+        case StructuredMsg: {
+            // just return as a post_sighash the presig_hash
+            // which is the hash that is signed allowing for  easy signature verification
+            memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
+            break;
+                            }
+        default: {
+            err = zxerr_no_data;
+            uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
+            set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
+            io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+            return;
+        }
     }
 
     if (replyLen == 0) {
@@ -243,6 +251,8 @@ __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_
 }
 
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
+    zemu_log_stack("computing presig_hash");
+
     uint8_t tx_auth[INITIAL_SIGHASH_AUTH_LEN];
     MEMZERO(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
     uint8_t hash_temp[SHA512_DIGEST_LENGTH];
@@ -258,8 +268,8 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     const uint8_t *data = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
     const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
-    // Update the hasher with the first and second block of bytes
-    if( tx_typ == Transaction ) {
+    switch (tx_typ) {
+        case Transaction: {
         // Before hashing the transaction the auth field should be cleared
         // and the sponsor set to signing sentinel.
         uint16_t auth_len = 0;
@@ -278,11 +288,19 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_update(&ctx, last_block, last_block_len);
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-    } else if (tx_typ == Message || tx_typ == Jwt) {
+
+                          }
+    case Message:
+    case Jwt: {
         // we have byteString or JWT messages. The hash is the same for both types
         cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
         return zxerr_ok;
-    } else {
+    } 
+    // special case is delegated to the rust side
+    case StructuredMsg: {
+        return tx_structured_msg_hash(hash, CX_SHA256_SIZE);
+    }
+    default: 
         return zxerr_no_data;
     }
 }
