@@ -79,3 +79,5 @@ uint16_t tx_last_tx_block(uint8_t ** last_tx_block);
 uint16_t tx_previous_signer_data(uint8_t **data);
 
 transaction_type_t tx_get_transaction_type();
+
+zxerr_t tx_structured_msg_hash(uint8_t *out, uint16_t out_len);

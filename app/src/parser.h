@@ -76,6 +76,8 @@ void parser_resetState();
 
 transaction_type_t parser_get_transaction_type();
 
+zxerr_t parser_structured_msg_hash(uint8_t *out, uint16_t out_len);
+
 #ifdef __cplusplus
 }
 #endif

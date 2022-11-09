@@ -32,6 +32,8 @@ transaction_type_t _transaction_type(const parser_tx_t *v);
 
 parser_error_t _auth_flag(const parser_tx_t *v, uint8_t *auth_flag);
 
+parser_error_t _structured_msg_hash(const parser_tx_t *v,  uint8_t *out, uint16_t out_len);
+
 uint8_t _is_multisig(const parser_tx_t *v);
 
 uint8_t _fee_bytes(const parser_tx_t *v, uint8_t *fee, uint16_t fee_len);

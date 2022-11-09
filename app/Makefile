@@ -249,4 +249,7 @@ listvariants:
 version:
 	@echo "v$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)" > app.version
 
+.PHONY: rust_tests
+rust_tests:
+	cd rust && CARGO_HOME="$(CURDIR)/rust/.cargo" cargo test
 

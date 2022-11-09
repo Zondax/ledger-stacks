@@ -4,8 +4,14 @@ use crate::parser::{
 };
 use arrayvec::ArrayVec;
 
+#[cfg(not(any(test, fuzzing)))]
+use crate::bolos::sha256;
+
+use crate::bolos::SHA256_LEN;
+
 #[cfg(any(test, fuzzing))]
 use sha2::Digest;
+
 #[cfg(any(test, fuzzing))]
 use sha2::Sha256;
 
@@ -46,26 +52,22 @@ pub extern "C" fn rs_c32_address(
     0
 }
 
-// extern c function for formatting to fixed point number
-extern "C" {
-    pub fn hash_sha256(in_data: *const u8, in_len: u16, out: *mut u8);
-}
-
 #[cfg(any(test, fuzzing))]
-fn double_sha256_checksum(data: &mut [u8]) {
-    data.copy_from_slice(Sha256::digest(&data[..21]).as_slice());
-    let sha2_2 = Sha256::digest(&data);
+fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
+    let digest = Sha256::digest(&data[..21]);
+    data.copy_from_slice(digest.as_slice());
+    let sha2_2 = Sha256::digest(&data[..]);
     data[20..24].copy_from_slice(&sha2_2.as_slice()[..4]);
 }
 
 #[cfg(not(any(test, fuzzing)))]
-fn double_sha256_checksum(data: &mut [u8]) {
-    let mut output = [0u8; 32];
-    unsafe {
-        hash_sha256(data.as_ptr(), 21, output.as_mut_ptr());
-        data.copy_from_slice(output.as_ref());
-        hash_sha256(data.as_ptr(), 32, output.as_mut_ptr());
-    }
+fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
+    let mut output = [0u8; SHA256_LEN];
+    // safe to unwrap as we are passing the right len
+    sha256(&data[..21], &mut output[..]).unwrap();
+    data.copy_from_slice(output.as_ref());
+    // safe to unwrap as we are passing the right len
+    sha256(&data[..], &mut output).unwrap();
     data[20..24].copy_from_slice(&output[..4])
 }
 

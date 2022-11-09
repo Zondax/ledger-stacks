@@ -262,3 +262,18 @@ pub unsafe extern "C" fn _previous_signer_data(
     }
     0
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn _structured_msg_hash(
+    tx_t: *const parse_tx_t,
+    out: *mut u8,
+    out_len: u16,
+) -> u32 {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.structured_msg()) {
+        let output = core::slice::from_raw_parts_mut(out, out_len as _);
+        if tx.get_hash(output).is_ok() {
+            return ParserError::parser_ok as _;
+        }
+    }
+    ParserError::parser_unexpected_error as _
+}

@@ -62,8 +62,7 @@ jobs:
           cargo audit
       - name: run tests
         run: |
-          cd ./app/rust
-          cargo test
+          make rust_test
 
   build_nano_S:
     needs: configure

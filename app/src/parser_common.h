@@ -73,7 +73,10 @@ typedef enum {
     parser_invalid_token_transfer_type,
     parser_invalid_bytestr_message,
     parser_invalid_jwt,
+    parser_invalid_structured_msg,
     parser_crypto_error,
+    parser_invalid_token_transfer_principal,
+    parser_recursion_limit,
 } parser_error_t;
 
 typedef struct {
@@ -86,6 +89,7 @@ typedef enum _TransactionType {
     Transaction,
     Message,
     Jwt,
+    StructuredMsg,
     Invalid
 } transaction_type_t;
 
