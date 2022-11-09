@@ -9,8 +9,8 @@ use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
 use super::{
-    ClarityName, ContractName, Int128, PrincipalData, StacksAddress, UInt128,
-    C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, TX_DEPTH_LIMIT,
+    ClarityName, ContractName, PrincipalData, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+    TX_DEPTH_LIMIT,
 };
 use crate::parser::error::ParserError;
 

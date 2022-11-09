@@ -86,11 +86,6 @@ mod test {
         let (_, value) = Value::from_bytes::<10>(&bytes).unwrap();
         assert!(matches!(value.value_id(), ValueId::Tuple));
         assert_eq!(bytes.len(), value.0.len());
-
-        let encoded4 = "0c0000000501610c00000002016100000000000000000000000000000000010162000000000000000000000000000000000101620c000000020161000000000000000000000000000000000101620301630c000000020161000000000000000000000000000000000101620301760000000000000000000000000000000001017a0c0000000201610000000000000000000000000000000001016303";
-        let bytes = hex::decode(encoded4).unwrap();
-        // this should fail because there are more than 1 nested tuples
-        //Value::value_len::<1>(&bytes).unwrap_err();
     }
 
     #[test]
