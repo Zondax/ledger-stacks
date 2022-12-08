@@ -62,6 +62,200 @@ impl ValueId {
     }
 }
 
+impl<'a> Value<'a> {
+    pub fn from_bytes<const MAX_DEPTH: u8>(
+        bytes: &'a [u8],
+    ) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+        c_zemu_log_stack("Value::from_bytes\x00");
+        check_canary!();
+
+        let len = Self::value_len::<MAX_DEPTH>(bytes)?;
+        take(len)(bytes).map(|(rem, v)| (rem, Self(v)))
+    }
+
+    pub fn value_id(&self) -> ValueId {
+        // should not panic as Value was already parsed
+        ValueId::try_from(self.0[0]).unwrap()
+    }
+
+    // returns the bytes that represent the Value data
+    // removing the value_id which is the first byte
+    pub fn payload(&self) -> &'a [u8] {
+        // wont panic as Value was already parsed
+        &self.0[1..]
+    }
+
+    // return all bytes this value holds including the value_id
+    pub fn bytes(&self) -> &'a [u8] {
+        self.0
+    }
+
+    pub fn tuple(&'a self) -> Option<Tuple<'a>> {
+        Tuple::new(self).ok()
+    }
+
+    pub fn uint(&'a self) -> Option<u128> {
+        UInt128::new(self).map(|v| v.value()).ok()
+    }
+
+    pub fn int(&'a self) -> Option<i128> {
+        Int128::new(self).map(|v| v.value()).ok()
+    }
+
+    pub fn string_ascii(&'a self) -> Option<StringAscii<'a>> {
+        StringAscii::new(self).ok()
+    }
+
+    pub fn string_utf8(&'a self) -> Option<StringUtf8<'a>> {
+        StringUtf8::new(self).ok()
+    }
+
+    pub fn value_len<const MAX_DEPTH: u8>(bytes: &'a [u8]) -> Result<usize, nom::Err<ParserError>> {
+        if bytes.is_empty() {
+            return Err(ParserError::parser_unexpected_buffer_end.into());
+        }
+
+        let mut depth = 0;
+
+        Self::value_len_impl::<MAX_DEPTH>(&mut depth, bytes)
+    }
+
+    fn value_len_impl<const MAX_DEPTH: u8>(
+        depth: &mut u8,
+        bytes: &'a [u8],
+    ) -> Result<usize, nom::Err<ParserError>> {
+        Self::check_recursion_limit::<MAX_DEPTH>(*depth)?;
+
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+
+        // get value_id
+        let (rem, id) =
+            ValueId::from_bytes(bytes).map_err(|_| ParserError::parser_unexpected_value)?;
+
+        let len = match id {
+            ValueId::Int | ValueId::UInt => BIG_INT_SIZE,
+            ValueId::Buffer => {
+                // value_len + 4-bytes
+                be_u32(rem).map(|(_, len)| len as usize + 4)?
+            }
+            ValueId::BoolTrue | ValueId::BoolFalse => 0,
+            ValueId::StandardPrincipal => StandardPrincipal::BYTES_LEN,
+            ValueId::ContractPrincipal => {
+                let (remain, _) = ContractPrincipal::read_as_bytes(rem)?;
+                rem.len() - remain.len()
+            }
+            ValueId::OptionalNone => 0,
+            ValueId::List => Self::list_len::<MAX_DEPTH>(depth, rem)?,
+            ValueId::Tuple => Self::tuple_len::<MAX_DEPTH>(depth, rem)?,
+            ValueId::StringAscii | ValueId::StringUtf8 => {
+                let (rem, len) = be_u32(rem)?;
+                if rem.len() < len as usize {
+                    return Err(ParserError::parser_unexpected_buffer_end.into());
+                }
+                if id == ValueId::StringAscii && !(rem[..len as usize]).is_ascii() {
+                    return Err(ParserError::parser_unexpected_type.into());
+                }
+                len as usize + 4
+            }
+            // parse the other types that require recursion
+            ValueId::ResponseErr | ValueId::ResponseOk | ValueId::OptionalSome => {
+                if rem.is_empty() {
+                    return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
+                }
+
+                // Increase recursion counter
+                *depth += 1;
+                Self::value_len_impl::<MAX_DEPTH>(depth, rem)?
+            }
+        };
+
+        // len plus clarity value type
+        Ok(len + 1)
+    }
+
+    fn tuple_len<const MAX_DEPTH: u8>(
+        depth: &mut u8,
+        bytes: &'a [u8],
+    ) -> Result<usize, nom::Err<ParserError>> {
+        // Check iteration counter
+        Self::check_recursion_limit::<MAX_DEPTH>(*depth)?;
+
+        let (rem, num_pairs) = be_u32(bytes)?;
+        let mut len = 0;
+        let mut remain: &[u8] = rem;
+
+        // a list of tuple pairs (ClarityName, Value)
+        for _ in 0..num_pairs {
+            let (rem, key) = ClarityName::read_as_bytes(remain)?;
+            let key_len = key.len();
+
+            // check for a nested tuple
+            if let Ok(true) = ValueId::from_bytes(rem).map(|(_, id)| id == ValueId::Tuple) {
+                *depth += 1;
+            }
+
+            let value_len = Self::value_len_impl::<MAX_DEPTH>(depth, rem)?;
+
+            // Read out the bytes that represent the tuple pair being parsed
+            // and update the remainder bytes
+            let (rem, _) = take(key_len + value_len)(remain)?;
+            remain = rem;
+
+            // update our global byte-counter for this Tuple
+            len += key_len + value_len;
+        }
+
+        // The total bytes for this tuple is 1-byte valueId + 4-byte tuple len + total_len inner
+        // pairs, but the value-id byte is added by the caller
+        Ok(len + 4)
+    }
+
+    fn list_len<const MAX_DEPTH: u8>(
+        depth: &mut u8,
+        bytes: &'a [u8],
+    ) -> Result<usize, nom::Err<ParserError>> {
+        Self::check_recursion_limit::<MAX_DEPTH>(*depth)?;
+
+        // Read the number of items this list contains
+        let (rem, num_items) = be_u32(bytes)?;
+
+        let mut len = 0;
+        let mut remain: &[u8] = rem;
+
+        // start parsing each item
+        for _ in 0..num_items {
+            // check for a nested list
+            if let Ok(true) = ValueId::from_bytes(remain).map(|(_, id)| id == ValueId::List) {
+                *depth += 1;
+            }
+
+            let item_len = Self::value_len_impl::<MAX_DEPTH>(depth, remain)?;
+
+            // update the raw data so, we parse the next tuple pair
+            let (rem, _) = take(item_len)(remain)?;
+            remain = rem;
+
+            // update our global byte-counter for this Tuple
+            len += item_len;
+        }
+
+        // The total bytes for this list are 1-byte valueId + 4-byte list_len + total_len inner
+        // pairs, although the 1-byte id is added by the caller
+        Ok(len + 4)
+    }
+
+    fn check_recursion_limit<const MAX_DEPTH: u8>(depth: u8) -> Result<(), ParserError> {
+        // Check iteration counter
+        if depth > MAX_DEPTH {
+            c_zemu_log_stack("Error recursion limit reached!");
+            return Err(ParserError::parser_recursion_limit.into());
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -157,198 +351,5 @@ mod test {
         let bytes = hex::decode(encoded).unwrap();
         let (_, value) = Value::from_bytes::<10>(&bytes).unwrap();
         assert!(matches!(value.value_id(), ValueId::StringUtf8));
-    }
-}
-
-impl<'a> Value<'a> {
-    pub fn from_bytes<const MAX_DEPTH: u8>(
-        bytes: &'a [u8],
-    ) -> Result<(&[u8], Self), nom::Err<ParserError>> {
-        c_zemu_log_stack("Value::from_bytes\x00");
-
-        let len = Self::value_len::<MAX_DEPTH>(bytes)?;
-        take(len)(bytes).map(|(rem, v)| (rem, Self(v)))
-    }
-
-    pub fn value_id(&self) -> ValueId {
-        // should not panic as Value was already parsed
-        ValueId::try_from(self.0[0]).unwrap()
-    }
-
-    // returns the bytes that represent the Value data
-    // removing the value_id which is the first byte
-    pub fn payload(&self) -> &'a [u8] {
-        // wont panic as Value was already parsed
-        &self.0[1..]
-    }
-
-    // return all bytes this value holds including the value_id
-    pub fn bytes(&self) -> &'a [u8] {
-        self.0
-    }
-
-    pub fn tuple(&'a self) -> Option<Tuple<'a>> {
-        Tuple::new(self).ok()
-    }
-
-    pub fn uint(&'a self) -> Option<u128> {
-        UInt128::new(self).map(|v| v.value()).ok()
-    }
-
-    pub fn int(&'a self) -> Option<i128> {
-        Int128::new(self).map(|v| v.value()).ok()
-    }
-
-    pub fn string_ascii(&'a self) -> Option<StringAscii<'a>> {
-        StringAscii::new(self).ok()
-    }
-
-    pub fn string_utf8(&'a self) -> Option<StringUtf8<'a>> {
-        StringUtf8::new(self).ok()
-    }
-
-    pub fn value_len<const MAX_DEPTH: u8>(bytes: &'a [u8]) -> Result<usize, nom::Err<ParserError>> {
-        if bytes.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end.into());
-        }
-
-        let mut depth = 0;
-
-        Self::value_len_impl::<MAX_DEPTH>(&mut depth, bytes)
-    }
-
-    fn value_len_impl<const MAX_DEPTH: u8>(
-        depth: &mut u8,
-        bytes: &'a [u8],
-    ) -> Result<usize, nom::Err<ParserError>> {
-        check_canary!();
-        if *depth > MAX_DEPTH {
-            c_zemu_log_stack("Error recursion limit reached!");
-            return Err(ParserError::parser_recursion_limit.into());
-        }
-        if bytes.is_empty() {
-            return Ok(0);
-        }
-
-        // get value_id
-        let (rem, id) =
-            ValueId::from_bytes(bytes).map_err(|_| ParserError::parser_unexpected_value)?;
-
-        let len = match id {
-            ValueId::Int | ValueId::UInt => BIG_INT_SIZE,
-            ValueId::Buffer => {
-                // value_len + 4-bytes
-                be_u32(rem).map(|(_, len)| len as usize + 4)?
-            }
-            ValueId::BoolTrue | ValueId::BoolFalse => 0,
-            ValueId::StandardPrincipal => StandardPrincipal::BYTES_LEN,
-            ValueId::ContractPrincipal => {
-                let (_, contract_bytes) = ContractPrincipal::read_as_bytes(rem)?;
-                contract_bytes.len()
-            }
-            ValueId::OptionalNone => 0,
-            ValueId::List => Self::list_len::<MAX_DEPTH>(depth, rem)?,
-            ValueId::Tuple => Self::tuple_len::<MAX_DEPTH>(depth, rem)?,
-            ValueId::StringAscii | ValueId::StringUtf8 => {
-                let (rem, len) = be_u32(rem)?;
-                if rem.len() < len as usize {
-                    return Err(ParserError::parser_unexpected_buffer_end.into());
-                }
-                if id == ValueId::StringAscii && !(rem[..len as usize]).is_ascii() {
-                    return Err(ParserError::parser_unexpected_type.into());
-                }
-                len as usize + 4
-            }
-            // parse the other types that require recursion
-            ValueId::ResponseErr | ValueId::ResponseOk | ValueId::OptionalSome => {
-                if rem.is_empty() {
-                    return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
-                }
-
-                // Increase recursion counter
-                *depth += 1;
-                Self::value_len_impl::<MAX_DEPTH>(depth, rem)?
-            }
-        };
-
-        // len plus clarity value type
-        Ok(len + 1)
-    }
-
-    fn tuple_len<const MAX_DEPTH: u8>(
-        depth: &mut u8,
-        bytes: &'a [u8],
-    ) -> Result<usize, nom::Err<ParserError>> {
-        // Check iteration counter
-        if *depth > MAX_DEPTH {
-            c_zemu_log_stack("Error recursion limit reached!");
-            return Err(ParserError::parser_recursion_limit.into());
-        }
-
-        let (rem, num_pairs) = be_u32(bytes)?;
-        let mut len = 0;
-        let mut remain: &[u8] = rem;
-
-        for _ in 0..num_pairs {
-            let (_, item_id) = ValueId::from_bytes(remain)?;
-            if item_id == ValueId::Tuple {
-                *depth += 1;
-            }
-
-            let (rem, key) = ClarityName::read_as_bytes(remain)?;
-            let key_len = key.len();
-
-            let value_len = Self::value_len_impl::<MAX_DEPTH>(depth, rem)?;
-
-            // Read out the bytes that represent the tuple pair being parsed
-            // and update the remainder bytes
-            let (rem, _) = take(key_len + value_len)(remain)?;
-            remain = rem;
-
-            // update our global byte-counter for this Tuple
-            len += key_len + value_len;
-        }
-
-        // The total bytes for this tuple is 1-byte valueId + 4-byte tuple len + total_len inner
-        // pairs, but the value-id byte is added by the caller
-        Ok(len + 4)
-    }
-
-    fn list_len<const MAX_DEPTH: u8>(
-        depth: &mut u8,
-        bytes: &'a [u8],
-    ) -> Result<usize, nom::Err<ParserError>> {
-        // Check for the recursion limit
-        if *depth > MAX_DEPTH {
-            c_zemu_log_stack("Error recursion limit reached!");
-            return Err(ParserError::parser_recursion_limit.into());
-        }
-
-        // Read the number of items this list contains
-        let (rem, num_items) = be_u32(bytes)?;
-
-        let mut len = 0;
-        let mut remain: &[u8] = rem;
-
-        // start parsing each item
-        for _ in 0..num_items {
-            let (_, item_id) = ValueId::from_bytes(remain)?;
-
-            if item_id == ValueId::List {
-                *depth += 1;
-            }
-            let item_len = Self::value_len_impl::<MAX_DEPTH>(depth, remain)?;
-
-            // update the raw data so, we parse the next tuple pair
-            let (rem, _) = take(item_len)(remain)?;
-            remain = rem;
-
-            // update our global byte-counter for this Tuple
-            len += item_len;
-        }
-
-        // The total bytes for this list are 1-byte valueId + 4-byte list_len + total_len inner
-        // pairs, although the 1-byte id is added by the caller
-        Ok(len + 4)
     }
 }
