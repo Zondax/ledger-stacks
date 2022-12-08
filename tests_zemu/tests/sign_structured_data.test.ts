@@ -31,6 +31,9 @@ import {
   someCV,
   responseOkCV,
   responseErrorCV,
+  trueCV,
+  falseCV,
+  contractPrincipalCV,
   listCV,
   serializeCV
 } from '@stacks/transactions'
@@ -66,6 +69,28 @@ const MSG_TUPLE = tupleCV({
     'principal': standardPrincipalCV('SP2JXKMSH007NPYAQHKJPQMAQYAD90NQGTVJVQ02B'),
 })
 
+const BIG_TUPLE = tupleCV({
+  'hello': uintCV(234),
+  'a': intCV(-1),
+  'b': bufferCV(Buffer.from('abcdefgh', 'ascii')),
+  'm': listCV([intCV(-1), intCV(-1), intCV(-1), intCV(-1)]),
+  'result_call': responseOkCV(stringAsciiCV('done')),
+  'error_msg': responseErrorCV(stringUtf8CV('unknown URI')),
+  'nested': someCV(listCV([noneCV(), someCV(intCV(-100))])),
+  'principal': standardPrincipalCV('SP2JXKMSH007NPYAQHKJPQMAQYAD90NQGTVJVQ02B'),
+  'l': tupleCV({
+    'a': trueCV(),
+    'b': falseCV(),
+  }),
+  'contractPrincipal': contractPrincipalCV('SP2JXKMSH007NPYAQHKJPQMAQYAD90NQGTVJVQ02B', 'test'),
+  'xxxx': tupleCV({
+    'yyyy': intCV(123),
+    'ddd': tupleCV({
+      'ggg': uintCV(123),
+    }),
+  }),
+});
+
 const MSG_STRING = stringAsciiCV("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas risus odio, sagittis non turpis vel, imperdiet pharetra quam. Cras fermentum nisi leo. Aliquam bibendum lacus pulvinar, ultrices urna in, faucibus quam. Maecenas eu commodo mi. Vivamus lorem ante, efficitur eget condimentum quis, malesuada viverra sem. Donec egestas egestas erat, vitae facilisis tellus bibendum varius. Maecenas ac porta libero, ac finibus risus. Quisque dictum lacinia tortor, sed convallis mi condimentum eget. In interdum mauris nisi, nec elementum nibh bibendum sit amet. Mauris auctor vulputate enim, sit amet egestas eros. Integer rhoncus ipsum purus, sed pulvinar erat suscipit interdum. In dolor dui, aliquam vitae iaculis vitae, facilisis in orci. Cras volutpat ultrices mauris. Mauris malesuada, nulla sit amet volutpat iaculis, felis tortor pharetra mauris, sed ullamcorper ante lectus vel quam.")
 
 const MSG_EMPTY_LIST = listCV([])
@@ -94,6 +119,10 @@ const SIGN_TEST_DATA = [
   {
     name: 'big_list_tuple',
     op: listCV([MSG_TUPLE, MSG_TUPLE, MSG_TUPLE]), // requires a recursion limit of 20
+  },
+  {
+    name: 'big_tuple',
+    op: BIG_TUPLE,
   },
 ]
 
