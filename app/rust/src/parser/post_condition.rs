@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use core::fmt::Write;
+use core::{convert::TryFrom, fmt::Write};
 use nom::{
     bytes::complete::take,
     number::complete::{be_u64, le_u8},
@@ -9,6 +9,7 @@ use super::error::ParserError;
 
 use super::parser_common::{
     AssetInfo, ContractName, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, STX_DECIMALS,
+    TX_DEPTH_LIMIT,
 };
 use crate::parser::value::Value;
 use crate::zxformat;
@@ -21,14 +22,17 @@ pub enum PostConditionPrincipalId {
     Contract = 0x03,
 }
 
-impl PostConditionPrincipalId {
-    pub fn from_u8(b: u8) -> Option<Self> {
-        match b {
-            1 => Some(Self::Origin),
-            2 => Some(Self::Standard),
-            3 => Some(Self::Contract),
-            _ => None,
-        }
+impl TryFrom<u8> for PostConditionPrincipalId {
+    type Error = ParserError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let id = match value {
+            1 => Self::Origin,
+            2 => Self::Standard,
+            3 => Self::Contract,
+            _ => return Err(ParserError::parser_unexpected_value),
+        };
+        Ok(id)
     }
 }
 
@@ -44,8 +48,7 @@ impl<'a> PostConditionPrincipal<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let id = le_u8(bytes)?;
-        let principal_id = PostConditionPrincipalId::from_u8(id.1)
-            .ok_or(ParserError::parser_invalid_post_condition_principal)?;
+        let principal_id = PostConditionPrincipalId::try_from(id.1)?;
         match principal_id {
             PostConditionPrincipalId::Origin => Ok((id.0, PostConditionPrincipal::Origin)),
             PostConditionPrincipalId::Standard => {
@@ -64,24 +67,23 @@ impl<'a> PostConditionPrincipal<'a> {
     }
 
     pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
-        let id = le_u8(bytes)?;
-        let principal_id = PostConditionPrincipalId::from_u8(id.1)
-            .ok_or(ParserError::parser_invalid_post_condition_principal)?;
+        let (rem, id) = le_u8(bytes)?;
+        let principal_id = PostConditionPrincipalId::try_from(id)?;
         match principal_id {
-            PostConditionPrincipalId::Origin => Ok((id.0, Default::default())),
+            PostConditionPrincipalId::Origin => Ok((rem, Default::default())),
             PostConditionPrincipalId::Standard => {
                 // we take 20-byte key hash + 1-byte hash_mode + 1-byte principal_id
                 let (raw, addr) = take(HASH160_LEN + 2usize)(bytes)?;
                 Ok((raw, addr))
             }
             PostConditionPrincipalId::Contract => {
-                let (raw, _) = StacksAddress::from_bytes(id.0)?;
-                let (raw2, name) = ContractName::from_bytes(raw)?;
+                let (rem, _) = StacksAddress::from_bytes(rem)?;
+                let (_, name) = ContractName::from_bytes(rem)?;
                 // we take 20-byte key hash + 1-byte hash_mode +
                 // contract_name len + 1-byte len + 1-byte principal_id
-                let total_len = HASH160_LEN + name.0.len() + 3;
-                let (_, contract_bytes) = take(total_len)(bytes)?;
-                Ok((raw2, contract_bytes))
+                let total_len = HASH160_LEN + name.len() + 3;
+                let (rem, contract_bytes) = take(total_len)(bytes)?;
+                Ok((rem, contract_bytes))
             }
         }
     }
@@ -116,9 +118,9 @@ impl<'a> PostConditionPrincipal<'a> {
         }
     }
 
-    pub fn get_contract_name(&self) -> Option<&'a [u8]> {
+    pub fn get_contract_name(&'a self) -> Option<&'a [u8]> {
         match self {
-            Self::Contract(_, ref name) => Some(name.0),
+            Self::Contract(_, name) => Some(name.name()),
             _ => None,
         }
     }
@@ -189,14 +191,18 @@ pub enum PostConditionType {
     NonFungibleToken = 2,
 }
 
-impl PostConditionType {
-    pub fn from_u8(b: u8) -> Option<Self> {
-        match b {
-            0 => Some(Self::STX),
-            1 => Some(Self::FungibleToken),
-            2 => Some(Self::NonFungibleToken),
-            _ => None,
-        }
+impl TryFrom<u8> for PostConditionType {
+    type Error = ParserError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let t = match value {
+            0 => Self::STX,
+            1 => Self::FungibleToken,
+            2 => Self::NonFungibleToken,
+            _ => return Err(ParserError::parser_invalid_post_condition),
+        };
+
+        Ok(t)
     }
 }
 
@@ -216,9 +222,7 @@ impl<'a> TransactionPostCondition<'a> {
         let principal = PostConditionPrincipal::read_as_bytes(raw)?;
         let principal_len = raw.len() - principal.0.len();
 
-        match PostConditionType::from_u8(cond_type)
-            .ok_or(ParserError::parser_invalid_post_condition)?
-        {
+        match PostConditionType::try_from(cond_type)? {
             PostConditionType::STX => {
                 let len = principal_len + 1 + 8;
                 let (raw, inner) = take(len)(raw)?;
@@ -232,7 +236,7 @@ impl<'a> TransactionPostCondition<'a> {
             }
             PostConditionType::NonFungibleToken => {
                 let asset = AssetInfo::read_as_bytes(principal.0)?;
-                let value_len = Value::value_len(asset.0)?;
+                let value_len = Value::value_len::<TX_DEPTH_LIMIT>(asset.0)?;
                 let len = principal_len + asset.1.len() + value_len + 1;
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Nonfungible(inner)))
@@ -244,9 +248,7 @@ impl<'a> TransactionPostCondition<'a> {
         let cond_type = le_u8(bytes)?;
         let (raw, _) = PostConditionPrincipal::read_as_bytes(cond_type.0)?;
         let mut len = bytes.len() - raw.len();
-        len += match PostConditionType::from_u8(cond_type.1)
-            .ok_or(ParserError::parser_invalid_post_condition)?
-        {
+        len += match PostConditionType::try_from(cond_type.1)? {
             PostConditionType::STX => {
                 // We take 9-bytes which comprises the 8-byte amount + 1-byte fungible code
                 9usize
@@ -258,7 +260,7 @@ impl<'a> TransactionPostCondition<'a> {
             }
             PostConditionType::NonFungibleToken => {
                 let (asset_raw, asset) = AssetInfo::read_as_bytes(raw)?;
-                let value_len = Value::value_len(asset_raw)?;
+                let value_len = Value::value_len::<TX_DEPTH_LIMIT>(asset_raw)?;
                 asset.len() + value_len + 1
             }
         };

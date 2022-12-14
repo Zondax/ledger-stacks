@@ -1,9 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 use super::error::ParserError;
-use crate::{
-    parser::c32::hash_sha256,
-    zxformat::{pageString, Writer},
-};
+use crate::zxformat::{pageString, Writer};
+
+use crate::bolos::{sha256, SHA256_LEN};
 use core::{fmt::Write, str};
 use hex::encode_to_slice;
 
@@ -20,20 +19,6 @@ fn decode_data(input: &[u8], output: &mut [u8]) -> Result<usize, ParserError> {
     // TODO: Add new error for this decoding error
     base64::decode_config_slice(input, base64::URL_SAFE, output)
         .map_err(|_| ParserError::parser_unexpected_type)
-}
-
-#[cfg(not(any(test, fuzzing)))]
-fn sha256_hash(data: &[u8], out: &mut [u8]) {
-    unsafe {
-        hash_sha256(data.as_ptr(), data.len() as u16, out.as_mut_ptr());
-    }
-}
-
-#[cfg(any(test, fuzzing))]
-fn sha256_hash(data: &[u8], out: &mut [u8]) {
-    use sha2::Digest;
-    use sha2::Sha256;
-    out.copy_from_slice(Sha256::digest(data).as_slice());
 }
 
 #[repr(C)]
@@ -119,8 +104,9 @@ impl<'a> Jwt<'a> {
         Self::parse_header_payload(data).is_ok()
     }
 
-    pub fn get_hash(&self, output: &mut [u8; 32]) {
-        sha256_hash(self.jwt_data, output.as_mut());
+    pub fn get_hash(&self, output: &mut [u8; SHA256_LEN]) {
+        // wont panic as output is the right len
+        sha256(self.jwt_data, output.as_mut()).unwrap()
     }
 
     pub fn num_items(&self) -> u8 {
@@ -145,10 +131,10 @@ impl<'a> Jwt<'a> {
             .write_str("JWT hash:")
             .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
 
-        let mut out_data = [0u8; 32];
+        let mut out_data = [0u8; SHA256_LEN];
         self.get_hash(&mut out_data);
         // hex encode the hash
-        let mut hash_str = [0u8; 64];
+        let mut hash_str = [0u8; SHA256_LEN * 2];
         encode_to_slice(out_data.as_ref(), hash_str.as_mut())
             .map_err(|_| ParserError::parser_unexpected_error)?;
         pageString(out_value, hash_str.as_ref(), page_idx)

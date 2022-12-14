@@ -37,7 +37,6 @@ import {
   uintCV,
   stringAsciiCV,
   stringUtf8CV,
-  cvToHex
 } from '@stacks/transactions'
 import { StacksTestnet } from '@stacks/network'
 import { ec as EC } from 'elliptic'
@@ -54,12 +53,6 @@ const defaultOptions = {
   custom: `-s "${APP_SEED}"`,
   X11: false,
 }
-
-jest.setTimeout(60000)
-
-beforeAll(async () => {
-  await Zemu.checkAndPullImage()
-})
 
 describe('Standard', function () {
   test.each(models)('can start and stop container', async function (m) {
@@ -487,7 +480,7 @@ describe('Standard', function () {
 
       expect(testPublicKey).toEqual('02' + expectedPublicKey.slice(2, 2 + 32 * 2))
 
-      const msg = "Hello World"
+      const msg = "Welcome!\nSign this message to access Gamma's full feature set.\nAs always, by using Gamma, you agree to our terms of use: https://gamma.io/terms\nDomain: gamma.io\nAccount: SP2PH3XAPDMSKXQVS1WZ80JGZACY713JQQEE1DY48\nNonce: c83024f9e9aef40f5d72076e883054c07100035112826b14f78e5a893d62b1bf\n"
 
       // Check the signature
       const signatureRequest = app.sign_msg(path, msg)
@@ -504,19 +497,26 @@ describe('Standard', function () {
       expect(signature.errorMessage).toEqual('No errors')
 
       //Verify signature
-      const ec = new EC("secp256k1");
-      const len = encode(msg.length)
-      const data = "\x17Stacks Signed Message:\n" + `${len}` + msg
-      console.log(data)
+      const ec = new EC("secp256k1")
+
+      const len_buf = encode(msg.length)
+      const header = Buffer.from("\x17Stacks Signed Message:\n", 'utf8')
+      const msg_buf = Buffer.from(msg, 'utf8')
+
+      const arr = [header, len_buf, msg_buf];
+      const data = Buffer.concat(arr)
+
       const msgHash = sha256(data);
       const sig = signature.signatureVRS.toString('hex')
+
       const signature_obj = {
-        r: sig.substr(2, 64),
-        s: sig.substr(66, 64),
+        r: Buffer.from(sig.substr(2, 64), 'hex'),
+        s: Buffer.from(sig.substr(66, 64), 'hex'),
       }
-      //@ts-ignore
-      const signatureOk = ec.verify(msgHash, signature_obj, testPublicKey, "hex");
+      const pubkey = Buffer.from(testPublicKey, 'hex')
+      const signatureOk = ec.verify(msgHash, signature_obj, pubkey, "hex");
       expect(signatureOk).toEqual(true);
+
     } finally {
       await sim.close()
     }
@@ -633,4 +633,5 @@ describe('Standard', function () {
       await sim.close()
     }
   })
+
 })

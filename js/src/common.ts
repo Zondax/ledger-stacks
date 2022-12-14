@@ -10,6 +10,7 @@ export const INS = {
   SIGN_SECP256K1: 0x02,
   GET_AUTH_PUBKEY: 0x03,
   SIGN_JWT_SECP256K1: 0x04,
+  SIGN_STRUCTURED_MSG: 0x05,
 };
 
 export const PAYLOAD_TYPE = {

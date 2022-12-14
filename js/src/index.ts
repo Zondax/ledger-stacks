@@ -311,4 +311,31 @@ export default class StacksApp {
       }, processErrorResponse);
     }, processErrorResponse);
   }
+
+  async sign_structured_msg(path: string, domain: string, message: string) {
+    const len = encode(message.length);
+    const header = 'SIP018';
+    const blob = Buffer.concat([Buffer.from(header), Buffer.from(domain, 'hex'), Buffer.from(message, 'hex')]);
+    const ins = INS.SIGN_SECP256K1;
+    return this.signGetChunks(path, blob).then(chunks => {
+      return this.signSendChunk(1, chunks.length, chunks[0], ins).then(async response => {
+        let result = {
+          returnCode: response.returnCode,
+          errorMessage: response.errorMessage,
+          postSignHash: null as null | Buffer,
+          signatureCompact: null as null | Buffer,
+          signatureDER: null as null | Buffer,
+        };
+        for (let i = 1; i < chunks.length; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          result = await this.signSendChunk(1 + i, chunks.length, chunks[i], ins);
+          if (result.returnCode !== LedgerError.NoErrors) {
+            break;
+          }
+        }
+        return result;
+      }, processErrorResponse);
+    }, processErrorResponse);
+  }
+
 }
