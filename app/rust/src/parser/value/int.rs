@@ -1,9 +1,6 @@
 use core::convert::TryFrom;
 
-use nom::{
-    bytes::complete::take,
-    number::complete::{be_i128, be_u128},
-};
+use nom::number::complete::{be_i128, be_u128};
 
 use crate::parser::error::ParserError;
 
