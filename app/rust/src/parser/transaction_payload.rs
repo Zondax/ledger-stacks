@@ -152,10 +152,13 @@ impl<'a> Arguments<'a> {
         if num_args > MAX_NUM_ARGS && !is_expert_mode() {
             return Err(ParserError::parser_invalid_transaction_payload.into());
         }
+        let (raw, args) = take(bytes.len())(bytes)?;
 
         // take all bytes as there must not be more data after the arguments
-        // returning an empty remain data
-        Ok((&bytes[..0], Self(bytes)))
+        // returning an empty remain data. NOTE: we use take(bytes.len()), to offset
+        // the remainder bytes as it is used to set the tx.remainder, which is use
+        // to calculate the last_tx_block during the transaction signing process
+        Ok((raw, Self(args)))
     }
 
     pub fn num_args(&self) -> Result<u32, ParserError> {
