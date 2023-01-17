@@ -1,5 +1,3 @@
-use crate::bolos::c_zemu_log_stack;
-
 use super::{ParserError, Value, ValueId};
 use nom::{bytes::complete::take, number::complete::be_u32};
 
