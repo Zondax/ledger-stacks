@@ -21,7 +21,8 @@ import {encode} from 'varuint-bitcoin';
 
 import {
   AddressVersion,
-  createMessageSignature,
+  PubKeyEncoding,
+  TransactionSigner,
   createStacksPrivateKey,
   createTransactionAuthField,
   isCompressed,
@@ -29,23 +30,20 @@ import {
   makeSTXTokenTransfer,
   makeUnsignedContractCall,
   makeUnsignedSTXTokenTransfer,
-  PubKeyEncoding,
   pubKeyfromPrivKey,
   publicKeyToString,
   standardPrincipalCV,
-  TransactionSigner,
   uintCV,
   stringAsciiCV,
   stringUtf8CV,
 } from '@stacks/transactions'
 import { StacksTestnet } from '@stacks/network'
-import { ec as EC } from 'elliptic'
 import { AnchorMode } from '@stacks/transactions/src/constants'
-//import {recoverPublicKey} from "noble-secp256k1";
 
 const sha512_256 = require('js-sha512').sha512_256
 const sha256 = require('js-sha256').sha256
 const BN = require('bn.js')
+import { ec as EC } from 'elliptic'
 
 const defaultOptions = {
   ...DEFAULT_START_OPTIONS,
@@ -213,21 +211,6 @@ describe('Standard', function () {
         publicKey: testPublicKey,
       })
 
-      // tx_hash:  bdb9f5112cf2333e6b8e6fca88764083332a41923dadab84cd5065a7a483a3f6
-      // digest:   dd46e325d5a631c99e84f3018a839c229453ab7fd8d16a6dadd7f7cf51e604c3
-
-      console.log('tx_hash: ', unsignedTx.signBegin())
-
-      const sigHashPreSign = makeSigHashPreSign(
-        unsignedTx.signBegin(),
-        // @ts-ignore
-        unsignedTx.auth.authType,
-        unsignedTx.auth.spendingCondition?.fee,
-        unsignedTx.auth.spendingCondition?.nonce,
-      )
-
-      console.log('sigHashPreSign: ', sigHashPreSign)
-
       const blob = Buffer.from(unsignedTx.serialize())
 
       // Check the signature
@@ -250,11 +233,37 @@ describe('Standard', function () {
       console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
       console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
 
-      // @ts-ignore
-      unsignedTx.auth.spendingCondition.signature = createMessageSignature(signature.signatureVRS.toString('hex'))
-      //unsignedTx.auth.spendingCondition.signature.signature = signature.signatureVRS.toString('hex');
 
       console.log('unsignedTx serialized ', unsignedTx.serialize().toString('hex'))
+
+      const sigHashPreSign = makeSigHashPreSign(
+        unsignedTx.signBegin(),
+        //@ts-ignore
+        unsignedTx.auth.authType,
+        unsignedTx.auth.spendingCondition?.fee,
+        unsignedTx.auth.spendingCondition?.nonce,
+      )
+      console.log('sigHashPreSign: ', sigHashPreSign)
+      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+
+      const key_t = Buffer.alloc(1)
+      key_t.writeInt8(0x00)
+
+      const array = [presig_hash, key_t, signature.signatureVRS]
+      const to_hash = Buffer.concat(array)
+      const hash = sha512_256(to_hash)
+      console.log('computed postSignHash: ', hash.toString('hex'))
+
+      // compare hashes 
+      expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
+
+      //Verify signature
+      const ec = new EC("secp256k1")
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, testPublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
       //
       // const broadcast = await broadcastTransaction(unsignedTx, network);
       // console.log(broadcast);
@@ -279,7 +288,6 @@ describe('Standard', function () {
   test.each(models)(`multisig`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
-    const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const path = "m/44'/5757'/0'/0/0"
 
     try {
@@ -417,7 +425,6 @@ describe('Standard', function () {
       expect(pkResponse.returnCode).toEqual(0x9000)
       expect(pkResponse.errorMessage).toEqual('No errors')
       const devicePublicKey = pkResponse.publicKey.toString('hex')
-      const pubKeyStrings = [devicePublicKey]
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
       const fee = new BN(10)
@@ -450,7 +457,37 @@ describe('Standard', function () {
       console.log(signature)
 
       expect(signature.returnCode).toEqual(0x9000)
-      // TODO: Verify signature
+
+      // compute postSignHash to verify signature
+
+      const sigHashPreSign = makeSigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      console.log('sigHashPreSign: ', sigHashPreSign)
+      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+
+      const key_t = Buffer.alloc(1)
+      key_t.writeInt8(0x00)
+
+      const array = [presig_hash, key_t, signature.signatureVRS]
+      const to_hash = Buffer.concat(array)
+      const hash = sha512_256(to_hash)
+      console.log('computed postSignHash: ', hash.toString('hex'))
+
+      // compare hashes 
+      expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
+
+      //Verify signature
+      const ec = new EC("secp256k1")
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
     } finally {
       await sim.close()
     }
@@ -458,7 +495,6 @@ describe('Standard', function () {
 
   test.each(models)(`sign_message`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const path = "m/44'/5757'/0'/0/0"
 
@@ -564,7 +600,6 @@ describe('Standard', function () {
       expect(jwt_hash).toEqual(postSignHash);
 
       const ec = new EC("secp256k1");
-      const len = jwt.length
       const sig = signature.signatureVRS.toString('hex')
       const signature_obj = {
         r: sig.substr(2, 64),
@@ -581,8 +616,6 @@ describe('Standard', function () {
   test.each(models)(`sign call_with_string_args`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
-    const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
-    const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
     const path = "m/44'/5757'/0'/0/0"
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -593,7 +626,6 @@ describe('Standard', function () {
       expect(pkResponse.returnCode).toEqual(0x9000)
       expect(pkResponse.errorMessage).toEqual('No errors')
       const devicePublicKey = pkResponse.publicKey.toString('hex')
-      const pubKeyStrings = [devicePublicKey]
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
       const fee = new BN(10)
@@ -605,7 +637,7 @@ describe('Standard', function () {
         contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
-        functionArgs: [stringAsciiCV(long_ascii_string), uintCV(2), stringUtf8CV('Stacks balance, €: ')],
+        functionArgs: [stringAsciiCV(long_ascii_string), uintCV(2), stringUtf8CV('Stacks balance, €: '), recipient],
         network: network,
         fee: fee,
         nonce: nonce,
@@ -628,7 +660,37 @@ describe('Standard', function () {
       console.log(signature)
 
       expect(signature.returnCode).toEqual(0x9000)
-      // TODO: Verify signature
+
+      // compute postSignHash to verify signature
+
+      const sigHashPreSign = makeSigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      console.log('sigHashPreSign: ', sigHashPreSign)
+      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+
+      const key_t = Buffer.alloc(1)
+      key_t.writeInt8(0x00)
+
+      const array = [presig_hash, key_t, signature.signatureVRS]
+      const to_hash = Buffer.concat(array)
+      const hash = sha512_256(to_hash)
+      console.log('computed postSignHash: ', hash.toString('hex'))
+
+      // compare hashes 
+      expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
+
+      //Verify signature
+      const ec = new EC("secp256k1")
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
     } finally {
       await sim.close()
     }
