@@ -30,3 +30,51 @@ pub fn read_varint(input: &[u8]) -> Result<(&[u8], u64), nom::Err<ParserError>> 
         _ => Ok((rem, prefix as _)),
     }
 }
+
+pub trait LedgerPanic: Sized {
+    type Item;
+
+    fn dev_unwrap(self) -> Self::Item;
+
+    fn dev_expect(self, s: &str) -> Self::Item;
+}
+
+impl<T, E> LedgerPanic for Result<T, E> {
+    type Item = T;
+
+    #[inline]
+    fn dev_unwrap(self) -> Self::Item {
+        match self {
+            Ok(t) => t,
+            Err(_) => panic!(),
+        }
+    }
+
+    #[inline]
+    fn dev_expect(self, _: &str) -> Self::Item {
+        match self {
+            Ok(t) => t,
+            Err(_) => panic!(),
+        }
+    }
+}
+
+impl<T> LedgerPanic for Option<T> {
+    type Item = T;
+
+    #[inline]
+    fn dev_unwrap(self) -> Self::Item {
+        match self {
+            Some(t) => t,
+            _ => panic!(),
+        }
+    }
+
+    #[inline]
+    fn dev_expect(self, _: &str) -> Self::Item {
+        match self {
+            Some(t) => t,
+            _ => panic!(),
+        }
+    }
+}

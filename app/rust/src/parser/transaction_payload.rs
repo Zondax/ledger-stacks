@@ -9,8 +9,8 @@ use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
 use super::{
-    ClarityName, ContractName, PrincipalData, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
-    TX_DEPTH_LIMIT,
+    utils::LedgerPanic, ClarityName, ContractName, PrincipalData, StacksAddress,
+    C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, TX_DEPTH_LIMIT,
 };
 use crate::parser::error::ParserError;
 
@@ -64,27 +64,39 @@ impl<'a> StxTokenTransfer<'a> {
 
     pub fn memo(&self) -> &[u8] {
         let at = self.0.len() - 34;
-        &self.0[at..]
+        // safe to unwrap as parser checked for proper len
+        self.0.get(at..).dev_unwrap()
     }
 
     pub fn amount(&self) -> Result<u64, ParserError> {
         let at = self.0.len() - 34 - 8;
-        be_u64::<'a, ParserError>(&self.0[at..])
-            .map(|res| res.1)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)
+        if let Some(amount) = self.0.get(at..) {
+            return be_u64::<'a, ParserError>(amount)
+                .map(|res| res.1)
+                .map_err(|_| ParserError::parser_unexpected_buffer_end);
+        }
+        Err(ParserError::parser_no_data)
     }
 
     pub fn raw_address(&self) -> &[u8] {
         // Skips the principal-id and hash_mode
-        &self.0[2..22]
+        // is valid as this was check by the parser
+        self.0.get(2..22).dev_unwrap()
     }
 
     pub fn encoded_address(
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         // Skips the principal-id at [0] and uses hash_mode and the follow 20-bytes
-        let version = self.0[1];
-        c32::c32_address(version, &self.0[2..22])
+        if let Some(version) = self.0.get(1) {
+            return c32::c32_address(
+                *version,
+                self.0
+                    .get(2..22)
+                    .ok_or(ParserError::parser_invalid_address)?,
+            );
+        }
+        Err(ParserError::parser_invalid_address)
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
