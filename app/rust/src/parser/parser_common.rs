@@ -32,7 +32,8 @@ pub const MAX_DEPTH: u8 = 20;
 
 /// Stacks transaction versions
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionVersion {
     Mainnet = 0x00,
     Testnet = 0x80,
@@ -60,7 +61,8 @@ impl TransactionVersion {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy, Debug)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum AssetInfoId {
     STX = 0,
     FungibleAsset = 1,
@@ -82,7 +84,8 @@ impl TryFrom<u8> for AssetInfoId {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct AssetInfo<'a> {
     pub address: StacksAddress<'a>,
     pub contract_name: ContractName<'a>,
@@ -121,7 +124,8 @@ impl<'a> AssetInfo<'a> {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 // Flag used to know if the signer is valid and
 // who is
 pub enum SignerId {
@@ -133,7 +137,8 @@ pub enum SignerId {
 // tag address hash modes as "singlesig" or "multisig" so we can't accidentally construct an
 // invalid spending condition
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum HashMode {
     P2PKH = 0x00,
     P2SH = 0x01,
@@ -175,7 +180,8 @@ impl HashMode {
 // contract name with valid charactes being
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct ContractName<'a>(ClarityName<'a>);
 
 impl<'a> ContractName<'a> {
@@ -204,7 +210,8 @@ impl<'a> ContractName<'a> {
 
 // A clarity value used in tuples
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct ClarityName<'a>(pub &'a [u8]);
 
 impl<'a> ClarityName<'a> {
@@ -239,7 +246,8 @@ impl<'a> ClarityName<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 // we take HASH160_LEN + 1-byte hash mode
 pub struct StacksAddress<'a>(pub &'a [u8; STACKS_ADDR_LEN]);
 

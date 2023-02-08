@@ -13,7 +13,8 @@ use crate::bolos::{sha256, SHA256_LEN};
 use hex::encode_to_slice;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Domain<'a>(Value<'a>);
 
 impl<'a> Domain<'a> {
@@ -96,7 +97,8 @@ impl<'a> Domain<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StructuredMsg<'a>(&'a [u8]);
 
 impl<'a> StructuredMsg<'a> {

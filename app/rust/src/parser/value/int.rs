@@ -11,17 +11,20 @@ const INT_WIDTH: usize = 16;
 // Represents the inner bytes which conform either a Int128 as defined by SIP005 regarding
 // clarity values types.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 struct IntBytes<'a>(&'a [u8; INT_WIDTH]);
 
 // Represents a clarity signed integer of 128 bits
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Int128(i128);
 
 // Represents a clarity unsigned integer of 128 bits
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct UInt128(u128);
 
 impl Int128 {

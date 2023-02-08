@@ -28,7 +28,8 @@ pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
 pub const MAX_STRING_ASCII_TO_SHOW: usize = 60;
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TokenTranferPrincipal {
     Standard = 0x05,
     Contract = 0x06,
@@ -45,7 +46,8 @@ impl TokenTranferPrincipal {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StxTokenTransfer<'a>(&'a [u8]);
 
 impl<'a> StxTokenTransfer<'a> {
@@ -151,7 +153,8 @@ impl<'a> StxTokenTransfer<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Arguments<'a>(&'a [u8]);
 
 impl<'a> Arguments<'a> {
@@ -204,7 +207,8 @@ impl<'a> Arguments<'a> {
 
 /// A transaction that calls into a smart contract
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TransactionContractCall<'a>(&'a [u8]);
 
 impl<'a> TransactionContractCall<'a> {
@@ -455,7 +459,8 @@ impl<'a> TransactionContractCall<'a> {
 
 /// A transaction that instantiates a smart contract
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TransactionSmartContract<'a>(&'a [u8]);
 
 impl<'a> TransactionSmartContract<'a> {
@@ -498,7 +503,8 @@ impl<'a> TransactionSmartContract<'a> {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPayloadId {
     TokenTransfer = 0,
     SmartContract = 1,
@@ -517,7 +523,8 @@ impl TransactionPayloadId {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),

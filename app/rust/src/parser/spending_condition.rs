@@ -37,7 +37,8 @@ const SPENDING_CONDITION_SIGNER_LEN: usize = 37;
 const SINGLE_SPENDING_CONDITION_LEN: usize = 66;
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPublicKeyEncoding {
     // ways we can encode a public key
     Compressed = 0x00,
@@ -62,7 +63,8 @@ impl TransactionPublicKeyEncoding {
 /// An auth field can be a public key or a signature.  In both cases, the public key (either given
 /// in-the-raw or embedded in a signature) may be encoded as compressed or uncompressed.
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAuthFieldID {
     // types of auth fields
     PublicKeyCompressed = 0x00,
@@ -73,7 +75,8 @@ pub enum TransactionAuthFieldID {
 
 // {FT} Replacer 37 with SPENDING_CONDITION_SIGNER_LEN
 #[repr(C)]
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct SpendingConditionSigner<'a> {
     pub data: &'a [u8; SPENDING_CONDITION_SIGNER_LEN],
 }
@@ -156,7 +159,8 @@ impl<'a> SpendingConditionSigner<'a> {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct SinglesigSpendingCondition<'a>(&'a [u8; SINGLE_SPENDING_CONDITION_LEN]);
 
 /// A structure that encodes enough state to authenticate
@@ -164,11 +168,13 @@ pub struct SinglesigSpendingCondition<'a>(&'a [u8; SINGLE_SPENDING_CONDITION_LEN
 /// public_keys + signatures_required determines the Principal.
 /// nonce is the "check number" for the Principal.
 #[repr(C)]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct MultisigSpendingCondition<'a>(&'a [u8]);
 
 #[repr(C)]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub enum SpendingConditionSignature<'a> {
     Singlesig(SinglesigSpendingCondition<'a>),
     Multisig(MultisigSpendingCondition<'a>),
@@ -191,7 +197,8 @@ impl<'a> SpendingConditionSignature<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TransactionSpendingCondition<'a> {
     pub signer: SpendingConditionSigner<'a>,
     signature: SpendingConditionSignature<'a>,
