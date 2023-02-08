@@ -396,7 +396,14 @@ impl<'a> TransactionSpendingCondition<'a> {
             // append the signatures count at the end
             if let Some(count) = self.required_signatures() {
                 buf[20..STANDARD_MULTISIG_AUTH_LEN].copy_from_slice(&count.to_be_bytes());
-                return Ok(STANDARD_MULTISIG_AUTH_LEN);
+                if let Some(b) = buf.get_mut(20..STANDARD_MULTISIG_AUTH_LEN) {
+                    count
+                        .to_be_bytes()
+                        .iter()
+                        .zip(b.iter_mut())
+                        .for_each(|(c, b)| *b = *c);
+                    return Ok(STANDARD_MULTISIG_AUTH_LEN);
+                }
             }
         }
         Err(ParserError::parser_no_data)
