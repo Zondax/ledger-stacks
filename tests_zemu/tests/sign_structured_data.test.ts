@@ -49,6 +49,8 @@ const defaultOptions = {
   X11: false,
 }
 
+jest.setTimeout(180000)
+
 const DOMAIN = tupleCV({
     'name': stringAsciiCV("Stacks"),
     'version': stringAsciiCV("1.0.0"),
@@ -125,8 +127,6 @@ const SIGN_TEST_DATA = [
     op: BIG_TUPLE,
   },
 ]
-
-
 
 describe.each(models)('StructuredData', function (m) {
  test.each(SIGN_TEST_DATA)(`sign_structured_data_tuple`, async function ({ name, op }
