@@ -1,5 +1,5 @@
 #[cfg(not(any(test, fuzzing)))]
-use crate::parser::utils::LedgerPanic;
+use crate::parser::utils::ApduPanic;
 use crate::parser::{
     error::ParserError,
     parser_common::{C32_ENCODED_ADDRS_LENGTH, HASH160_LEN},
@@ -66,12 +66,12 @@ fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
 fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     let mut output = [0u8; SHA256_LEN];
     // safe to unwrap as we are passing the right len
-    sha256(&data[..21], &mut output[..]).dev_unwrap();
+    sha256(&data[..21], &mut output[..]).apdu_unwrap();
     data.iter_mut()
         .zip(output.as_ref().iter())
         .for_each(|(d, o)| *d = *o);
     // safe to unwrap as we are passing the right len
-    sha256(&data[..], &mut output).dev_unwrap();
+    sha256(&data[..], &mut output).apdu_unwrap();
     if let Some(d) = data.get_mut(20..24) {
         d.iter_mut()
             .zip(output[..4].iter())

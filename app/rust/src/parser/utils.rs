@@ -31,19 +31,19 @@ pub fn read_varint(input: &[u8]) -> Result<(&[u8], u64), nom::Err<ParserError>> 
     }
 }
 
-pub trait LedgerPanic: Sized {
+pub trait ApduPanic: Sized {
     type Item;
 
-    fn dev_unwrap(self) -> Self::Item;
+    fn apdu_unwrap(self) -> Self::Item;
 
-    fn dev_expect(self, s: &str) -> Self::Item;
+    fn apdu_expect(self, s: &str) -> Self::Item;
 }
 
-impl<T, E> LedgerPanic for Result<T, E> {
+impl<T, E> ApduPanic for Result<T, E> {
     type Item = T;
 
     #[inline]
-    fn dev_unwrap(self) -> Self::Item {
+    fn apdu_unwrap(self) -> Self::Item {
         match self {
             Ok(t) => t,
             Err(_) => panic!(),
@@ -51,7 +51,7 @@ impl<T, E> LedgerPanic for Result<T, E> {
     }
 
     #[inline]
-    fn dev_expect(self, _: &str) -> Self::Item {
+    fn apdu_expect(self, _: &str) -> Self::Item {
         match self {
             Ok(t) => t,
             Err(_) => panic!(),
@@ -59,11 +59,11 @@ impl<T, E> LedgerPanic for Result<T, E> {
     }
 }
 
-impl<T> LedgerPanic for Option<T> {
+impl<T> ApduPanic for Option<T> {
     type Item = T;
 
     #[inline]
-    fn dev_unwrap(self) -> Self::Item {
+    fn apdu_unwrap(self) -> Self::Item {
         match self {
             Some(t) => t,
             _ => panic!(),
@@ -71,10 +71,18 @@ impl<T> LedgerPanic for Option<T> {
     }
 
     #[inline]
-    fn dev_expect(self, _: &str) -> Self::Item {
+    fn apdu_expect(self, _: &str) -> Self::Item {
         match self {
             Some(t) => t,
             _ => panic!(),
         }
     }
 }
+
+
+
+
+
+
+
+

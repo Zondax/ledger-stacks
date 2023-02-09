@@ -9,7 +9,7 @@ use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
 use super::{
-    utils::LedgerPanic, ClarityName, ContractName, PrincipalData, StacksAddress,
+    utils::ApduPanic, ClarityName, ContractName, PrincipalData, StacksAddress,
     C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, TX_DEPTH_LIMIT,
 };
 use crate::parser::error::ParserError;
@@ -67,7 +67,7 @@ impl<'a> StxTokenTransfer<'a> {
     pub fn memo(&self) -> &[u8] {
         let at = self.0.len() - 34;
         // safe to unwrap as parser checked for proper len
-        self.0.get(at..).dev_unwrap()
+        self.0.get(at..).apdu_unwrap()
     }
 
     pub fn amount(&self) -> Result<u64, ParserError> {
@@ -83,7 +83,7 @@ impl<'a> StxTokenTransfer<'a> {
     pub fn raw_address(&self) -> &[u8] {
         // Skips the principal-id and hash_mode
         // is valid as this was check by the parser
-        self.0.get(2..22).dev_unwrap()
+        self.0.get(2..22).apdu_unwrap()
     }
 
     pub fn encoded_address(
@@ -660,3 +660,5 @@ mod test {
         assert_eq!(parsed.amount(), Some(123));
     }
 }
+
+
