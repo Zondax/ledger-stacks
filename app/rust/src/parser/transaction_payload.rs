@@ -660,5 +660,3 @@ mod test {
         assert_eq!(parsed.amount(), Some(123));
     }
 }
-
-

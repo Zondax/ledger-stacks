@@ -78,11 +78,3 @@ impl<T> ApduPanic for Option<T> {
         }
     }
 }
-
-
-
-
-
-
-
-
