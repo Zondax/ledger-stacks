@@ -390,20 +390,12 @@ impl<'a> TransactionSpendingCondition<'a> {
         } else if self.is_multisig() && buf_len >= STANDARD_MULTISIG_AUTH_LEN {
             // fills with zeroes
             // 16-byte fee and nonce
-            // 4-byte signature fields count
+            // 4-byte num auth fields
             buf.iter_mut().take(20).for_each(|v| *v = 0);
 
-            // append the signatures count at the end
+            // append the signatures count at the end 2-bytes
             if let Some(count) = self.required_signatures() {
                 buf[20..STANDARD_MULTISIG_AUTH_LEN].copy_from_slice(&count.to_be_bytes());
-                if let Some(b) = buf.get_mut(20..STANDARD_MULTISIG_AUTH_LEN) {
-                    count
-                        .to_be_bytes()
-                        .iter()
-                        .zip(b.iter_mut())
-                        .for_each(|(c, b)| *b = *c);
-                    return Ok(STANDARD_MULTISIG_AUTH_LEN);
-                }
             }
         }
         Err(ParserError::parser_no_data)

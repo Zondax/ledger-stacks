@@ -72,17 +72,16 @@ impl<'a> StxTokenTransfer<'a> {
 
     pub fn amount(&self) -> Result<u64, ParserError> {
         let at = self.0.len() - 34 - 8;
-        if let Some(amount) = self.0.get(at..) {
-            return be_u64::<'a, ParserError>(amount)
-                .map(|res| res.1)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end);
-        }
-        Err(ParserError::parser_no_data)
+        let amount = self.0.get(at..).ok_or(ParserError::parser_no_data)?;
+        be_u64::<'a, ParserError>(amount)
+            .map(|res| res.1)
+            .map_err(|_| ParserError::parser_unexpected_buffer_end)
     }
 
     pub fn raw_address(&self) -> &[u8] {
         // Skips the principal-id and hash_mode
         // is valid as this was check by the parser
+        // safe to unwrap as this was checked at parsing
         self.0.get(2..22).apdu_unwrap()
     }
 
@@ -90,15 +89,13 @@ impl<'a> StxTokenTransfer<'a> {
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         // Skips the principal-id at [0] and uses hash_mode and the follow 20-bytes
-        if let Some(version) = self.0.get(1) {
-            return c32::c32_address(
-                *version,
-                self.0
-                    .get(2..22)
-                    .ok_or(ParserError::parser_invalid_address)?,
-            );
-        }
-        Err(ParserError::parser_invalid_address)
+        let version = self.0.get(1).ok_or(ParserError::parser_no_data)?;
+        c32::c32_address(
+            *version,
+            self.0
+                .get(2..22)
+                .ok_or(ParserError::parser_invalid_address)?,
+        )
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {

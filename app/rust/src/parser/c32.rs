@@ -67,16 +67,12 @@ fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     let mut output = [0u8; SHA256_LEN];
     // safe to unwrap as we are passing the right len
     sha256(&data[..21], &mut output[..]).apdu_unwrap();
-    data.iter_mut()
-        .zip(output.as_ref().iter())
-        .for_each(|(d, o)| *d = *o);
+    data.copy_from_slice(output.as_ref());
     // safe to unwrap as we are passing the right len
     sha256(&data[..], &mut output).apdu_unwrap();
-    if let Some(d) = data.get_mut(20..24) {
-        d.iter_mut()
-            .zip(output[..4].iter())
-            .for_each(|(d, o)| *d = *o);
-    }
+    let d = data.get_mut(20..24).apdu_unwrap();
+    let o = output.get(..4).apdu_unwrap();
+    d.iter_mut().zip(o.iter()).for_each(|(d, o)| *d = *o);
 }
 
 #[inline(never)]
