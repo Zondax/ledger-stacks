@@ -46,7 +46,8 @@ impl<T, E> ApduPanic for Result<T, E> {
     fn apdu_unwrap(self) -> Self::Item {
         match self {
             Ok(t) => t,
-            Err(_) => panic!(),
+            // be sure this point is unreachable when calling this function
+            Err(_) => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -54,7 +55,8 @@ impl<T, E> ApduPanic for Result<T, E> {
     fn apdu_expect(self, _: &str) -> Self::Item {
         match self {
             Ok(t) => t,
-            Err(_) => panic!(),
+            // be sure this point is unreachable when calling this function
+            Err(_) => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 }
@@ -66,7 +68,8 @@ impl<T> ApduPanic for Option<T> {
     fn apdu_unwrap(self) -> Self::Item {
         match self {
             Some(t) => t,
-            _ => panic!(),
+            // be sure this point is unreachable when calling this function
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -74,7 +77,8 @@ impl<T> ApduPanic for Option<T> {
     fn apdu_expect(self, _: &str) -> Self::Item {
         match self {
             Some(t) => t,
-            _ => panic!(),
+            // be sure this point is unreachable when calling this function
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 }
