@@ -394,9 +394,11 @@ impl<'a> TransactionSpendingCondition<'a> {
             buf.iter_mut().take(20).for_each(|v| *v = 0);
 
             // append the signatures count at the end 2-bytes
-            if let Some(count) = self.required_signatures() {
-                buf[20..STANDARD_MULTISIG_AUTH_LEN].copy_from_slice(&count.to_be_bytes());
-            }
+            let count = self
+                .required_signatures()
+                .ok_or(ParserError::parser_no_data)?;
+            buf[20..STANDARD_MULTISIG_AUTH_LEN].copy_from_slice(&count.to_be_bytes());
+            return Ok(STANDARD_MULTISIG_AUTH_LEN);
         }
         Err(ParserError::parser_no_data)
     }
