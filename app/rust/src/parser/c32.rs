@@ -72,7 +72,7 @@ fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     sha256(&data[..], &mut output).apdu_unwrap();
     let d = data.get_mut(20..24).apdu_unwrap();
     let o = output.get(..4).apdu_unwrap();
-    d.iter_mut().zip(o.iter()).for_each(|(d, o)| *d = *o);
+    d.copy_from_slice(o);
 }
 
 #[inline(never)]

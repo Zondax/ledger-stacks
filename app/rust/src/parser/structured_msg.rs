@@ -75,14 +75,11 @@ impl<'a> Domain<'a> {
         let mut buff = [0; 39];
 
         if let Some((key, value)) = self.tuple().iter().nth(display_idx as usize) {
-            if let Some(m) = out_key.get_mut(0..key.name().len()) {
-                key.name()
-                    .iter()
-                    .zip(m.iter_mut())
-                    .for_each(|(s, m)| *m = *s);
-            } else {
-                return Err(ParserError::parser_unexpected_buffer_end);
-            }
+            let name = key.name();
+            let m = out_key
+                .get_mut(0..name.len())
+                .ok_or(ParserError::parser_unexpected_buffer_end)?;
+            m.copy_from_slice(name);
 
             let id = value.value_id();
 
