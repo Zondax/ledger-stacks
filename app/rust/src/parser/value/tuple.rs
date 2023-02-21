@@ -3,7 +3,8 @@ use nom::number::complete::be_u32;
 
 // This type is meant to get from the Value type
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Tuple<'a>(pub &'a [u8]);
 
 impl<'a> Tuple<'a> {
@@ -42,7 +43,8 @@ impl<'a> Tuple<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TupleIter<'a> {
     data: &'a [u8],
     read: usize,

@@ -3,7 +3,8 @@ use nom::bytes::complete::take;
 use super::{c32, ContractName, ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StandardPrincipal<'a>(pub &'a [u8]);
 
 impl<'a> StandardPrincipal<'a> {
@@ -18,7 +19,8 @@ impl<'a> StandardPrincipal<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct ContractPrincipal<'a>(StandardPrincipal<'a>, ContractName<'a>);
 impl<'a> ContractPrincipal<'a> {
     #[inline(never)]
@@ -37,7 +39,8 @@ impl<'a> ContractPrincipal<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct PrincipalData<'a> {
     pub data: (StandardPrincipal<'a>, Option<ContractName<'a>>),
 }

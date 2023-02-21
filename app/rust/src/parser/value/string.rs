@@ -3,17 +3,20 @@ use nom::{bytes::complete::take, number::complete::be_u32};
 
 // Represent a clarity value string
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 struct String<'a>(&'a [u8]);
 
 // Represent a clarity value string
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StringAscii<'a>(String<'a>);
 
 // Represent a clarity value string
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StringUtf8<'a>(String<'a>);
 
 impl<'a> String<'a> {

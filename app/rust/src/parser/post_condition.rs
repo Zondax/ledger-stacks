@@ -37,7 +37,8 @@ impl TryFrom<u8> for PostConditionPrincipalId {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum PostConditionPrincipal<'a> {
     Origin,
     Standard(StacksAddress<'a>),
@@ -127,7 +128,8 @@ impl<'a> PostConditionPrincipal<'a> {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy, Debug)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum FungibleConditionCode {
     SentEq = 0x01,
     SentGt = 0x02,
@@ -160,7 +162,8 @@ impl FungibleConditionCode {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy, Debug)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum NonfungibleConditionCode {
     Sent = 0x10,
     NotSent = 0x11,
@@ -208,7 +211,8 @@ impl TryFrom<u8> for PostConditionType {
 
 /// Post-condition on a transaction
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPostCondition<'a> {
     STX(&'a [u8]),
     Fungible(&'a [u8]),

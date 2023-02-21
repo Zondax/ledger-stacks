@@ -9,8 +9,8 @@ use arrayvec::ArrayVec;
 use numtoa::NumToA;
 
 use super::{
-    ClarityName, ContractName, PrincipalData, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
-    TX_DEPTH_LIMIT,
+    utils::ApduPanic, ClarityName, ContractName, PrincipalData, StacksAddress,
+    C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, TX_DEPTH_LIMIT,
 };
 use crate::parser::error::ParserError;
 
@@ -28,7 +28,8 @@ pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
 pub const MAX_STRING_ASCII_TO_SHOW: usize = 60;
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TokenTranferPrincipal {
     Standard = 0x05,
     Contract = 0x06,
@@ -45,7 +46,8 @@ impl TokenTranferPrincipal {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StxTokenTransfer<'a>(&'a [u8]);
 
 impl<'a> StxTokenTransfer<'a> {
@@ -64,27 +66,36 @@ impl<'a> StxTokenTransfer<'a> {
 
     pub fn memo(&self) -> &[u8] {
         let at = self.0.len() - 34;
-        &self.0[at..]
+        // safe to unwrap as parser checked for proper len
+        self.0.get(at..).apdu_unwrap()
     }
 
     pub fn amount(&self) -> Result<u64, ParserError> {
         let at = self.0.len() - 34 - 8;
-        be_u64::<'a, ParserError>(&self.0[at..])
+        let amount = self.0.get(at..).ok_or(ParserError::parser_no_data)?;
+        be_u64::<'a, ParserError>(amount)
             .map(|res| res.1)
             .map_err(|_| ParserError::parser_unexpected_buffer_end)
     }
 
     pub fn raw_address(&self) -> &[u8] {
         // Skips the principal-id and hash_mode
-        &self.0[2..22]
+        // is valid as this was check by the parser
+        // safe to unwrap as this was checked at parsing
+        self.0.get(2..22).apdu_unwrap()
     }
 
     pub fn encoded_address(
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         // Skips the principal-id at [0] and uses hash_mode and the follow 20-bytes
-        let version = self.0[1];
-        c32::c32_address(version, &self.0[2..22])
+        let version = self.0.get(1).ok_or(ParserError::parser_no_data)?;
+        c32::c32_address(
+            *version,
+            self.0
+                .get(2..22)
+                .ok_or(ParserError::parser_invalid_address)?,
+        )
     }
 
     pub fn amount_stx(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
@@ -139,7 +150,8 @@ impl<'a> StxTokenTransfer<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Arguments<'a>(&'a [u8]);
 
 impl<'a> Arguments<'a> {
@@ -192,7 +204,8 @@ impl<'a> Arguments<'a> {
 
 /// A transaction that calls into a smart contract
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TransactionContractCall<'a>(&'a [u8]);
 
 impl<'a> TransactionContractCall<'a> {
@@ -443,7 +456,8 @@ impl<'a> TransactionContractCall<'a> {
 
 /// A transaction that instantiates a smart contract
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TransactionSmartContract<'a>(&'a [u8]);
 
 impl<'a> TransactionSmartContract<'a> {
@@ -486,7 +500,8 @@ impl<'a> TransactionSmartContract<'a> {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPayloadId {
     TokenTransfer = 0,
     SmartContract = 1,
@@ -505,7 +520,8 @@ impl TransactionPayloadId {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),
