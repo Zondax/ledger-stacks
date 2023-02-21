@@ -18,7 +18,8 @@ const SPONSOR_SENTINEL_LEN: usize = 21 + 16 + 66;
 /// this structure contains the address of the origin account,
 /// signature(s) and signature threshold for the origin account
 #[repr(C)]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAuth<'a> {
     // 0x04
     Standard(TransactionSpendingCondition<'a>),
