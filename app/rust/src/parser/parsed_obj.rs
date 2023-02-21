@@ -6,7 +6,8 @@ use super::{Jwt, StructuredMsg};
 use core::mem::ManuallyDrop;
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Tag {
     Transaction,
     Message,

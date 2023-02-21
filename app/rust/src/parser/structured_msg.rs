@@ -13,7 +13,8 @@ use crate::bolos::{sha256, SHA256_LEN};
 use hex::encode_to_slice;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Domain<'a>(Value<'a>);
 
 impl<'a> Domain<'a> {
@@ -74,7 +75,11 @@ impl<'a> Domain<'a> {
         let mut buff = [0; 39];
 
         if let Some((key, value)) = self.tuple().iter().nth(display_idx as usize) {
-            out_key[0..key.name().len()].copy_from_slice(key.name());
+            let name = key.name();
+            let m = out_key
+                .get_mut(0..name.len())
+                .ok_or(ParserError::parser_unexpected_buffer_end)?;
+            m.copy_from_slice(name);
 
             let id = value.value_id();
 
@@ -96,7 +101,8 @@ impl<'a> Domain<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StructuredMsg<'a>(&'a [u8]);
 
 impl<'a> StructuredMsg<'a> {

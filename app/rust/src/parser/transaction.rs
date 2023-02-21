@@ -27,14 +27,16 @@ use crate::{check_canary, zxformat};
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAuthFlags {
     Standard = 0x04,
     Sponsored = 0x05,
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPostConditionMode {
     Allow = 0x01, // allow any other changes not specified
     Deny = 0x02,  // deny any other changes not specified
@@ -60,7 +62,8 @@ impl TransactionPostConditionMode {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAnchorMode {
     OnChainOnly = 1,  // must be included in a StacksBlock
     OffChainOnly = 2, // must be included in a StacksMicroBlock
@@ -88,7 +91,8 @@ impl TransactionAnchorMode {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct PostConditions<'a> {
     pub(crate) conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]>,
     num_items: u8,
@@ -229,7 +233,8 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,

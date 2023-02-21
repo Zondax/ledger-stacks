@@ -10,8 +10,6 @@ mod bolos;
 pub mod parser;
 mod zxformat;
 
-fn debug(_msg: &str) {}
-
 #[cfg(not(any(test, fuzzing)))]
 use core::panic::PanicInfo;
 

@@ -118,7 +118,10 @@ impl<'a> ByteString<'a> {
         });
 
         let mut copy_len = if self.0.len() > MAX_ASCII_LEN {
-            msg[MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len()].copy_from_slice(&suffix[..]);
+            let m = msg
+                .get_mut(MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len())
+                .ok_or(ParserError::parser_unexpected_buffer_end)?;
+            m.copy_from_slice(&suffix[..]);
             MAX_ASCII_LEN
         } else {
             self.0.len()
