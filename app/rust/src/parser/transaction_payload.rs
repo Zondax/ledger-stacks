@@ -357,11 +357,34 @@ impl<'a> TransactionContractCall<'a> {
             ValueId::ResponseErr => {
                 zxformat::pageString(out_value, "is Result: Err".as_bytes(), page_idx)
             }
-            ValueId::ContractPrincipal | ValueId::StandardPrincipal => {
-                let (_, address) = StacksAddress::from_bytes(payload)
-                    .map_err(|_| ParserError::parser_invalid_address)?;
-                let address = address.encoded_address()?;
+            ValueId::StandardPrincipal => {
+                let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
+                let address = principal.encoded_address()?;
                 zxformat::pageString(out_value, &address[0..address.len()], page_idx)
+            }
+            ValueId::ContractPrincipal => {
+                // holds principal_encoded address + '.' + contract_name
+                let mut data = [0; C32_ENCODED_ADDRS_LENGTH + ClarityName::MAX_LEN as usize + 1];
+
+                let (_, principal) = PrincipalData::contract_principal_from_bytes(payload)?;
+                let address = principal.encoded_address()?;
+
+                // should not fail as this was parsed in previous step
+                let contract_name = principal.contract_name().apdu_unwrap();
+
+                data.get_mut(..address.len())
+                    .apdu_unwrap()
+                    .copy_from_slice(&address[0..address.len()]);
+
+                data[address.len()] = '.' as u8;
+                let len = address.len() + 1;
+
+                // wont panic as we reserved enough space.
+                data.get_mut(len..len + contract_name.len())
+                    .apdu_unwrap()
+                    .copy_from_slice(contract_name.name());
+
+                zxformat::pageString(out_value, &data[0..len + contract_name.len()], page_idx)
             }
             ValueId::Buffer => zxformat::pageString(out_value, "is Buffer".as_bytes(), page_idx),
             ValueId::List => zxformat::pageString(out_value, "is List".as_bytes(), page_idx),

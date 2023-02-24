@@ -215,7 +215,7 @@ impl<'a> ContractName<'a> {
 pub struct ClarityName<'a>(pub &'a [u8]);
 
 impl<'a> ClarityName<'a> {
-    const MAX_LEN: u8 = 128;
+    pub const MAX_LEN: u8 = 128;
 
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
