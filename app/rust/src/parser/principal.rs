@@ -1,6 +1,6 @@
 use nom::bytes::complete::take;
 
-use super::{c32, ContractName, ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
+use super::{c32, ApduPanic, ContractName, ParserError, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN};
 
 #[repr(C)]
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -15,6 +15,17 @@ impl<'a> StandardPrincipal<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         let (raw, address) = take(Self::BYTES_LEN)(bytes)?;
         Ok((raw, Self(address)))
+    }
+
+    pub fn version(&self) -> u8 {
+        // safe to unwrap as this was checked when parsing
+        *self.0.get(0).apdu_unwrap()
+    }
+
+    pub fn raw_address(&self) -> &'a [u8] {
+        // safe to unwrap as slice contains enough data
+        // checked at parsing stage
+        self.0.get(1..).apdu_unwrap()
     }
 }
 
@@ -36,47 +47,57 @@ impl<'a> ContractPrincipal<'a> {
         let (rem, self_bytes) = take(len)(bytes)?;
         Ok((rem, self_bytes))
     }
+
+    pub fn version(&self) -> u8 {
+        // safe to unwrap as this was checked when parsing
+        self.0.version()
+    }
+
+    pub fn raw_address(&self) -> &'a [u8] {
+        // safe to unwrap as slice contains enough data
+        // checked at parsing stage
+        self.0.raw_address()
+    }
+
+    pub fn contract_name(&self) -> ContractName<'a> {
+        self.1
+    }
 }
 
 #[repr(C)]
 #[derive(Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
-pub struct PrincipalData<'a> {
-    pub data: (StandardPrincipal<'a>, Option<ContractName<'a>>),
+pub enum PrincipalData<'a> {
+    Standard(StandardPrincipal<'a>),
+    Contract(ContractPrincipal<'a>),
 }
 
 impl<'a> PrincipalData<'a> {
     #[inline(never)]
-    pub fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, principal) = StandardPrincipal::from_bytes(bytes)?;
-        Ok((
-            raw,
-            Self {
-                data: (principal, None),
-            },
-        ))
+    pub fn standard_from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+        StandardPrincipal::from_bytes(bytes).map(|(r, p)| (r, Self::Standard(p)))
     }
 
     #[inline(never)]
     pub fn contract_principal_from_bytes(
         bytes: &'a [u8],
-    ) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, address) = StandardPrincipal::from_bytes(bytes)?;
-        let (raw2, name) = ContractName::from_bytes(raw)?;
-        Ok((
-            raw2,
-            Self {
-                data: (address, Some(name)),
-            },
-        ))
+    ) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+        ContractPrincipal::from_bytes(bytes).map(|(r, p)| (r, Self::Contract(p)))
     }
 
     pub fn version(&self) -> u8 {
-        (self.data.0).0[0]
+        match self {
+            Self::Standard(ref p) => p.version(),
+            Self::Contract(ref p) => p.version(),
+        }
     }
 
+    // returns principal address without the address version byte
     pub fn raw_address(&self) -> &[u8] {
-        &(self.data.0).0[1..]
+        match self {
+            Self::Standard(ref p) => p.raw_address(),
+            Self::Contract(ref p) => p.raw_address(),
+        }
     }
 
     #[inline(never)]
@@ -86,5 +107,12 @@ impl<'a> PrincipalData<'a> {
         let version = self.version();
         let address = self.raw_address();
         c32::c32_address(version, address)
+    }
+
+    pub fn contract_name(&self) -> Option<ContractName<'a>> {
+        match self {
+            Self::Standard(..) => None,
+            Self::Contract(p) => Some(p.contract_name()),
+        }
     }
 }
