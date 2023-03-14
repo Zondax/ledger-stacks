@@ -56,7 +56,7 @@ const defaultOptions = {
 jest.setTimeout(180000)
 
 describe('Standard', function () {
-  test.each(models)('can start and stop container', async function (m) {
+  test.concurrent.each(models)('can start and stop container', async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -65,7 +65,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)('main menu', async function (m) {
+  test.concurrent.each(models)('main menu', async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -76,7 +76,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`get app version`, async function (m) {
+  test.concurrent.each(models)(`get app version`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -96,7 +96,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`get address`, async function (m) {
+  test.concurrent.each(models)(`get address`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -116,7 +116,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`get identify publicKey`, async function (m) {
+  test.concurrent.each(models)(`get identify publicKey`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -134,7 +134,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`show address`, async function (m) {
+  test.concurrent.each(models)(`show address`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -170,7 +170,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`sign`, async function (m) {
+  test.concurrent.each(models)(`sign`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
@@ -288,7 +288,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`multisig`, async function (m) {
+  test.concurrent.each(models)(`multisig`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const path = "m/44'/5757'/0'/0/0"
@@ -413,7 +413,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`sign standard_contract_call_tx`, async function (m) {
+  test.concurrent.each(models)(`sign standard_contract_call_tx`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
@@ -497,7 +497,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`sign_message`, async function (m) {
+  test.concurrent.each(models)(`sign_message`, async function (m) {
     const sim = new Zemu(m.path)
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const path = "m/44'/5757'/0'/0/0"
@@ -562,7 +562,7 @@ describe('Standard', function () {
     }
   })
 
- test.each(models)(`sign_jwt`, async function (m) {
+ test.concurrent.each(models)(`sign_jwt`, async function (m) {
     const sim = new Zemu(m.path)
     const path = "m/888'/0'/1"
 
@@ -617,7 +617,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`sign call_with_string_args`, async function (m) {
+  test.concurrent.each(models)(`sign call_with_string_args`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const path = "m/44'/5757'/0'/0/0"
