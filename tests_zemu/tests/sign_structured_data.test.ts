@@ -49,8 +49,6 @@ const defaultOptions = {
   X11: false,
 }
 
-jest.setTimeout(180000)
-
 const DOMAIN = tupleCV({
     'name': stringAsciiCV("Stacks"),
     'version': stringAsciiCV("1.0.0"),
@@ -128,8 +126,10 @@ const SIGN_TEST_DATA = [
   },
 ]
 
+jest.setTimeout(180000)
+
 describe.each(models)('StructuredData', function (m) {
- test.each(SIGN_TEST_DATA)(`sign_structured_data_tuple`, async function ({ name, op }
+ test.concurrent.each(SIGN_TEST_DATA)(`sign_structured_data_tuple`, async function ({ name, op }
 ) {
     const sim = new Zemu(m.path)
     const path = "m/44'/5757'/0'/0/0"
