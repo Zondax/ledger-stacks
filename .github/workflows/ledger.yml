@@ -1,15 +1,13 @@
 name: CI
 
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
+  # Triggers the workflow on push or pull request events but only for the main branch
   push:
     branches:
-      - master
       - main
       - develop
   pull_request:
     branches:
-      - master
       - main
       - develop
 
@@ -17,25 +15,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  configure:
-    runs-on: ubuntu-latest
-    outputs:
-      uid_gid: ${{ steps.get-user.outputs.uid_gid }}
-    steps:
-      - id: get-user
-        run: echo "::set-output name=uid_gid::$(id -u):$(id -g)"
-
   scan-build:
-    needs: configure
-    runs-on: ubuntu-latest
     name: Clang Static Analyzer
+    runs-on: ubuntu-latest
 
+    container:
+      image: zondax/ledger-app-builder:latest
+      options: --user ${{ needs.configure.outputs.uid_gid }}
+      env:
+        BOLOS_SDK: /opt/nanos-secure-sdk
+    outputs:
+      size: ${{steps.build.outputs.size}}
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           submodules: true
-
-      - name: Build with Clang Static Analyzer
+      - name: Build Standard app
+        id: build
+        shell: bash -l {0}
         run: |
           # we need to install clang-tools which
           # contains the scan-build tool which is a static
