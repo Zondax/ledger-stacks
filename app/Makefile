@@ -220,6 +220,10 @@ rust:
 
 # Before linking, we need to be sure rust lib is there
 bin/app.elf: rust
+.DEFAULT_GOAL := build_with_rust
+.PHONY: build_with_rust
+build_with_rust: rust
+	$(MAKE) all
 
 .PHONY: rust_clean
 rust_clean:
