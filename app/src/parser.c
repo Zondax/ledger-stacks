@@ -21,13 +21,6 @@
 #include "coin.h"
 #include "rslib.h"
 
-#if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
-// For some reason NanoX requires this function
-void __assert_fail(const char * assertion, const char * file, unsigned int line, const char * function){
-    while(1) {};
-}
-#endif
-
 static zxerr_t parser_allocate();
 static zxerr_t parser_deallocate();
 
@@ -261,7 +254,7 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Invalid json web token";
         case parser_invalid_structured_msg:
             return "Invalid structured message";
-        case parser_recursion_limit: 
+        case parser_recursion_limit:
             return "Recursion limit reached while parsing";
         case parser_invalid_token_transfer_principal:
             return "Invalid token transfer principal";
