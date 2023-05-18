@@ -66,49 +66,16 @@ APPPATH_INSTALLER = "44'/5757'" --path 5757\' --path "888'/0'"
 else ifeq ($(COIN),STX_variant1)
 else
 define error_message
-
-
 COIN value not supported: [$(COIN)]
-
-
 endef
 $(error "$(error_message)")
 endif
 
-APP_LOAD_PARAMS = --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
-APP_LOAD_PARAMS_INSTALLER = --delete $(COMMON_LOAD_PARAMS) --path ${APPPATH_INSTALLER} --path "44'/1'"
+APP_LOAD_PARAMS = --curve secp256k1 $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
+APP_LOAD_PARAMS_INSTALLER = --curve secp256k1 $(COMMON_LOAD_PARAMS) --path ${APPPATH_INSTALLER} --path "44'/1'"
 
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-APP_LOAD_PARAMS += --appFlags 0x000
-APP_LOAD_PARAMS_INSTALLER += --appFlags 0x000
-APP_STACK_SIZE:=3100
-ICONNAME:=$(CURDIR)/nanos_icon.gif
-OUTPUT_ELF:= $(CURDIR)/output/app_s.elf
-OUTPUT_INSTALLER := $(CURDIR)/pkg/installer_s.sh
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.devices
 RUST_TARGET := thumbv6m-none-eabi
-endif
-
-ifeq ($(TARGET_NAME),TARGET_NANOX)
-APP_LOAD_PARAMS += --appFlags 0x200
-APP_LOAD_PARAMS_INSTALLER += --appFlags 0x200
-SCRIPT_LD:=$(CURDIR)/script_x.ld
-ICONNAME:=$(CURDIR)/nanox_icon.gif
-OUTPUT_ELF:= $(CURDIR)/output/app_x.elf
-OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_x.sh
-RUST_TARGET := thumbv6m-none-eabi
-endif
-
-ifeq ($(TARGET_NAME),TARGET_NANOS2)
-APP_LOAD_PARAMS += --appFlags 0x000
-APP_LOAD_PARAMS_INSTALLER += --appFlags 0x000
-SCRIPT_LD:=$(CURDIR)/script_s2.ld
-ICONNAME:=$(CURDIR)/nanox_icon.gif
-OUTPUT_ELF ?= $(CURDIR)/output/app_s2.elf
-OUTPUT_INSTALLER:= $(CURDIR)/pkg/installer_s2.sh
-RUST_TARGET := thumbv6m-none-eabi
-# do not use this target as there are known problems with it
-# RUST_TARGET := thumbv8m.main-none-eabi
-endif
 
 $(info TARGET_NAME  = [$(TARGET_NAME)])
 $(info ICONNAME  = [$(ICONNAME)])
@@ -117,113 +84,18 @@ ifndef ICONNAME
 $(error ICONNAME is not set)
 endif
 
-############
-# Platform
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.platform
 
-DEFINES       += UNUSED\(x\)=\(void\)x
-DEFINES       += PRINTF\(...\)=
-
-APPVERSION=$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)
-DEFINES       += APPVERSION=\"$(APPVERSION)\"
-
-DEFINES       += OS_IO_SEPROXYHAL
-DEFINES       += HAVE_BAGL HAVE_SPRINTF
-DEFINES       += HAVE_IO_USB HAVE_L4_USBLIB IO_USB_MAX_ENDPOINTS=7 IO_HID_EP_LENGTH=64 HAVE_USB_APDU
-
-DEFINES       += LEDGER_MAJOR_VERSION=$(APPVERSION_M) LEDGER_MINOR_VERSION=$(APPVERSION_N) LEDGER_PATCH_VERSION=$(APPVERSION_P)
-
-DEFINES       += USB_SEGMENT_SIZE=64
-DEFINES       += HAVE_BOLOS_APP_STACK_CANARY
-
-DEFINES       += HAVE_WEBUSB WEBUSB_URL_SIZE_B=0 WEBUSB_URL=""
-
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=128
-else
-# Assume Nano X/S+
-DEFINES       += IO_SEPROXYHAL_BUFFER_SIZE_B=300
-
-DEFINES       += HAVE_GLO096
-DEFINES       += HAVE_BAGL BAGL_WIDTH=128 BAGL_HEIGHT=64
-DEFINES       += HAVE_BAGL_ELLIPSIS # long label truncation feature
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_REGULAR_11PX
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_EXTRABOLD_11PX
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_LIGHT_16PX
-
-DEFINES       += HAVE_UX_FLOW
-endif
-
-ifeq ($(TARGET_NAME),TARGET_NANOX)
-DEFINES       += HAVE_BLE
-DEFINES       += HAVE_BLE_APDU BLE_COMMAND_TIMEOUT_MS=2000
-
-SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
-endif
-
-# X specific
-
-#Feature temporarily disabled
-DEFINES   += LEDGER_SPECIFIC
-
-# Compiler, assembler, and linker
-
-ifneq ($(BOLOS_ENV),)
-$(info BOLOS_ENV is $(BOLOS_ENV))
-CLANGPATH := /usr/bin/
-GCCPATH := /usr/bin/
-else
-$(info BOLOS_ENV is not set: falling back to CLANGPATH and GCCPATH)
-endif
-
-ifeq ($(CLANGPATH),)
-$(info CLANGPATH is not set: clang will be used from PATH)
-endif
-
-ifeq ($(GCCPATH),)
-$(info GCCPATH is not set: arm-none-eabi-* will be used from PATH)
-endif
-
-#########################
-
-CC := $(CLANGPATH)clang
-CFLAGS += -O3 -Os -Wno-unknown-pragmas -Wno-unused-parameter  -Wvla
-
-AS := $(GCCPATH)arm-none-eabi-gcc
-AFLAGS +=
-
-LD       := $(GCCPATH)arm-none-eabi-gcc
-LDFLAGS  += -O3 -Os
 LDFLAGS  += -z muldefs
-LDLIBS   += -lm -lgcc -lc
 LDLIBS   += -Lrust/target/thumbv6m-none-eabi/release -lrslib
-
-##########################
-GLYPH_SRC_DIR = glyphs
-INCLUDES_PATH += $(MY_DIR)/glyphs
-include $(BOLOS_SDK)/Makefile.glyphs
-
-APP_SOURCE_PATH += $(MY_DIR)/src
-APP_SOURCE_PATH += $(MY_DIR)/glyphs
 APP_SOURCE_PATH += $(MY_DIR)/rust/include
-APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/include
-APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/app/ui
-APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/src
-APP_SOURCE_PATH += $(MY_DIR)/../deps/ledger-zxlib/app/common
 APP_SOURCE_PATH += $(MY_DIR)/../deps/sha512
 
-SDK_SOURCE_PATH += lib_stusb lib_stusb_impl
-SDK_SOURCE_PATH  += lib_ux
+APP_CUSTOM_LINK_DEPENDENCIES = rust
 
 .PHONY: rust
 rust:
 	cd rust && RUSTC_BOOTSTRAP=1 CARGO_HOME="$(CURDIR)/rust/.cargo" cargo build --target $(RUST_TARGET) --release
-
-# Before linking, we need to be sure rust lib is there
-bin/app.elf: rust
-.DEFAULT_GOAL := build_with_rust
-.PHONY: build_with_rust
-build_with_rust: rust
-	$(MAKE) all
 
 .PHONY: rust_clean
 rust_clean:
