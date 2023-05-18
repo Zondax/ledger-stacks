@@ -228,6 +228,9 @@ __Z_INLINE void app_reply_error() {
 
 __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
 
+    if (signer_data_len < PREVIOUS_SIGNER_DATA_LEN) {
+        return zxerr_no_data;
+    }
     // get the previous signer post_sig_hash and validate it
     uint8_t reconstructed_post_sig_hash[CX_SHA512_SIZE];
 
@@ -295,12 +298,12 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         // we have byteString or JWT messages. The hash is the same for both types
         cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
         return zxerr_ok;
-    } 
+    }
     // special case is delegated to the rust side
     case StructuredMsg: {
         return tx_structured_msg_hash(hash, CX_SHA256_SIZE);
     }
-    default: 
+    default:
         return zxerr_no_data;
     }
 }
