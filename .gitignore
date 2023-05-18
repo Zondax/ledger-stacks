@@ -78,6 +78,7 @@ cmake-build-fuzz/
 /app/obj/
 /app/output/app*.*
 app/hfuzz-parser/hfuzz_*
+app/build/*
 
 \deps/*
 !/deps/sha512
