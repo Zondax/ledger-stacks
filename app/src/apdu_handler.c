@@ -164,7 +164,7 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     THROW(APDU_CODE_OK);
 }
 
-__Z_INLINE void handleGetAuthPubKey(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+__Z_INLINE void handleGetAuthPubKey(__Z_UNUSED volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     extract_identity_path(rx, OFFSET_DATA);
 
     *tx = app_fill_auth_pubkey(addr_secp256k1);
