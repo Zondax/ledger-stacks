@@ -28,8 +28,117 @@
 #include "crypto.h"
 #include "coin.h"
 #include "zxmacros.h"
+#include "view_internal.h"
 
-#define REPLY_APDU 0x03
+static bool tx_initialized = false;
+
+__Z_INLINE void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
+
+    if ((rx - offset) < sizeof(uint32_t) * path_len) {
+            THROW(APDU_CODE_WRONG_LENGTH);
+    }
+
+    MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * path_len);
+    hdPath_len = path_len;
+}
+
+
+
+__Z_INLINE bool process_chunk(uint32_t rx) {
+    const uint8_t payloadType = G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE];
+
+    if (rx < OFFSET_DATA) {
+        THROW(APDU_CODE_WRONG_LENGTH);
+    }
+
+    if (G_io_apdu_buffer[OFFSET_P2] != 0) {
+        THROW(APDU_CODE_INVALIDP1P2);
+    }
+
+
+    uint32_t added;
+    switch (payloadType) {
+        case 0:
+            tx_initialize();
+            tx_reset();
+            tx_initialized = true;
+            return false;
+        case 1:
+            if (!tx_initialized) {
+                THROW(APDU_CODE_TX_NOT_INITIALIZED);
+            }
+            added = tx_append(&(G_io_apdu_buffer[OFFSET_DATA]), rx - OFFSET_DATA);
+            if (added != rx - OFFSET_DATA) {
+                tx_initialized = false;
+                THROW(APDU_CODE_OUTPUT_BUFFER_TOO_SMALL);
+            }
+            return false;
+        case 2:
+            if (!tx_initialized) {
+                THROW(APDU_CODE_TX_NOT_INITIALIZED);
+            }
+            added = tx_append(&(G_io_apdu_buffer[OFFSET_DATA]), rx - OFFSET_DATA);
+            if (added != rx - OFFSET_DATA) {
+                tx_initialized = false;
+                THROW(APDU_CODE_OUTPUT_BUFFER_TOO_SMALL);
+            }
+            return true;
+    }
+    tx_initialized = false;
+    THROW(APDU_CODE_INVALIDP1P2);
+}
+
+__Z_INLINE void extract_default_path(uint32_t rx, uint32_t offset) {
+
+    extractHDPath(rx, offset, HDPATH_LEN_DEFAULT);
+
+    // validate
+    bool mainnet = hdPath[0] == HDPATH_0_DEFAULT &&
+                   hdPath[1] == HDPATH_1_DEFAULT;
+
+    mainnet |= (hdPath[0] == HDPATH_0_ALTERNATIVE);
+
+    const bool testnet = hdPath[0] == HDPATH_0_TESTNET &&
+                         hdPath[1] == HDPATH_1_TESTNET;
+
+    if (!mainnet && !testnet)
+        THROW(APDU_CODE_DATA_INVALID);
+
+}
+
+__Z_INLINE void extract_identity_path(uint32_t rx, uint32_t offset) {
+
+    extractHDPath(rx, offset, HDPATH_LEN_AUTH);
+
+    // validate
+    const bool identity_path = hdPath[0] == HDPATH_0_AUTH &&
+                               hdPath[1] == HDPATH_1_AUTH;
+    if (!identity_path)
+        THROW(APDU_CODE_DATA_INVALID);
+
+}
+
+__Z_INLINE void handle_getversion(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    UNUSED(flags);
+    UNUSED(rx);
+#ifdef DEBUG
+    G_io_apdu_buffer[0] = 0xFF;
+#else
+    G_io_apdu_buffer[0] = 0;
+#endif
+    G_io_apdu_buffer[1] = LEDGER_MAJOR_VERSION;
+    G_io_apdu_buffer[2] = LEDGER_MINOR_VERSION;
+    G_io_apdu_buffer[3] = LEDGER_PATCH_VERSION;
+    G_io_apdu_buffer[4] = !IS_UX_ALLOWED;
+
+    G_io_apdu_buffer[5] = (TARGET_ID >> 24) & 0xFF;
+    G_io_apdu_buffer[6] = (TARGET_ID >> 16) & 0xFF;
+    G_io_apdu_buffer[7] = (TARGET_ID >> 8) & 0xFF;
+    G_io_apdu_buffer[8] = (TARGET_ID >> 0) & 0xFF;
+
+    *tx += 9;
+    THROW(APDU_CODE_OK);
+}
 
 __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     extract_default_path(rx, OFFSET_DATA);
@@ -45,7 +154,7 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
         app_fill_address(addr_secp256k1);
 
         view_review_init(addr_getItem, addr_getNumItems, app_reply_address);
-        view_review_show(REPLY_APDU);
+        view_review_show(REVIEW_ADDRESS);
 
         *flags |= IO_ASYNCH_REPLY;
         return;
@@ -81,7 +190,7 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
 
     CHECK_APP_CANARY()
     view_review_init(tx_getItem, tx_getNumItems, app_sign);
-    view_review_show(REPLY_APDU);
+    view_review_show(REVIEW_TXN);
     *flags |= IO_ASYNCH_REPLY;
 }
 
