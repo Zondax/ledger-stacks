@@ -10,6 +10,8 @@ mod bolos;
 pub mod parser;
 mod zxformat;
 
+fn debug(_msg: &str) {}
+
 #[cfg(not(any(test, fuzzing)))]
 use core::panic::PanicInfo;
 
@@ -32,25 +34,14 @@ pub(crate) fn canary() {
     }
 }
 
-pub fn pic_internal<T: Sized>(obj: &T) -> &T {
-    if cfg!(test) {
-        return obj;
-    }
-    let ptr = obj as *const _;
-    let ptr_usize = ptr as *const () as u32;
-    unsafe {
-        let link = pic(ptr_usize);
-        let ptr = link as *const T;
-        &*ptr
-    }
+#[cfg(not(any(test, fuzzing)))]
+pub fn is_expert_mode() -> bool {
+    unsafe { app_mode_expert() > 0 }
 }
 
+#[cfg(any(test, fuzzing))]
 pub fn is_expert_mode() -> bool {
-    if cfg!(any(test, fuzzing)) {
-        true
-    } else {
-        unsafe { app_mode_expert() > 0 }
-    }
+    true
 }
 
 #[macro_export]
