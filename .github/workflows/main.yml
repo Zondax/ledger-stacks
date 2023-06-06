@@ -16,43 +16,19 @@ jobs:
       - id: get-user
         run: echo "uid_gid=$(id -u):$(id -g)" >> $GITHUB_OUTPUT
 
-  build:
+  rust_test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-      - name: Install deps
-        run: |
-          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 10
-          make deps
-
-  build_only_rust:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: true
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - name: rustfmt
-        run: |
-          cd ./app/rust
-          cargo fmt --version
-          cargo fmt -- --check
-      - name: clippy
-        run: |
-          cd ./app/rust
-          cargo clippy --version
-          cargo clippy --all-features --all-targets || true
-      - name: run tests
-        run: |
-          cd ./app/rust
-          cargo test
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Rust tests
+        run: make rust_test
 
   build_ledger:
     needs: configure
@@ -87,6 +63,7 @@ jobs:
           [ ${{needs.build_ledger.outputs.size}} -le $NANOS_LIMIT_SIZE ]
 
   test_zemu:
+    timeout-minutes: 25
     runs-on: ubuntu-latest
     steps:
       - name: Test
@@ -99,28 +76,29 @@ jobs:
         with:
           submodules: true
       - run: sudo apt-get update -y && sudo apt-get install -y libusb-1.0.0 libudev-dev
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
       - name: Install node
         uses: actions/setup-node@v3
       - name: Install yarn
         run: |
-          npm install -g yarn ts-node
-      - name: Build and run zemu tests
-        run: |
-          make test_all
+          npm install -g yarn
+      - name: Build Ledger app
+        run: make test_all
+      - name: Upload Snapshots (only failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: snapshots-tmp
+          path: tests_zemu/snapshots-tmp/
 
   build_package_nanos:
-    needs: [configure, build, build_ledger, test_zemu]
+    needs: [configure, rust_test, build_ledger, test_zemu]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
       image: zondax/ledger-app-builder:latest
       options: --user ${{ needs.configure.outputs.uid_gid }}
-    env:
-      BOLOS_SDK: /opt/nanos-secure-sdk
+      env:
+        BOLOS_SDK: /opt/nanos-secure-sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -149,7 +127,7 @@ jobs:
           prerelease: false
 
   build_package_nanosp:
-    needs: [configure, build, build_ledger, test_zemu]
+    needs: [configure, rust_test, build_ledger, test_zemu]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
