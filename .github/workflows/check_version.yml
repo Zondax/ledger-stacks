@@ -1,10 +1,11 @@
-name: "Verify PRs to main"
+name: Verify PRs to main
 
 on:
   workflow_dispatch:
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   configure:
@@ -50,4 +51,3 @@ jobs:
       - name: Tag exists
         if: ${{ steps.checkTag.outputs.exists == 'true' }}
         run: exit 1
-
