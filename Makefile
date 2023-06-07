@@ -1,5 +1,5 @@
 #*******************************************************************************
-#*   (c) 2019 Zondax GmbH
+#*   (c) 2019 - 2023 Zondax AG
 #*
 #*  Licensed under the Apache License, Version 2.0 (the "License");
 #*  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 #*  limitations under the License.
 #********************************************************************************
 
-# We use BOLOS_SDK to determine the develoment environment that is being used
+# We use BOLOS_SDK to determine the development environment that is being used
 # BOLOS_SDK IS  DEFINED	 	We use the plain Makefile for Ledger
 # BOLOS_SDK NOT DEFINED		We use a containerized build approach
 
@@ -22,7 +22,13 @@ TESTS_JS_PACKAGE = "@zondax/ledger-stacks"
 TESTS_JS_DIR = $(CURDIR)/js
 
 ifeq ($(BOLOS_SDK),)
-	include $(CURDIR)/deps/ledger-zxlib/dockerized_build.mk
+# In this case, there is not predefined SDK and we run dockerized
+# When not using the SDK, we override and build the XL complete app
+
+ZXLIB_COMPILE_STAX ?= 1
+SUBSTRATE_PARSER_FULL ?= 1
+include $(CURDIR)/deps/ledger-zxlib/dockerized_build.mk
+
 else
 default:
 	$(MAKE) -C app

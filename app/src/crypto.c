@@ -32,7 +32,7 @@ bool isTestnet() {
            hdPath[1] == HDPATH_1_TESTNET;
 }
 
-#if defined(TARGET_NANOS) || defined(TARGET_NANOX) || defined(TARGET_NANOS2)
+#if defined(TARGET_NANOS) || defined(TARGET_NANOX) || defined(TARGET_NANOS2) || defined(TARGET_STAX)
 #include "cx.h"
 
 bool ripemd160(uint8_t *in, uint16_t inLen, uint8_t *out) {
@@ -59,7 +59,7 @@ typedef struct {
 } __attribute__((packed)) address_temp_t;
 
 
-bool is_valid_network_version(uint8_t version);
+bool is_valid_network_version(uint8_t ver);
 
 // Set the network version to be used when getting the address from
 // the device public key.
@@ -72,8 +72,8 @@ bool set_network_version(uint8_t network) {
     return false;
 }
 
-bool is_valid_network_version(uint8_t version) {
-    switch(version) {
+bool is_valid_network_version(uint8_t ver) {
+    switch(ver) {
         case COIN_VERSION_TESTNET_SINGLESIG: break;
         case COIN_VERSION_MAINNET_SINGLESIG: break;
         default: {
@@ -211,21 +211,19 @@ typedef struct {
 } __attribute__((packed)) signature_t;
 
 zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *message, uint16_t messageLen, uint16_t *sigSize) {
-    uint8_t message_digest[CX_SHA256_SIZE];
+    if (signatureMaxlen < sizeof_field(signature_t, der_signature)) {
+        return zxerr_buffer_too_small;
+    }
     *sigSize=0;
 
     if (messageLen != CX_SHA256_SIZE) {
         return zxerr_out_of_bounds;
     }
-
-    memcpy(message_digest, message, CX_SHA256_SIZE);
-    {
-        zemu_log("digest: ***");
-        char buffer[65];
-        array_to_hexstr(buffer, 65,  message_digest, CX_SHA256_SIZE );
-        zemu_log(buffer);
-        zemu_log("\n");
-    }
+    #ifdef APP_TESTING
+        char tmpBuff[65] = {0};
+        array_to_hexstr(tmpBuff, sizeof(tmpBuff), message, CX_SHA256_SIZE);
+        ZEMU_LOGF(100, "Digest: *** %s\n", tmpBuff)
+    #endif
 
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[32];
@@ -234,7 +232,7 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
 
     signature_t *const signature = (signature_t *) buffer;
 
-    zxerr_t zxerr = zxerr_ok;
+    zxerr_t zxerr = zxerr_unknown;
     BEGIN_TRY
     {
         TRY
@@ -251,12 +249,13 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
             signatureLength = cx_ecdsa_sign(&cx_privateKey,
                                             CX_RND_RFC6979 | CX_LAST,
                                             CX_SHA256,
-                                            message_digest,
+                                            message,
                                             CX_SHA256_SIZE,
                                             signature->der_signature,
                                             sizeof_field(signature_t, der_signature),
                                             &info);
 
+            zxerr = zxerr_ok;
         }
         CATCH_ALL {
             signatureLength = 0;

@@ -66,6 +66,12 @@ typedef enum {
 #define COIN_VERSION_MAINNET_SINGLESIG   22
 #define COIN_VERSION_TESTNET_SINGLESIG   26
 
+#define INS_GET_VERSION                 0x00
+#define INS_GET_ADDR_SECP256K1          0x01
+#define INS_SIGN_SECP256K1              0x02
+#define INS_GET_AUTH_PUBKEY             0x03
+#define SIGN_JWT_SECP256K1              0x04
+
 #ifdef __cplusplus
 }
 #endif

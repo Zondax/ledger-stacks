@@ -2,7 +2,10 @@
 
 use core::fmt::{self, Write};
 
-use crate::parser::{fp_uint64_to_str, ParserError};
+use crate::parser::ParserError;
+
+#[cfg(not(any(test, fuzzing)))]
+use crate::parser::fp_uint64_to_str;
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
 
@@ -41,31 +44,37 @@ macro_rules! num_to_str {
             if output.len() < 2 {
                 return Err(ParserError::parser_unexpected_buffer_end);
             }
-            let len = if cfg!(any(test, fuzzing)) {
+
+            let len;
+
+            #[cfg(any(test, fuzzing))]
+            {
                 let mut writer = Writer::new(output);
                 core::write!(writer, "{}", number)
                     .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                writer.offset
-            } else {
-                // We add this path here because of the issue with the write! fmt trait
+                len = writer.offset;
+            }
+
+            #[cfg(not(any(test, fuzzing)))]
+            {
+                // We add this path here because pic issues with the write! trait
                 // so that it is preferable to use the c implementation when running on
-                // the ledger nano, nanoX.
+                // the device.
                 unsafe {
-                    fp_uint64_to_str(
+                    len = fp_uint64_to_str(
                         output.as_mut_ptr() as _,
                         output.len() as u16,
                         number as _,
                         0,
-                    ) as usize
+                    ) as usize;
                 }
-            };
+            }
             Ok(len)
         }
     };
 }
 
 num_to_str!(u64_to_str, u64);
-
 num_to_str!(i64_to_str, i64);
 
 /// Fixed point u64 number
@@ -101,11 +110,7 @@ pub fn fpu64_to_str_check_test(
     value: u64,
     decimals: u8,
 ) -> Result<usize, ParserError> {
-    let len = if cfg!(any(test, fuzzing)) {
-        fpu64_to_str(out, value, decimals)? as usize
-    } else {
-        unsafe { fp_uint64_to_str(out.as_mut_ptr() as _, out.len() as _, value, decimals) as usize }
-    };
+    let len = fpu64_to_str(out, value, decimals)? as usize;
     Ok(len)
 }
 
@@ -119,7 +124,6 @@ pub fn fpu64_to_str_check_test(
 /// * `decimals`: the number of decimals after the decimal point
 /// # Returns
 /// The number of bytes written if success or Error otherwise
-#[cfg(any(test, fuzzing))]
 pub fn fpi64_to_str(out: &mut [u8], value: i64, decimals: u8) -> Result<usize, ParserError> {
     let mut temp = [0u8; MAX_STR_BUFF_LEN];
     let len = i64_to_str(temp.as_mut(), value)?;
