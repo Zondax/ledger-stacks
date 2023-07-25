@@ -19,6 +19,7 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 // handle
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
+pub const PUBKEY_LEN: usize = 33;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
 
 // A recursion limit use to control ram usage when parsing
