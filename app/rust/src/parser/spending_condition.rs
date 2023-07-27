@@ -2,7 +2,7 @@ use core::convert::TryFrom;
 
 use nom::{
     bytes::complete::take,
-    number::complete::{be_u8, be_u16, be_u32, be_u64},
+    number::complete::{be_u16, be_u32, be_u64, be_u8},
 };
 
 use arrayvec::ArrayVec;
@@ -36,6 +36,37 @@ const SPENDING_CONDITION_SIGNER_LEN: usize = 37;
 // we take 65-byte signature + 1-byte signature public-key encoding type
 const SINGLE_SPENDING_CONDITION_LEN: usize = 66;
 
+/// Transaction signatures are validated by calculating the public key from the signature, and
+/// verifying that all public keys hash to the signing account's hash.  To do so, we must preserve
+/// enough information in the auth structure to recover each public key's bytes.
+///
+/// An auth field can be a public key or a signature.  In both cases, the public key (either given
+/// in-the-raw or embedded in a signature) may be encoded as compressed or uncompressed.
+#[repr(u8)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
+pub enum TransactionAuthFieldID {
+    // types of auth fields
+    PublicKeyCompressed = 0x00,
+    PublicKeyUncompressed = 0x01,
+    SignatureCompressed = 0x02,
+    SignatureUncompressed = 0x03,
+}
+
+impl TryFrom<u8> for TransactionAuthFieldID {
+    type Error = ParserError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::PublicKeyCompressed),
+            0x01 => Ok(Self::PublicKeyUncompressed),
+            0x02 => Ok(Self::SignatureCompressed),
+            0x03 => Ok(Self::SignatureUncompressed),
+            _ => Err(ParserError::parser_value_out_of_range),
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
@@ -56,33 +87,17 @@ impl TransactionPublicKeyEncoding {
     }
 }
 
-impl From<&TransactionAuthFieldID> for TransactionPublicKeyEncoding {
-    fn from(id: &TransactionAuthFieldID) -> Self {
+impl From<TransactionAuthFieldID> for TransactionPublicKeyEncoding {
+    fn from(id: TransactionAuthFieldID) -> Self {
         match id {
-            TransactionAuthFieldID::PublicKeyCompressed | TransactionAuthFieldID::SignatureCompressed => Self::Compressed,
-            TransactionAuthFieldID::PublicKeyUncompressed | TransactionAuthFieldID::SignatureUncompressed => Self::Uncompressed,
+            TransactionAuthFieldID::PublicKeyCompressed
+            | TransactionAuthFieldID::SignatureCompressed => Self::Compressed,
+            TransactionAuthFieldID::PublicKeyUncompressed
+            | TransactionAuthFieldID::SignatureUncompressed => Self::Uncompressed,
         }
     }
 }
 
-/// Transaction signatures are validated by calculating the public key from the signature, and
-/// verifying that all public keys hash to the signing account's hash.  To do so, we must preserve
-/// enough information in the auth structure to recover each public key's bytes.
-///
-/// An auth field can be a public key or a signature.  In both cases, the public key (either given
-/// in-the-raw or embedded in a signature) may be encoded as compressed or uncompressed.
-#[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
-#[cfg_attr(test, derive(Debug))]
-pub enum TransactionAuthFieldID {
-    // types of auth fields
-    PublicKeyCompressed = 0x00,
-    PublicKeyUncompressed = 0x01,
-    SignatureCompressed = 0x02,
-    SignatureUncompressed = 0x03,
-}
-
-// {FT} Replacer 37 with SPENDING_CONDITION_SIGNER_LEN
 #[repr(C)]
 #[derive(PartialEq, Clone)]
 #[cfg_attr(test, derive(Debug))]
@@ -189,10 +204,8 @@ pub enum TransactionAuthField<'a> {
 #[derive(PartialEq, Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub struct MultisigSpendingCondition<'a> {
-    /// Keep to allow access to entire structure as raw bytes
-    pub raw: &'a [u8],
-    /// Public key or signature of each potential signer
-    pub auth_fields: ArrayVec<TransactionAuthField<'a>, 16>,
+    /// Keep auth_fields in raw format
+    pub auth_fields_raw: &'a [u8],
     /// # of signatures from potential signer set for tx to be valid
     pub signatures_required: u16,
 }
@@ -215,7 +228,7 @@ impl<'a> SpendingConditionSignature<'a> {
 
     pub fn required_signatures(self) -> Option<u16> {
         match self {
-            Self::Multisig(ref multisig) => multisig.required_signatures().ok(),
+            Self::Multisig(ref multisig) => Some(multisig.required_signatures()),
             _ => None,
         }
     }
@@ -268,18 +281,23 @@ impl<'a> TransactionAuthField<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let (bytes, id) = be_u8(bytes)?;
+        let id = TransactionAuthFieldID::try_from(id)?;
+
         match id {
             TransactionAuthFieldID::PublicKeyCompressed
             | TransactionAuthFieldID::PublicKeyUncompressed => {
-                let (bytes, buf) = take(PUBKEY_LEN)(bytes)?;
-                Ok(bytes, Self::PublicKey(id.into(), buf))
+                let (bytes, pubkey) = take(PUBKEY_LEN)(bytes)?;
+                let pubkey = arrayref::array_ref!(pubkey, 0, PUBKEY_LEN);
+                check_canary!();
+                Ok((bytes, Self::PublicKey(id.into(), pubkey)))
             }
             TransactionAuthFieldID::SignatureCompressed
             | TransactionAuthFieldID::SignatureUncompressed => {
-                let (bytes, buf) = take(SIGNATURE_LEN)(bytes)?;
-                Ok(bytes, Self::Signature(id.into(), buf))
+                let (bytes, sig) = take(SIGNATURE_LEN)(bytes)?;
+                let sig = arrayref::array_ref!(sig, 0, SIGNATURE_LEN);
+                check_canary!();
+                Ok((bytes, Self::Signature(id.into(), sig)))
             }
-            _ => return Err(nom::Err::Error(ParserError::parser_unexpected_value)),
         }
     }
 }
@@ -287,49 +305,67 @@ impl<'a> TransactionAuthField<'a> {
 impl<'a> MultisigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        // first get the number of auth-fields
-        let (mut end, num_fields) = be_u32(bytes)?;
-        let mut auth_fields = ArrayVec::new();
-        for i in 0..num_fields {
-            let (e, tx) = TransactionAuthField::from_bytes(end)?;
-            auth_fields[i] = tx;
-            end = e;
-        }
+        // First, get the number of auth fields
+        let (_, num_fields) = Self::num_fields_from_bytes(bytes)?;
+
+        // Advance to the end of auth fields
+        let (end, _) = Self::field_from_bytes(bytes, num_fields - 1)?;
+
+        // Keep reference to auth fields as entire section as raw, unparsed slice
+        let bytes_taken = bytes.len() - end.len();
+        let (bytes, auth_fields_raw) = take(bytes_taken)(bytes)?;
 
         // Get # of sigs required to sign tx, and check it's not too high
-        let (end, signature_count) = be_u16(end)?;
-        if signature_count > num_fields {
-            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
-        }
-
-        // Keep reference to this entire section as raw, unparsed slice
-        let taken = bytes.len() - end.len();
-        let (bytes, raw) = take(taken)(bytes);
+        let (bytes, signatures_required) = be_u16(bytes)?;
 
         Ok((
             bytes,
             Self {
-                raw,
-                auth_fields,
-                signature_count,
+                auth_fields_raw,
+                signatures_required,
             },
         ))
+    }
+
+    fn num_fields_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], u32, ParserError> {
+        be_u32(bytes)
+    }
+
+    #[inline(never)]
+    fn field_from_bytes(
+        bytes: &'a [u8],
+        field: u32,
+    ) -> nom::IResult<&[u8], TransactionAuthField, ParserError> {
+        let (mut bytes, num_fields) = Self::num_fields_from_bytes(bytes)?;
+        if field >= num_fields {
+            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+        }
+
+        // Parse preceding fields
+        for _ in 0..field {
+            let (b, _) = TransactionAuthField::from_bytes(bytes)?;
+            bytes = b;
+        }
+
+        // Parse and return requested field
+        TransactionAuthField::from_bytes(bytes)
     }
 
     pub fn required_signatures(&self) -> u16 {
         self.signatures_required
     }
 
-    pub fn num_fields(&self) -> u32 {
-        let len = self.auth_fields.len();
-        usize::try_from(len).apdu_expect("usize -> u32 failed");
+    pub fn num_fields(&self) -> Result<u32, ParserError> {
+        Self::num_fields_from_bytes(self.auth_fields_raw)
+            .map(|num| num.1)
+            .map_err(|_| ParserError::parser_unexpected_value)
     }
 
     fn clear_signature(&mut self) {
-        let ptr = self.raw.as_ptr();
+        let ptr = self.auth_fields_raw.as_ptr();
         // clear all the multisig data except for the last 2-bytes
         // which are the signature count
-        let len = self.raw.len() - 2;
+        let len = self.auth_fields_raw.len();
         unsafe {
             let ptr = ptr as *mut u8;
             // zeroize the auth fields
@@ -407,7 +443,7 @@ impl<'a> TransactionSpendingCondition<'a> {
 
     pub fn num_auth_fields(&self) -> Option<u32> {
         match self.signature {
-            SpendingConditionSignature::Multisig(ref sig) => Some(sig.num_fields()),
+            SpendingConditionSignature::Multisig(ref sig) => sig.num_fields().ok(),
             _ => None,
         }
     }

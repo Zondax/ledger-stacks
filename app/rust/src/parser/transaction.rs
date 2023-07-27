@@ -356,7 +356,7 @@ impl<'a> Transaction<'a> {
                 }
                 Ok(Self::from(tx))
             }
-            Err(_e) => Err(ParserError::parser_unexpected_error),
+            Err(e) => Err(e.into()),
         }
     }
 
