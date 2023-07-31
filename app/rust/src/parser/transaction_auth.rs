@@ -4,7 +4,9 @@ use crate::check_canary;
 use crate::parser::{
     error::ParserError,
     parser_common::SignerId,
-    spending_condition::{SpendingConditionSigner, TransactionSpendingCondition},
+    spending_condition::{
+        SpendingConditionSigner, TransactionAuthField, TransactionSpendingCondition,
+    },
 };
 
 // The sponsor sentinel length that includes:
@@ -75,6 +77,14 @@ impl<'a> TransactionAuth<'a> {
         match self {
             Self::Standard(origin) => origin.num_auth_fields(),
             Self::Sponsored(origin, _) => origin.num_auth_fields(),
+        }
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField, ParserError>> {
+        match self {
+            Self::Standard(origin) => origin.get_auth_field(index),
+            Self::Sponsored(origin, _) => origin.get_auth_field(index),
         }
     }
 

@@ -167,6 +167,16 @@ uint32_t tx_num_multisig_fields() {
     return parser_num_multisig_fields();
 }
 
+zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data) {
+    parser_error_t err = parser_get_multisig_field(index, id, data);
+
+    if (err != parser_ok) {
+        return zxerr_no_data;
+    }
+
+    return zxerr_ok;
+}
+
 transaction_type_t tx_get_transaction_type(){
     return parser_get_transaction_type();
 }

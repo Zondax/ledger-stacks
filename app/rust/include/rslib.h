@@ -36,6 +36,7 @@ parser_error_t _structured_msg_hash(const parser_tx_t *v,  uint8_t *out, uint16_
 
 uint8_t _is_multisig(const parser_tx_t *v);
 uint32_t _num_multisig_fields(const parser_tx_t *v);
+parser_error_t _get_multisig_field(const parser_tx_t *v,  uint32_t index, uint8_t *id, uint8_t **data);
 
 uint8_t _fee_bytes(const parser_tx_t *v, uint8_t *fee, uint16_t fee_len);
 uint8_t _nonce_bytes(const parser_tx_t *v, uint8_t *nonce, uint16_t nonce_len);

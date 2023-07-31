@@ -65,6 +65,9 @@ int8_t tx_is_multisig();
 // Returns # of fields in a multisig spending condition, or 0 if not multisig
 uint32_t tx_num_multisig_fields();
 
+// Returns multisig auth field at position `index`
+zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);
+
 // Gets the origin fee as bytes
 uint8_t tx_fee(uint8_t *fee, uint16_t fee_len);
 

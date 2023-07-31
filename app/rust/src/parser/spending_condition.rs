@@ -193,8 +193,8 @@ pub struct SinglesigSpendingCondition<'a>(&'a [u8; SINGLE_SPENDING_CONDITION_LEN
 #[derive(PartialEq, Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub enum TransactionAuthField<'a> {
-    PublicKey(TransactionPublicKeyEncoding, &'a [u8; PUBKEY_LEN]),
-    Signature(TransactionPublicKeyEncoding, &'a [u8; SIGNATURE_LEN]),
+    PublicKey(TransactionAuthFieldID, &'a [u8; PUBKEY_LEN]),
+    Signature(TransactionAuthFieldID, &'a [u8; SIGNATURE_LEN]),
 }
 
 /// A structure that encodes enough state to authenticate
@@ -289,21 +289,21 @@ impl<'a> TransactionAuthField<'a> {
                 let (bytes, pubkey) = take(PUBKEY_LEN)(bytes)?;
                 let pubkey = arrayref::array_ref!(pubkey, 0, PUBKEY_LEN);
                 check_canary!();
-                Ok((bytes, Self::PublicKey(id.into(), pubkey)))
+                Ok((bytes, Self::PublicKey(id, pubkey)))
             }
             TransactionAuthFieldID::SignatureCompressed
             | TransactionAuthFieldID::SignatureUncompressed => {
                 let (bytes, sig) = take(SIGNATURE_LEN)(bytes)?;
                 let sig = arrayref::array_ref!(sig, 0, SIGNATURE_LEN);
                 check_canary!();
-                Ok((bytes, Self::Signature(id.into(), sig)))
+                Ok((bytes, Self::Signature(id, sig)))
             }
         }
     }
 }
 
 /// For indexing into arrays
-enum Index {
+pub enum Index {
     /// Index from 0
     FromZero(u32),
     /// Index backwards from last element
@@ -364,6 +364,14 @@ impl<'a> MultisigSpendingCondition<'a> {
 
         // Parse and return requested field
         TransactionAuthField::from_bytes(bytes)
+    }
+
+    #[inline(always)]
+    pub fn auth_field(
+        &self,
+        index: Index,
+    ) -> nom::IResult<&[u8], TransactionAuthField, ParserError> {
+        Self::field_from_bytes(self.auth_fields_raw, index)
     }
 
     #[inline(always)]
@@ -460,6 +468,17 @@ impl<'a> TransactionSpendingCondition<'a> {
     pub fn num_auth_fields(&self) -> Option<u32> {
         match self.signature {
             SpendingConditionSignature::Multisig(ref sig) => sig.num_fields().ok(),
+            _ => None,
+        }
+    }
+
+    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField, ParserError>> {
+        match self.signature {
+            SpendingConditionSignature::Multisig(ref sig) => Some(
+                sig.auth_field(Index::FromZero(index))
+                    .map(|r| r.1)
+                    .map_err(|e| e.into()),
+            ),
             _ => None,
         }
     }
