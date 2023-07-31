@@ -70,6 +70,14 @@ impl<'a> TransactionAuth<'a> {
         }
     }
 
+    // check just for origin, meaning we support standard transaction only
+    pub fn num_auth_fields(&self) -> Option<u32> {
+        match self {
+            Self::Standard(origin) => origin.num_auth_fields(),
+            Self::Sponsored(origin, _) => origin.num_auth_fields(),
+        }
+    }
+
     #[inline(always)]
     pub fn origin(&self) -> &SpendingConditionSigner {
         match self {

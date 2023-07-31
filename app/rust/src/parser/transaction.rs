@@ -243,7 +243,7 @@ pub struct Transaction<'a> {
     pub post_conditions: PostConditions<'a>,
     pub payload: TransactionPayload<'a>,
     signer: SignerId,
-    // If this is a multisig transaction this field should content
+    // If this is a multisig transaction this field should contain
     // the previous signer's post_sig_hash, pubkey type(compressed/uncom..), and the signature(vrs)
     // with them, we can construct the pre_sig_hash for the current signer
     // we would ideally verify it, but we can lend such responsability to the application

@@ -241,6 +241,14 @@ pub unsafe extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> u8 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn _num_multisig_fields(tx_t: *const parse_tx_t) -> u32 {
+    parsed_obj_from_state(tx_t as _)
+        .and_then(|obj| obj.transaction())
+        .and_then(|tx| tx.transaction_auth.num_auth_fields())
+        .unwrap_or(0)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn _transaction_type(tx_t: *const parse_tx_t) -> Tag {
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
         obj.get_type()

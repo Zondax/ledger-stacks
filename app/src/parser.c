@@ -126,6 +126,10 @@ int8_t parser_is_transaction_multisig() {
     return _is_multisig(&parser_state);
 }
 
+uint32_t parser_num_multisig_fields() {
+    return _num_multisig_fields(&parser_state);
+}
+
 uint16_t parser_previous_signer_data(uint8_t **data) {
     return _previous_signer_data(&parser_state, data);
 }

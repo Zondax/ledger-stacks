@@ -302,14 +302,19 @@ impl<'a> TransactionAuthField<'a> {
     }
 }
 
+/// For indexing into arrays
+enum Index {
+    /// Index from 0
+    FromZero(u32),
+    /// Index backwards from last element
+    FromLast(u32),
+}
+
 impl<'a> MultisigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        // First, get the number of auth fields
-        let (_, num_fields) = Self::num_fields_from_bytes(bytes)?;
-
         // Advance to the end of auth fields
-        let (end, _) = Self::field_from_bytes(bytes, num_fields - 1)?;
+        let (end, _) = Self::field_from_bytes(bytes, Index::FromLast(0))?;
 
         // Keep reference to auth fields as entire section as raw, unparsed slice
         let bytes_taken = bytes.len() - end.len();
@@ -327,22 +332,32 @@ impl<'a> MultisigSpendingCondition<'a> {
         ))
     }
 
+    #[inline(always)]
     fn num_fields_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], u32, ParserError> {
         be_u32(bytes)
     }
 
     #[inline(never)]
+    /// Parse and return auth field `index`
     fn field_from_bytes(
         bytes: &'a [u8],
-        field: u32,
+        index: Index,
     ) -> nom::IResult<&[u8], TransactionAuthField, ParserError> {
+        // First, read number of auth fields
         let (mut bytes, num_fields) = Self::num_fields_from_bytes(bytes)?;
-        if field >= num_fields {
-            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
-        }
 
-        // Parse preceding fields
-        for _ in 0..field {
+        // Compute and check index
+        let index = match index {
+            Index::FromZero(i) => i,
+            Index::FromLast(i) => num_fields - 1 - i,
+        };
+
+        if index >= num_fields {
+            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+        };
+
+        // Parse and ignore preceding fields
+        for _ in 0..index {
             let (b, _) = TransactionAuthField::from_bytes(bytes)?;
             bytes = b;
         }
@@ -351,6 +366,7 @@ impl<'a> MultisigSpendingCondition<'a> {
         TransactionAuthField::from_bytes(bytes)
     }
 
+    #[inline(always)]
     pub fn required_signatures(&self) -> u16 {
         self.signatures_required
     }

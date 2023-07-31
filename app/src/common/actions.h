@@ -72,6 +72,9 @@ __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t inpu
 // Helper function to verify the previous signer post_sig_hash in a multisig transaction
 __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
 
+// Helper function to verify full post_sig_hash chain in a multisig transaction
+__Z_INLINE zxerr_t validate_post_sig_hash_chain(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
+
 __Z_INLINE void app_sign() {
     uint8_t presig_hash[CX_SHA256_SIZE];
     uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN];
@@ -94,7 +97,7 @@ __Z_INLINE void app_sign() {
         if (data != NULL && len >= PREVIOUS_SIGNER_DATA_LEN) {
             // Check postsig_hash and append the authfield, fee and nonce, after that the result is copied to the presig_hash
             // buffer
-            err = validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len);
+            err = validate_post_sig_hash_chain(presig_hash, CX_SHA256_SIZE, data, len);
             if(err == zxerr_ok) {
                 err = append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE);
             }
@@ -128,7 +131,7 @@ __Z_INLINE void app_sign() {
             // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
             post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
-            // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
+            // Now get the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
             uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
             // Now get the presig_hash
@@ -251,6 +254,28 @@ __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_
         }
     }
     return zxerr_ok;
+}
+
+// Validate sighash of all previous signers
+__Z_INLINE zxerr_t validate_post_sig_hash_chain(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
+
+#if 0
+    uint32_t num_fields = tx_num_multisig_fields();
+
+    // WIP
+    for (uint32_t i = 0; i < num_fields; ++i ) {
+        uint8_t* field = tx_get_multisig_field(i);
+
+        let type = ?
+        switch type {
+            case pubkey: continue;
+            case sig:
+
+        }
+    }
+#else
+    return validate_post_sig_hash(current_pre_sig_hash, hash_len, signer_data, signer_data_len);
+#endif
 }
 
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
