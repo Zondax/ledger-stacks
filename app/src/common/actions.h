@@ -290,19 +290,22 @@ __Z_INLINE zxerr_t validate_post_sig_hash_chain(uint8_t *hash, uint16_t hash_len
 
         // Compute pre_sig_hash from sighash
         // For first signer, this has already been done by `get_presig_hash()`
-        if (first_signer) {
+        if (!first_signer) {
             err = append_fee_nonce_auth_hash(hash, CX_SHA256_SIZE, hash, CX_SHA256_SIZE);
             if (err != zxerr_ok) {
                 zemu_log_stack("Failed to compute pre_sig_hash\n");
                 return zxerr_no_data;
             }
-            first_signer = 0;
         }
+        first_signer = 0;
+
+        // This is where previous signers would sign (between pre- and post-sighash)
+        // We already have the signature, so do nothing here
 
         // Compute and update post_sig_hash
         err = compute_post_sig_hash(hash, CX_SHA256_SIZE, previous_signer_data, sizeof(previous_signer_data));
         if (err != zxerr_ok) {
-            zemu_log_stack("Invalid post_sig_hash_chain\n");
+            zemu_log_stack("Invalid post_sig_hash chain\n");
             return zxerr_no_data;
         }
     }

@@ -31,6 +31,7 @@ import {
   makeUnsignedContractCall,
   makeUnsignedSTXTokenTransfer,
   pubKeyfromPrivKey,
+  publicKeyFromBuffer,
   publicKeyToString,
   standardPrincipalCV,
   contractPrincipalCV,
@@ -306,7 +307,8 @@ describe('Standard', function () {
       console.log(pkResponse)
       expect(pkResponse.returnCode).toEqual(0x9000)
       expect(pkResponse.errorMessage).toEqual('No errors')
-      const devicePublicKey = pkResponse.publicKey.toString('hex')
+      const devicePublicKey = publicKeyFromBuffer(pkResponse.publicKey);
+      const devicePublicKeyString = pkResponse.publicKey.toString('hex')
 
       const recipient = standardPrincipalCV('ST2XADQKC3EPZ62QTG5Q2RSPV64JG6KXCND0PHT7F')
       const amount = new BN(2500000)
@@ -316,16 +318,16 @@ describe('Standard', function () {
 
       const priv_key_signer0 = createStacksPrivateKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
       const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
-      const pubKeyStrings = [pub_key_signer0, devicePublicKey]
+      const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
 
       const unsignedTx = await makeUnsignedSTXTokenTransfer({
         anchorMode: AnchorMode.Any,
-        recipient: recipient,
+        recipient,
         network,
-        nonce: nonce,
-        fee: fee,
-        amount: amount,
-        memo: memo,
+        nonce,
+        fee,
+        amount,
+        memo,
         numSignatures: 2,
         publicKeys: pubKeyStrings,
       })
@@ -341,28 +343,18 @@ describe('Standard', function () {
       const signer0 = new TransactionSigner(unsignedTx)
 
       signer0.signOrigin(priv_key_signer0)
+      signer0.appendOrigin(devicePublicKey)
 
       // get signer0 post_sig_hash
       const postsig_hash_blob = Buffer.from(signer0.sigHash, 'hex')
 
       const serializeTx = unsignedTx.serialize().toString('hex')
-      const publicKey = pubKeyfromPrivKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
-      let key_type
-      if (isCompressed(publicKey)) {
-        key_type = PubKeyEncoding.Compressed
-      } else {
-        key_type = PubKeyEncoding.Uncompressed
-      }
-      const blob3 = Buffer.alloc(1, key_type)
+
       // @ts-ignore
       const signature_signer0_hex = signer0.transaction.auth.spendingCondition.fields[0].contents.data
       const signer0_signature = Buffer.from(signature_signer0_hex, 'hex')
 
-      const blob1 = Buffer.from(serializeTx, 'hex')
-      // Pass a full transaction buffer, and the previous signer postsig_hash,  pubkey type
-      // and vrs signature
-      const arr = [blob1, postsig_hash_blob, blob3, signer0_signature]
-      const blob = Buffer.concat(arr)
+      const blob = Buffer.from(serializeTx, 'hex')
 
       // Signs the transaction that includes the previous signer post_sig_hash
       const signatureRequest = app.sign(path, blob)
@@ -410,7 +402,7 @@ describe('Standard', function () {
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
       // @ts-ignore
-      const signature1Ok = ec.verify(hash, signature1_obj, devicePublicKey, 'hex')
+      const signature1Ok = ec.verify(hash, signature1_obj, devicePublicKeyString, 'hex')
       expect(signature1Ok).toEqual(true)
     } finally {
       await sim.close()
