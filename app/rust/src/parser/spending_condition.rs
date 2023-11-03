@@ -58,10 +58,10 @@ impl TryFrom<u8> for TransactionAuthFieldID {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0x00 => Ok(Self::PublicKeyCompressed),
-            0x01 => Ok(Self::PublicKeyUncompressed),
-            0x02 => Ok(Self::SignatureCompressed),
-            0x03 => Ok(Self::SignatureUncompressed),
+            x if x == Self::PublicKeyCompressed as u8 => Ok(Self::PublicKeyCompressed),
+            x if x == Self::PublicKeyUncompressed as u8 => Ok(Self::PublicKeyUncompressed),
+            x if x == Self::SignatureCompressed as u8 => Ok(Self::SignatureCompressed),
+            x if x == Self::SignatureUncompressed as u8 => Ok(Self::SignatureUncompressed),
             _ => Err(ParserError::parser_value_out_of_range),
         }
     }
@@ -419,7 +419,7 @@ impl<'a> TransactionSpendingCondition<'a> {
                 }
                 (raw, SpendingConditionSignature::Singlesig(sig))
             }
-            HashMode::P2WSH | HashMode::P2SH => {
+            HashMode::P2WSH | HashMode::P2SH | HashMode::P2WSHNS | HashMode::P2SHNS => {
                 let sig = MultisigSpendingCondition::from_bytes(raw)?;
                 (sig.0, SpendingConditionSignature::Multisig(sig.1))
             }
@@ -470,6 +470,11 @@ impl<'a> TransactionSpendingCondition<'a> {
             SpendingConditionSignature::Multisig(ref sig) => sig.num_fields().ok(),
             _ => None,
         }
+    }
+
+    #[inline(always)]
+    pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
+        self.signer.hash_mode()
     }
 
     pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField, ParserError>> {

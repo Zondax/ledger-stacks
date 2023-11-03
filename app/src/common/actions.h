@@ -95,7 +95,36 @@ __Z_INLINE void app_sign() {
     // pre_sig_hash. Otherwise, we are the first signer in a multisig transaction
     if (tx_is_multisig() && err == zxerr_ok) {
         // Validate post_sig_hashes of previous signers
-        err = validate_post_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
+        uint8_t hash_mode = -1;
+        err = tx_hash_mode(&hash_mode);
+        if (err != zxerr_ok) {
+            zemu_log_stack("Error getting HashMode\n");
+        }
+        else switch (hash_mode) {
+            case 0x00: // P2PKH
+            case 0x02: // P2WPKH
+                // Singlesig
+                // Shouldn't be here!
+                zemu_log_stack("HashMode is not multisig\n");
+                err = zxerr_unknown;
+                break;
+            case 0x01: // P2SH sequential
+            case 0x03: // P2WSH sequential
+                // Sequential multisig
+                // Need to compute sighashes of all previous signers
+                err = validate_post_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
+                break;
+            case 0x05: // PWSH non-sequential
+            case 0x07: // P2WSH non-sequential
+                // Non-sequential multisig
+                // No need to do anything
+                err = zxerr_ok;
+                break;
+            default:
+                zemu_log_stack("Invalid HashMode\n");
+                err = zxerr_unknown;
+                break;
+        }
         if(err == zxerr_ok) {
             err = append_fee_nonce_auth_hash(presig_hash, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE);
         }

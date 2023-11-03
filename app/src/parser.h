@@ -72,7 +72,10 @@ int8_t parser_is_transaction_multisig();
 uint32_t parser_num_multisig_fields();
 
 // Fill in multisig field id and data pointer for field `index`
-uint32_t parser_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);
+parser_error_t parser_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);
+
+// Get transaction's spending condition hash mode field
+parser_error_t parser_hash_mode(uint8_t *hash_mode);
 
 // Gets a pointer to the previous signer signature, post_sig_hash and pubkey type
 // that is the last part of a lultisig transaction buffer

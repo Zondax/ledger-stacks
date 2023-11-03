@@ -68,6 +68,9 @@ uint32_t tx_num_multisig_fields();
 // Returns multisig auth field at position `index`
 zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);
 
+// Get transaction's spending condition hash mode field
+zxerr_t tx_hash_mode(uint8_t *hash_mode);
+
 // Gets the origin fee as bytes
 uint8_t tx_fee(uint8_t *fee, uint16_t fee_len);
 

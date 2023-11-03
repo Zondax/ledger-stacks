@@ -241,6 +241,21 @@ pub unsafe extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> u8 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn _hash_mode(tx_t: *const parse_tx_t, hash_mode: *mut u8) -> u32 {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
+        match tx.hash_mode() {
+            Ok(hm) => {
+                *hash_mode = hm as u8;
+                ParserError::parser_ok as _
+            }
+            Err(e) => e as _,
+        }
+    } else {
+        ParserError::parser_context_mismatch as _
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn _num_multisig_fields(tx_t: *const parse_tx_t) -> u32 {
     parsed_obj_from_state(tx_t as _)
         .and_then(|obj| obj.transaction())

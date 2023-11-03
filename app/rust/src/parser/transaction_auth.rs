@@ -3,7 +3,7 @@ use nom::number::complete::le_u8;
 use crate::check_canary;
 use crate::parser::{
     error::ParserError,
-    parser_common::SignerId,
+    parser_common::{HashMode, SignerId},
     spending_condition::{
         SpendingConditionSigner, TransactionAuthField, TransactionSpendingCondition,
     },
@@ -69,6 +69,14 @@ impl<'a> TransactionAuth<'a> {
         match self {
             Self::Standard(origin) => origin.is_multisig(),
             Self::Sponsored(origin, _) => origin.is_multisig(),
+        }
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
+        match self {
+            Self::Standard(origin) => origin.hash_mode(),
+            Self::Sponsored(origin, _) => origin.hash_mode(),
         }
     }
 
