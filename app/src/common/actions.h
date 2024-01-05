@@ -76,9 +76,9 @@ __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t inpu
 // Updates `hash` in place
 __Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
 
-// Helper function to verify full post_sig_hash chain in a multisig transaction
+// Helper function to verify full sig_hash chain in a multisig transaction (after initial pre_sig_hash)
 // Updates `hash` in place
-__Z_INLINE zxerr_t validate_post_sig_hash_chain(uint8_t *hash, uint16_t hash_len);
+__Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len);
 
 __Z_INLINE void app_sign() {
     uint8_t presig_hash[CX_SHA256_SIZE];
@@ -112,7 +112,7 @@ __Z_INLINE void app_sign() {
             case 0x03: // P2WSH sequential
                 // Sequential multisig
                 // Need to compute sighashes of all previous signers
-                err = validate_post_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
+                err = compute_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
                 break;
             case 0x05: // PWSH non-sequential
             case 0x07: // P2WSH non-sequential
@@ -124,9 +124,6 @@ __Z_INLINE void app_sign() {
                 zemu_log_stack("Invalid HashMode\n");
                 err = zxerr_unknown;
                 break;
-        }
-        if(err == zxerr_ok) {
-            err = append_fee_nonce_auth_hash(presig_hash, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE);
         }
     }
 
@@ -274,12 +271,11 @@ __Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8
 }
 
 // Validate sighash of all previous signers
-__Z_INLINE zxerr_t validate_post_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
+__Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
     if (hash_len != CX_SHA256_SIZE) {
         return zxerr_no_data;
     }
 
-    uint8_t first_signer = 1;
     // 1-byte pubkey type(compressed/uncompressed)
     // 65-byte previous signer signature(vrs)
     uint8_t previous_signer_data[1 + PREVIOUS_SIGNER_SIG_LEN];
@@ -314,27 +310,20 @@ __Z_INLINE zxerr_t validate_post_sig_hash_chain(uint8_t *hash, uint16_t hash_len
                 zemu_log_stack("Invalid TransactionAuthFieldID\n");
         };
 
-        // Copy signature
+        // Copy previous signer's signature
         memcpy(&previous_signer_data[1], data, PREVIOUS_SIGNER_SIG_LEN);
 
-        // Compute pre_sig_hash from sighash
-        // For first signer, this has already been done by `get_presig_hash()`
-        if (!first_signer) {
-            err = append_fee_nonce_auth_hash(hash, CX_SHA256_SIZE, hash, CX_SHA256_SIZE);
-            if (err != zxerr_ok) {
-                zemu_log_stack("Failed to compute pre_sig_hash\n");
-                return zxerr_no_data;
-            }
-        }
-        first_signer = 0;
-
-        // This is where previous signers would sign (between pre- and post-sighash)
-        // We already have the signature, so do nothing here
-
-        // Compute and update post_sig_hash
+        // Compute post_sig_hash from pre_sig_hash and previous signature
         err = compute_post_sig_hash(hash, CX_SHA256_SIZE, previous_signer_data, sizeof(previous_signer_data));
         if (err != zxerr_ok) {
-            zemu_log_stack("Invalid post_sig_hash chain\n");
+            zemu_log_stack("Failed to compute post_sig_hash\n");
+            return zxerr_no_data;
+        }
+
+        // Compute pre_sig_hash for next signer from post_sig_hash, fee, and nonce
+        err = append_fee_nonce_auth_hash(hash, CX_SHA256_SIZE, hash, CX_SHA256_SIZE);
+        if (err != zxerr_ok) {
+            zemu_log_stack("Failed to compute pre_sig_hash\n");
             return zxerr_no_data;
         }
     }
@@ -359,7 +348,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     switch (tx_typ) {
-        case Transaction: {
+    case Transaction: {
         // Before hashing the transaction the auth field should be cleared
         // and the sponsor set to signing sentinel.
         uint16_t auth_len = 0;
@@ -378,8 +367,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_update(&ctx, last_block, last_block_len);
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-
-                          }
+    }
     case Message:
     case Jwt: {
         // we have byteString or JWT messages. The hash is the same for both types
