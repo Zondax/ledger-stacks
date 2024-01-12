@@ -1,7 +1,9 @@
 use core::fmt::Write;
 use nom::{
-    bytes::complete::take,
-    number::complete::{be_u32, be_u64, le_u8},
+    branch::alt,
+    bytes::complete::{tag, take},
+    combinator::{flat_map, map},
+    number::complete::{be_u32, be_u64, be_u8, le_u8},
     sequence::tuple,
 };
 
@@ -19,6 +21,9 @@ use crate::parser::c32;
 use super::value::{Value, ValueId};
 use crate::{check_canary, is_expert_mode, zxformat};
 
+// The number of contract call arguments we can handle.
+// this can be adjusted, but keep in mind that higher values could
+// hit stack overflows issues.
 pub const MAX_NUM_ARGS: u32 = 10;
 
 // The items in contract_call transactions are
@@ -477,6 +482,69 @@ impl<'a> TransactionContractCall<'a> {
     }
 }
 
+/// A transaction that deploys a versioned smart contract
+#[repr(C)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct VersionedSmartContract<'a>(&'a [u8]);
+
+impl<'a> VersionedSmartContract<'a> {
+    #[inline(never)]
+    fn from_bytes(input: &'a [u8]) -> Result<(&[u8], Self), ParserError> {
+        check_canary!();
+
+        // clarity version
+        // len prefixed contract name
+        // len prefixed contract code
+        let parse_tag = alt((tag(&[0x01]), tag(&[0x02])));
+        let parse_length_1_byte = map(be_u8, |length| std::cmp::min(length, 128u8) as usize);
+        let parse_length_4_bytes = flat_map(be_u32, take);
+
+        let parser = tuple((
+            parse_tag,
+            flat_map(parse_length_1_byte, take),
+            parse_length_4_bytes,
+        ));
+        let (_, (_, name, code)) = parser(input)?;
+
+        // 1-byte tag, 1-byte name_len, name, 4-byte code_len, code
+        let total_length = 1 + 1 + name.len() + 4 + code.len();
+        let (rem, res) = take(total_length)(input)?;
+
+        Ok((rem, Self(res)))
+    }
+
+    pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
+        // skip the tag. safe ecause this was checked during parsing
+        ContractName::from_bytes(&self.0[1..])
+            .map(|(_, res)| res)
+            .map_err(|e| e.into())
+    }
+
+    #[inline(never)]
+    fn get_contract_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let mut writer_key = zxformat::Writer::new(out_key);
+
+        match display_idx {
+            0 => {
+                writer_key
+                    .write_str("Contract Name")
+                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                check_canary!();
+                let name = self.contract_name()?;
+                zxformat::pageString(out_value, name.name(), page_idx)
+            }
+            _ => Err(ParserError::parser_value_out_of_range),
+        }
+    }
+}
+
 /// A transaction that instantiates a smart contract
 #[repr(C)]
 #[derive(Clone, PartialEq)]
@@ -485,11 +553,22 @@ pub struct TransactionSmartContract<'a>(&'a [u8]);
 
 impl<'a> TransactionSmartContract<'a> {
     #[inline(never)]
-    fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), ParserError> {
         check_canary!();
-        // we take "ownership" of bytes here because
-        // it should only contain the contract information and body
-        Ok((Default::default(), Self(bytes)))
+
+        // len prefixed contract name
+        // len prefixed contract code
+        let parse_length_1_byte = map(be_u8, |length| std::cmp::min(length, 128u8) as usize);
+        let parse_length_4_bytes = flat_map(be_u32, take);
+
+        let parser = tuple((flat_map(parse_length_1_byte, take), parse_length_4_bytes));
+        let (_, (name, code)) = parser(bytes)?;
+
+        // 1-byte name_len, name, 4-byte code_len, code
+        let total_length = 1 + name.len() + 4 + code.len();
+        let (rem, res) = take(total_length)(bytes)?;
+
+        Ok((rem, Self(res)))
     }
 
     pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
@@ -529,6 +608,7 @@ pub enum TransactionPayloadId {
     TokenTransfer = 0,
     SmartContract = 1,
     ContractCall = 2,
+    VersionedSmartContract = 6,
 }
 
 impl TransactionPayloadId {
@@ -537,6 +617,7 @@ impl TransactionPayloadId {
             0 => Ok(Self::TokenTransfer),
             1 => Ok(Self::SmartContract),
             2 => Ok(Self::ContractCall),
+            6 => Ok(Self::VersionedSmartContract),
             _ => Err(ParserError::parser_invalid_transaction_payload),
         }
     }
@@ -549,6 +630,7 @@ pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),
     ContractCall(TransactionContractCall<'a>),
+    VersionedSmartContract(VersionedSmartContract<'a>),
 }
 
 impl<'a> TransactionPayload<'a> {
@@ -568,6 +650,10 @@ impl<'a> TransactionPayload<'a> {
                 let call = TransactionContractCall::from_bytes(id.0)?;
                 (call.0, Self::ContractCall(call.1))
             }
+            TransactionPayloadId::VersionedSmartContract => {
+                let call = VersionedSmartContract::from_bytes(id.0)?;
+                (call.0, Self::VersionedSmartContract(call.1))
+            }
         };
         Ok(res)
     }
@@ -583,10 +669,15 @@ impl<'a> TransactionPayload<'a> {
         matches!(self, &Self::ContractCall(_))
     }
 
+    pub fn is_contract_deploy_payload(&self) -> bool {
+        matches!(self, &Self::VersionedSmartContract(_))
+    }
+
     pub fn contract_name(&'a self) -> Option<ContractName<'a>> {
         match self {
             Self::SmartContract(contract) => contract.contract_name().ok(),
             Self::ContractCall(contract) => contract.contract_name().ok(),
+            Self::VersionedSmartContract(contract) => contract.contract_name().ok(),
             _ => None,
         }
     }
@@ -635,7 +726,7 @@ impl<'a> TransactionPayload<'a> {
     pub fn num_items(&self) -> u8 {
         match self {
             Self::TokenTransfer(_) => 3,
-            Self::SmartContract(_) => 1,
+            Self::SmartContract(_) | Self::VersionedSmartContract(_) => 1,
             Self::ContractCall(ref call) => call.num_items().unwrap_or(CONTRACT_CALL_BASE_ITEMS),
         }
     }
@@ -658,6 +749,9 @@ impl<'a> TransactionPayload<'a> {
             }
             Self::ContractCall(ref call) => {
                 call.get_contract_call_items(idx, out_key, out_value, page_idx)
+            }
+            Self::VersionedSmartContract(ref deploy) => {
+                deploy.get_contract_items(idx, out_key, out_value, page_idx)
             }
         }
     }
