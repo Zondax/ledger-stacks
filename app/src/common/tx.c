@@ -159,8 +159,38 @@ int8_t tx_is_multisig() {
     return parser_is_transaction_multisig();
 }
 
+zxerr_t tx_hash_mode(uint8_t *hash_mode) {
+    parser_error_t err = parser_hash_mode(hash_mode);
+
+    // Convert error codes
+    if (err == parser_no_data)
+        return zxerr_no_data;
+
+    if (err != parser_ok)
+        return zxerr_unknown;
+
+    return zxerr_ok;
+}
+
 uint16_t tx_previous_signer_data(uint8_t **data) {
     return parser_previous_signer_data(data);
+}
+
+uint32_t tx_num_multisig_fields() {
+    return parser_num_multisig_fields();
+}
+
+zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data) {
+    parser_error_t err = parser_get_multisig_field(index, id, data);
+
+    // Convert error codes
+    if (err == parser_no_data)
+        return zxerr_no_data;
+
+    if (err != parser_ok)
+        return zxerr_unknown;
+
+    return zxerr_ok;
 }
 
 transaction_type_t tx_get_transaction_type(){

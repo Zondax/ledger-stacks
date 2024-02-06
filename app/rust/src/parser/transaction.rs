@@ -11,7 +11,8 @@ use arrayvec::ArrayVec;
 use crate::parser::{
     error::ParserError,
     parser_common::{
-        SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, NUM_SUPPORTED_POST_CONDITIONS,
+        HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH,
+        NUM_SUPPORTED_POST_CONDITIONS,
     },
     post_condition::TransactionPostCondition,
     transaction_auth::TransactionAuth,
@@ -243,7 +244,7 @@ pub struct Transaction<'a> {
     pub post_conditions: PostConditions<'a>,
     pub payload: TransactionPayload<'a>,
     signer: SignerId,
-    // If this is a multisig transaction this field should content
+    // If this is a multisig transaction this field should contain
     // the previous signer's post_sig_hash, pubkey type(compressed/uncom..), and the signature(vrs)
     // with them, we can construct the pre_sig_hash for the current signer
     // we would ideally verify it, but we can lend such responsability to the application
@@ -356,7 +357,7 @@ impl<'a> Transaction<'a> {
                 }
                 Ok(Self::from(tx))
             }
-            Err(_e) => Err(ParserError::parser_unexpected_error),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -552,5 +553,10 @@ impl<'a> Transaction<'a> {
 
     pub fn is_multisig(&self) -> bool {
         self.transaction_auth.is_multisig()
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
+        self.transaction_auth.hash_mode()
     }
 }

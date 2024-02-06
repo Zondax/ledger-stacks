@@ -126,6 +126,18 @@ int8_t parser_is_transaction_multisig() {
     return _is_multisig(&parser_state);
 }
 
+uint32_t parser_num_multisig_fields() {
+    return _num_multisig_fields(&parser_state);
+}
+
+parser_error_t parser_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data) {
+    return _get_multisig_field(&parser_state, index, id, data);
+}
+
+parser_error_t parser_hash_mode(uint8_t *hash_mode) {
+    return _hash_mode(&parser_state, hash_mode);
+}
+
 uint16_t parser_previous_signer_data(uint8_t **data) {
     return _previous_signer_data(&parser_state, data);
 }
