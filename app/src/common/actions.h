@@ -296,14 +296,14 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
         switch (id) {
             case 0x00:
             case 0x01:
-                // If pubkey don't need to do anything
+                // Pubkey, don't need to do anything
                 continue;
             case 0x02:
-                // Pubkey compressed
+                // Signature with recoverable compressed pubkey
                 previous_signer_data[0] = 0x00;
                 break;
             case 0x03:
-                // Pubkey uncompressed
+                // Signature with recoverable uncompressed pubkey
                 previous_signer_data[0] = 0x01;
                 break;
             default:
