@@ -320,7 +320,7 @@ describe('Standard', function () {
       const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
       const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
 
-      const unsignedTx = await makeUnsignedSTXTokenTransfer({
+      const tx = await makeUnsignedSTXTokenTransfer({
         anchorMode: AnchorMode.Any,
         recipient,
         network,
@@ -332,27 +332,23 @@ describe('Standard', function () {
         publicKeys: pubKeyStrings,
       })
       const sigHashPreSign = makeSigHashPreSign(
-        unsignedTx.signBegin(),
+        tx.signBegin(),
         // @ts-ignore
-        unsignedTx.auth.authType,
-        unsignedTx.auth.spendingCondition?.fee,
-        unsignedTx.auth.spendingCondition?.nonce,
+        tx.auth.authType,
+        tx.auth.spendingCondition?.fee,
+        tx.auth.spendingCondition?.nonce,
       ).toString()
 
       // Signer0 sign the transaction and append its post_sig_hash to the transaction buffer
-      const signer0 = new TransactionSigner(unsignedTx)
+      const signer0 = new TransactionSigner(tx)
 
       signer0.signOrigin(priv_key_signer0)
       signer0.appendOrigin(devicePublicKey)
 
-      // get signer0 post_sig_hash
-      const postsig_hash_blob = Buffer.from(signer0.sigHash, 'hex')
-
-      const serializeTx = unsignedTx.serialize().toString('hex')
+      const serializeTx = tx.serialize().toString('hex')
 
       // @ts-ignore
-      const signature_signer0_hex = signer0.transaction.auth.spendingCondition.fields[0].contents.data
-      const signer0_signature = Buffer.from(signature_signer0_hex, 'hex')
+      const signature_signer0_hex = tx.auth.spendingCondition.fields[0].contents.data
 
       const blob = Buffer.from(serializeTx, 'hex')
 
@@ -372,9 +368,8 @@ describe('Standard', function () {
       console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
       console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
 
-      const signedTx = signer0.transaction
       // @ts-ignore
-      signedTx.auth.spendingCondition.fields.push(createTransactionAuthField(signature.signatureVRS.toString('hex')))
+      tx.auth.spendingCondition.fields.push(createTransactionAuthField(signature.signatureVRS.toString('hex')))
 
       // Verifies the first signer signature using the preSigHash and signer0 data
       const ec = new EC('secp256k1')
@@ -389,12 +384,12 @@ describe('Standard', function () {
       // Verifies that the second signer's signature is ok
 
       // Construct the presig_hash from the prior_postsig_hash, authflag, fee and nonce
-      const feeBytes = new BN(unsignedTx.auth.getFee()).toBuffer('le', 8)
+      const feeBytes = new BN(tx.auth.getFee()).toBuffer('le', 8)
       // @ts-ignore
-      const nonceBytes = new BN(unsignedTx.auth.spendingCondition.nonce).toBuffer('le', 8)
+      const nonceBytes = new BN(tx.auth.spendingCondition.nonce).toBuffer('le', 8)
 
       // @ts-ignore
-      const presig_hash = [Buffer.from(signer0.sigHash, 'hex'), Buffer.alloc(1, unsignedTx.auth.authType), feeBytes, nonceBytes]
+      const presig_hash = [Buffer.from(signer0.sigHash, 'hex'), Buffer.alloc(1, tx.auth.authType), feeBytes, nonceBytes]
 
       const signer2_hash = Buffer.concat(presig_hash)
       const hash = sha512_256(signer2_hash)
