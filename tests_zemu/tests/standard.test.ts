@@ -22,6 +22,7 @@ import { encode } from 'varuint-bitcoin'
 import {
   AddressVersion,
   PubKeyEncoding,
+  StacksMessageType,
   TransactionSigner,
   createStacksPrivateKey,
   createTransactionAuthField,
@@ -369,7 +370,15 @@ describe('Standard', function () {
       console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
 
       // @ts-ignore
-      tx.auth.spendingCondition.fields.push(createTransactionAuthField(signature.signatureVRS.toString('hex')))
+      // Add Ledger signature to transaction
+      tx.auth.spendingCondition.fields[1] = createTransactionAuthField(PubKeyEncoding.Compressed, {
+        data: signature.signatureVRS.toString('hex'),
+        type: StacksMessageType.MessageSignature
+      })
+
+      // For full tx validation, use `stacks-inspect decode-tx <hex-encoded-tx>`
+      const txBytes = tx.serialize().toString('hex')
+      console.log('tx-bytes', txBytes)
 
       // Verifies the first signer signature using the preSigHash and signer0 data
       const ec = new EC('secp256k1')
@@ -398,6 +407,120 @@ describe('Standard', function () {
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
       // @ts-ignore
       const signature1Ok = ec.verify(hash, signature1_obj, devicePublicKeyString, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.concurrent.each(models)(`order-independent multisig`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = new StacksTestnet()
+    const path = "m/44'/5757'/0'/0/0"
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      // Get pubkey and check
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      console.log(pkResponse)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = publicKeyFromBuffer(pkResponse.publicKey);
+      const devicePublicKeyString = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST2XADQKC3EPZ62QTG5Q2RSPV64JG6KXCND0PHT7F')
+      const amount = new BN(2500000)
+      const fee = new BN(0)
+      const nonce = new BN(0)
+      const memo = 'multisig tx'
+
+      const priv_key_signer0 = createStacksPrivateKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
+      const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
+      const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
+
+      const tx = await makeUnsignedSTXTokenTransfer({
+        anchorMode: AnchorMode.Any,
+        recipient,
+        network,
+        nonce,
+        fee,
+        amount,
+        memo,
+        numSignatures: 2,
+        publicKeys: pubKeyStrings,
+      })
+
+      // @ts-ignore
+      // Use order-independent multisig P2SH
+      // TODO: Replace with constant once support is added in Stacks.js
+      tx.auth.spendingCondition.hashMode = 5;
+
+      const sigHashPreSign = makeSigHashPreSign(
+        tx.signBegin(),
+        // @ts-ignore
+        tx.auth.authType,
+        tx.auth.spendingCondition?.fee,
+        tx.auth.spendingCondition?.nonce,
+      ).toString()
+
+      // Signer0 sign the transaction and append its post_sig_hash to the transaction buffer
+      const signer0 = new TransactionSigner(tx)
+
+      signer0.signOrigin(priv_key_signer0)
+      signer0.appendOrigin(devicePublicKey)
+
+      const serializeTx = tx.serialize().toString('hex')
+
+      // @ts-ignore
+      const signature_signer0_hex = tx.auth.spendingCondition.fields[0].contents.data
+
+      const blob = Buffer.from(serializeTx, 'hex')
+
+      // Signs the transaction that includes the previous signer post_sig_hash
+      const signatureRequest = app.sign(path, blob)
+
+      // Wait until we are not in the main men
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-multisigTest`)
+
+      const signature = await signatureRequest
+      console.log(signature)
+
+      const signatureVRS = signature.signatureVRS.toString('hex')
+      console.log('ledger-postSignHash: ', signature.postSignHash.toString('hex'))
+      console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
+      console.log('ledger-vrs', signatureVRS)
+      console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
+
+      // @ts-ignore
+      // Add Ledger signature to transaction
+      tx.auth.spendingCondition.fields[1] = createTransactionAuthField(PubKeyEncoding.Compressed, {
+        type: StacksMessageType.MessageSignature,
+        data: signatureVRS,
+      })
+
+      // For full tx validation, use `stacks-inspect decode-tx <hex-encoded-tx>`
+      const txBytes = tx.serialize().toString('hex')
+      console.log('tx-bytes', txBytes)
+
+      // Verifies the first signer signature using the preSigHash and signer0 data
+      const ec = new EC('secp256k1')
+      const signer0_signature_obj = {
+        r: signature_signer0_hex.substr(2, 64),
+        s: signature_signer0_hex.substr(66, 64),
+      }
+      // @ts-ignore
+      const signatureOk = ec.verify(sigHashPreSign, signer0_signature_obj, pub_key_signer0, 'hex')
+      expect(signatureOk).toEqual(true)
+
+      // Verifies that the second signer's signature is ok
+      const signature1_obj = { r: signatureVRS.substr(2, 64), s: signatureVRS.substr(66, 64) }
+
+      // @ts-ignore
+      const signature1Ok = ec.verify(sigHashPreSign, signature1_obj, devicePublicKeyString, 'hex')
       expect(signature1Ok).toEqual(true)
     } finally {
       await sim.close()
