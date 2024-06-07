@@ -484,7 +484,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-multisigTest`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-order_independent_multisigTest`)
 
       const signature = await signatureRequest
       console.log(signature)
