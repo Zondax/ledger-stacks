@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 #![allow(clippy::cast_ptr_alignment)]
 
-use crate::parser::{error::ParserError, ParsedObj, Tag};
+use crate::parser::{error::ParserError, spending_condition::TransactionAuthField, ParsedObj, Tag};
 
 // extern c function for formatting to fixed point number
 extern "C" {
@@ -237,6 +237,61 @@ pub unsafe extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> u8 {
         tx.is_multisig() as _
     } else {
         false as _
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _hash_mode(tx_t: *const parse_tx_t, hash_mode: *mut u8) -> u32 {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
+        match tx.hash_mode() {
+            Ok(hm) => {
+                *hash_mode = hm as u8;
+                ParserError::parser_ok as _
+            }
+            Err(e) => e as _,
+        }
+    } else {
+        ParserError::parser_context_mismatch as _
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _num_multisig_fields(tx_t: *const parse_tx_t) -> u32 {
+    parsed_obj_from_state(tx_t as _)
+        .and_then(|obj| obj.transaction())
+        .and_then(|tx| tx.transaction_auth.num_auth_fields())
+        .unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _get_multisig_field(
+    tx_t: *const parse_tx_t,
+    index: u32,
+    id: *mut u8,
+    data: *mut *const u8,
+) -> ParserError {
+    let auth_field = parsed_obj_from_state(tx_t as _)
+        .and_then(|obj| obj.transaction())
+        .and_then(|tx| tx.transaction_auth.get_auth_field(index))
+        .unwrap_or(Err(ParserError::parser_context_mismatch));
+
+    match auth_field {
+        Ok(af) => match af {
+            TransactionAuthField::PublicKey(i, pubkey) => {
+                *id = i as u8;
+                *data = pubkey.as_ptr();
+                ParserError::parser_ok as _
+            }
+            TransactionAuthField::Signature(i, sig) => {
+                *id = i as u8;
+                *data = sig.as_ptr();
+                ParserError::parser_ok as _
+            }
+        },
+        Err(e) => {
+            *data = core::ptr::null_mut();
+            e
+        }
     }
 }
 
