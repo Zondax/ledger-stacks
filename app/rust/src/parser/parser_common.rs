@@ -19,6 +19,7 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 // handle
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
+pub const PUBKEY_LEN: usize = 33;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
 
 // A recursion limit use to control ram usage when parsing
@@ -144,6 +145,8 @@ pub enum HashMode {
     P2SH = 0x01,
     P2WPKH = 0x02,
     P2WSH = 0x03,
+    P2SHNS = 0x05,  // Non-sequential multisig
+    P2WSHNS = 0x07, // Non-sequential multisig
 }
 
 impl TryFrom<u8> for HashMode {
@@ -155,6 +158,8 @@ impl TryFrom<u8> for HashMode {
             x if x == HashMode::P2WPKH as u8 => HashMode::P2WPKH,
             x if x == HashMode::P2SH as u8 => HashMode::P2SH,
             x if x == HashMode::P2WSH as u8 => HashMode::P2WSH,
+            x if x == HashMode::P2SHNS as u8 => HashMode::P2SHNS,
+            x if x == HashMode::P2WSHNS as u8 => HashMode::P2WSHNS,
             _ => return Err(ParserError::parser_invalid_hash_mode),
         };
         Ok(mode)
