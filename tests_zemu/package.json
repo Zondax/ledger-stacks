@@ -24,7 +24,7 @@
     "@zondax/zemu": "=0.49.0"
   },
   "devDependencies": {
-    "@ledgerhq/hw-transport-node-hid": "^6.27.2",
+    "@ledgerhq/hw-transport-node-hid": "^6.29.0",
     "@matteoh2o1999/github-actions-jest-reporter": "^2.0.0",
     "@stacks/network": "^2.0.1",
     "@stacks/transactions": "^2.0.1",
