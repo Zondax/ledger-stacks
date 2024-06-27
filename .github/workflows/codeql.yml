@@ -31,6 +31,6 @@ jobs:
           queries: security-and-quality
 
       - name: Build
-        run: make -j BOLOS_SDK=${{ matrix.sdk }}
+        run: PRODUCTION_BUILD=1 make -j BOLOS_SDK=${{ matrix.sdk }}
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2
