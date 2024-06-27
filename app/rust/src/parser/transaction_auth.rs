@@ -39,7 +39,7 @@ impl<'a> TransactionAuth<'a> {
         let auth = match auth_type.1 {
             0x04 => Self::standard_from_bytes(auth_type.0)?,
             0x05 => Self::sponsored_from_bytes(auth_type.0)?,
-            _ => return Err(nom::Err::Error(ParserError::parser_invalid_auth_type)),
+            _ => return Err(nom::Err::Error(ParserError::InvalidAuthType)),
         };
         Ok(auth)
     }
@@ -178,7 +178,7 @@ impl<'a> TransactionAuth<'a> {
 
     pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ParserError> {
         if buf.len() < SPONSOR_SENTINEL_LEN {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
         buf.iter_mut()
             .take(SPONSOR_SENTINEL_LEN)

@@ -36,7 +36,7 @@ pub struct ParsedObj<'a> {
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
         // we expect a transaction
         let tag;
@@ -57,7 +57,7 @@ impl<'a> ParsedObj<'a> {
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
 
         // we expect a transaction
@@ -87,7 +87,7 @@ impl<'a> ParsedObj<'a> {
                 Tag::Message => Ok(self.obj.message().num_items()),
                 Tag::StructuredMsg => Ok(self.obj.structured_msg().num_items()),
                 Tag::Jwt => Ok(self.obj.jwt().num_items()),
-                _ => Err(ParserError::parser_unexpected_error),
+                _ => Err(ParserError::UnexpectedError),
             }
         }
     }
@@ -116,7 +116,7 @@ impl<'a> ParsedObj<'a> {
                         .get_item(display_idx, key, value, page_idx)
                 }
                 Tag::Jwt => self.obj.jwt().get_item(display_idx, key, value, page_idx),
-                _ => Err(ParserError::parser_unexpected_error),
+                _ => Err(ParserError::UnexpectedError),
             }
         }
     }
@@ -222,7 +222,7 @@ impl<'a> Obj<'a> {
             Tag::Jwt => Ok(Self {
                 jwt: ManuallyDrop::new(Jwt::from_bytes(data)?),
             }),
-            _ => Err(ParserError::parser_unexpected_type),
+            _ => Err(ParserError::UnexpectedType),
         }
     }
     pub unsafe fn read_tx(&mut self, data: &'a [u8]) -> Result<(), ParserError> {

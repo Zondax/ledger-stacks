@@ -13,12 +13,12 @@ fn decode_data(input: &[u8], output: &mut [u8]) -> Result<usize, ParserError> {
     let estimate_len = estimate_len * 3;
 
     if output.len() < estimate_len {
-        return Err(ParserError::parser_unexpected_buffer_end);
+        return Err(ParserError::UnexpectedBufferEnd);
     }
 
     // TODO: Add new error for this decoding error
     base64::decode_config_slice(input, base64::URL_SAFE, output)
-        .map_err(|_| ParserError::parser_unexpected_type)
+        .map_err(|_| ParserError::UnexpectedType)
 }
 
 #[repr(C)]
@@ -51,7 +51,7 @@ impl<'a> Header<'a> {
 impl<'a> JwtHeader<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if !data.is_ascii() {
-            return Err(ParserError::parser_unexpected_type);
+            return Err(ParserError::UnexpectedType);
         }
 
         let mut header_bytes = [0u8; MAX_BASE64_HEADER_LEN];
@@ -59,10 +59,10 @@ impl<'a> JwtHeader<'a> {
         let len = decode_data(data, header_bytes.as_mut())?;
         let header: Header = serde_json_core::from_slice(&header_bytes[..len])
             .map(|(h, _)| h)
-            .map_err(|_| ParserError::parser_invalid_jwt)?;
+            .map_err(|_| ParserError::InvalidJwt)?;
 
         if !header.is_valid() {
-            return Err(ParserError::parser_invalid_jwt);
+            return Err(ParserError::InvalidJwt);
         }
         Ok(Self(data))
     }
@@ -83,18 +83,18 @@ impl<'a> Jwt<'a> {
     fn parse_header_payload(data: &'a [u8]) -> Result<(JwtHeader<'a>, &'a [u8]), ParserError> {
         // Only ascii values are valid for json web token
         if !data.is_ascii() {
-            return Err(ParserError::parser_invalid_jwt);
+            return Err(ParserError::InvalidJwt);
         }
 
         let mut jwt_parts = data.split(|byte| *byte == b'.');
-        let header_data = jwt_parts.next().ok_or(ParserError::parser_invalid_jwt)?;
+        let header_data = jwt_parts.next().ok_or(ParserError::InvalidJwt)?;
 
         let header = JwtHeader::from_bytes(header_data)?;
 
-        let payload = jwt_parts.next().ok_or(ParserError::parser_invalid_jwt)?;
+        let payload = jwt_parts.next().ok_or(ParserError::InvalidJwt)?;
 
         if jwt_parts.next().is_some() {
-            return Err(ParserError::parser_invalid_jwt);
+            return Err(ParserError::InvalidJwt);
         }
 
         Ok((header, payload))
@@ -122,21 +122,21 @@ impl<'a> Jwt<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         if display_idx > 0 {
-            return Err(ParserError::parser_display_idx_out_of_range);
+            return Err(ParserError::DisplayIdxOutOfRange);
         }
 
         let mut writer_key = Writer::new(out_key);
 
         writer_key
             .write_str("JWT hash:")
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
         let mut out_data = [0u8; SHA256_LEN];
         self.get_hash(&mut out_data);
         // hex encode the hash
         let mut hash_str = [0u8; SHA256_LEN * 2];
         encode_to_slice(out_data.as_ref(), hash_str.as_mut())
-            .map_err(|_| ParserError::parser_unexpected_error)?;
+            .map_err(|_| ParserError::UnexpectedError)?;
         pageString(out_value, hash_str.as_ref(), page_idx)
     }
 }

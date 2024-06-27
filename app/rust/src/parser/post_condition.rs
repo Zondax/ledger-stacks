@@ -30,7 +30,7 @@ impl TryFrom<u8> for PostConditionPrincipalId {
             1 => Self::Origin,
             2 => Self::Standard,
             3 => Self::Contract,
-            _ => return Err(ParserError::parser_unexpected_value),
+            _ => return Err(ParserError::UnexpectedValue),
         };
         Ok(id)
     }
@@ -202,7 +202,7 @@ impl TryFrom<u8> for PostConditionType {
             0 => Self::STX,
             1 => Self::FungibleToken,
             2 => Self::NonFungibleToken,
-            _ => return Err(ParserError::parser_invalid_post_condition),
+            _ => return Err(ParserError::InvalidPostCondition),
         };
 
         Ok(t)
@@ -303,7 +303,7 @@ impl<'a> TransactionPostCondition<'a> {
         match self {
             Self::STX(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
                 let (_, principal) = PostConditionPrincipal::from_bytes(&principal)
-                    .map_err(|_| ParserError::parser_invalid_post_condition)?;
+                    .map_err(|_| ParserError::InvalidPostCondition)?;
                 principal.get_principal_address()
             }
         }
@@ -325,9 +325,7 @@ impl<'a> TransactionPostCondition<'a> {
         match *self {
             Self::STX(inner) | Self::Fungible(inner) => {
                 let at = inner.len() - 8;
-                be_u64::<'a, ParserError>(&inner[at..])
-                    .map(|res| res.1)
-                    .ok()
+                be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
             _ => None,
         }
@@ -337,9 +335,7 @@ impl<'a> TransactionPostCondition<'a> {
         match self {
             Self::STX(inner) => {
                 let at = inner.len() - 8;
-                be_u64::<'a, ParserError>(&inner[at..])
-                    .map(|res| res.1)
-                    .ok()
+                be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
             _ => None,
         }
@@ -412,7 +408,7 @@ impl<'a> TransactionPostCondition<'a> {
         let mut writer_key = zxformat::Writer::new(out_key);
         writer_key
             .write_str("Principal")
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         let addr = self.get_principal_address()?;
         let rs = zxformat::pageString(out_value, addr.as_ref(), page_idx);
         crate::check_canary!();
@@ -454,23 +450,23 @@ impl<'a> TransactionPostCondition<'a> {
                 1 => {
                     writer_key
                         .write_str("Fungi. Code")
-                        .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                     let code = self
                         .fungible_condition_code()
-                        .ok_or(ParserError::parser_invalid_fungible_code)?;
+                        .ok_or(ParserError::InvalidFungibleCode)?;
                     zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
                 }
                 // Amount in stx
                 2 => {
                     writer_key
                         .write_str("STX amount")
-                        .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                        .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                     let amount = self.amount_stx_str().unwrap();
                     zxformat::pageString(out_value, amount.as_ref(), page_idx)
                 }
-                _ => Err(ParserError::parser_display_idx_out_of_range),
+                _ => Err(ParserError::DisplayIdxOutOfRange),
             },
-            _ => Err(ParserError::parser_unexpected_error),
+            _ => Err(ParserError::UnexpectedError),
         }
     }
 
@@ -489,10 +485,8 @@ impl<'a> TransactionPostCondition<'a> {
                     1 => {
                         writer_key
                             .write_str("Asset name")
-                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                        let name = self
-                            .asset_name()
-                            .ok_or(ParserError::parser_invalid_asset_name)?;
+                            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                        let name = self.asset_name().ok_or(ParserError::InvalidAssetName)?;
                         crate::check_canary!();
                         zxformat::pageString(out_value, name, page_idx)
                     }
@@ -500,10 +494,10 @@ impl<'a> TransactionPostCondition<'a> {
                     2 => {
                         writer_key
                             .write_str("Fungi. Code")
-                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                         let code = self
                             .fungible_condition_code()
-                            .ok_or(ParserError::parser_invalid_fungible_code)?;
+                            .ok_or(ParserError::InvalidFungibleCode)?;
                         crate::check_canary!();
                         zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
                     }
@@ -511,17 +505,17 @@ impl<'a> TransactionPostCondition<'a> {
                     3 => {
                         writer_key
                             .write_str("Token amount")
-                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                         let token = self
                             .tokens_amount_str()
-                            .ok_or(ParserError::parser_unexpected_value)?;
+                            .ok_or(ParserError::UnexpectedValue)?;
                         crate::check_canary!();
                         zxformat::pageString(out_value, &token[..token.len()], page_idx)
                     }
-                    _ => Err(ParserError::parser_display_idx_out_of_range),
+                    _ => Err(ParserError::DisplayIdxOutOfRange),
                 }
             }
-            _ => Err(ParserError::parser_unexpected_error),
+            _ => Err(ParserError::UnexpectedError),
         }
     }
 
@@ -540,26 +534,24 @@ impl<'a> TransactionPostCondition<'a> {
                     1 => {
                         writer_key
                             .write_str("Asset name")
-                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                        let name = self
-                            .asset_name()
-                            .ok_or(ParserError::parser_invalid_asset_name)?;
+                            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                        let name = self.asset_name().ok_or(ParserError::InvalidAssetName)?;
                         zxformat::pageString(out_value, name, page_idx)
                     }
                     // Fungible code
                     2 => {
                         writer_key
                             .write_str("NonFungi. Code")
-                            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                         let code = self
                             .non_fungible_condition_code()
-                            .ok_or(ParserError::parser_invalid_non_fungible_code)?;
+                            .ok_or(ParserError::InvalidNonFungibleCode)?;
                         zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
                     }
-                    _ => Err(ParserError::parser_display_idx_out_of_range),
+                    _ => Err(ParserError::DisplayIdxOutOfRange),
                 }
             }
-            _ => Err(ParserError::parser_unexpected_error),
+            _ => Err(ParserError::UnexpectedError),
         }
     }
 

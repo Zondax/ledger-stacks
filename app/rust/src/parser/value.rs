@@ -48,7 +48,7 @@ impl TryFrom<u8> for ValueId {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x00..=0x0e => unsafe { Ok(core::mem::transmute::<u8, ValueId>(value)) },
-            _ => Err(ParserError::parser_unexpected_type),
+            _ => Err(ParserError::UnexpectedType),
         }
     }
 }
@@ -112,7 +112,7 @@ impl<'a> Value<'a> {
 
     pub fn value_len<const MAX_DEPTH: u8>(bytes: &'a [u8]) -> Result<usize, nom::Err<ParserError>> {
         if bytes.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end.into());
+            return Err(ParserError::UnexpectedBufferEnd.into());
         }
 
         let mut depth = 0;
@@ -132,7 +132,7 @@ impl<'a> Value<'a> {
 
         // get value_id
         let (rem, id) =
-            ValueId::from_bytes(bytes).map_err(|_| ParserError::parser_unexpected_value)?;
+            ValueId::from_bytes(bytes).map_err(|_| ParserError::UnexpectedValue)?;
 
         let len = match id {
             ValueId::Int | ValueId::UInt => BIG_INT_SIZE,
@@ -152,17 +152,17 @@ impl<'a> Value<'a> {
             ValueId::StringAscii | ValueId::StringUtf8 => {
                 let (rem, len) = be_u32(rem)?;
                 if rem.len() < len as usize {
-                    return Err(ParserError::parser_unexpected_buffer_end.into());
+                    return Err(ParserError::UnexpectedBufferEnd.into());
                 }
                 if id == ValueId::StringAscii && !(rem[..len as usize]).is_ascii() {
-                    return Err(ParserError::parser_unexpected_type.into());
+                    return Err(ParserError::UnexpectedType.into());
                 }
                 len as usize + 4
             }
             // parse the other types that require recursion
             ValueId::ResponseErr | ValueId::ResponseOk | ValueId::OptionalSome => {
                 if rem.is_empty() {
-                    return Err(nom::Err::Error(ParserError::parser_unexpected_buffer_end));
+                    return Err(nom::Err::Error(ParserError::UnexpectedBufferEnd));
                 }
 
                 // Increase recursion counter
@@ -250,7 +250,7 @@ impl<'a> Value<'a> {
         // Check iteration counter
         if depth > MAX_DEPTH {
             c_zemu_log_stack("Error recursion limit reached!");
-            return Err(ParserError::parser_recursion_limit.into());
+            return Err(ParserError::RecursionLimit.into());
         }
         Ok(())
     }

@@ -15,13 +15,13 @@ crate-type = ["staticlib"]
 no-std-compat = { version = "0.4.1" }
 numtoa = "0.2.4"
 arrayref = "0.3.6"
-base64 = {version = "0.13.0", default-features = false }
+base64 = { version = "0.13.0", default-features = false }
 hex = { version = "0.4", default-features = false }
 serde-json-core = { version = "0.4.0", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 
 [dependencies.nom]
-version = "5.1.2"
+version = "7.1.2"
 default-features = false
 
 [dependencies.arrayvec]
@@ -34,18 +34,18 @@ serde_json = "1.0.56"
 hex = { version = "0.4" }
 serde-json-core = { version = "0.4.0", features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-sha2 = {version = "0.9.1"}
-base64 = {version = "0.13.0"}
+sha2 = { version = "0.9.1" }
+base64 = { version = "0.13.0" }
 
 
 [target.'cfg(fuzzing)'.dependencies]
-sha2 = {version = "0.9.1"}
+sha2 = { version = "0.9.1" }
 no-std-compat = { version = "0.4.1", features = ["std"] }
 
 [profile.release]
-lto=false
+lto = false
 codegen-units = 1
-debug=false
+debug = false
 opt-level = "z"
 
 [profile.dev]
