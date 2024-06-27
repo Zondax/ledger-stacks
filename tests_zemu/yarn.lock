@@ -985,7 +985,7 @@
     "@ledgerhq/errors" "^6.12.3"
     events "^3.3.0"
 
-"@ledgerhq/hw-transport@^6.31.0":
+"@ledgerhq/hw-transport@^6.30.5", "@ledgerhq/hw-transport@^6.31.0":
   version "6.31.0"
   resolved "https://registry.yarnpkg.com/@ledgerhq/hw-transport/-/hw-transport-6.31.0.tgz#82d8154bbcec8dc0104009a646159190fba5ae76"
   integrity sha512-BY1poLk8vlJdIYngp8Zfaa/V9n14dqgt1G7iNetVRhJVFEKp9EYONeC3x6q/N7x81LUpzBk6M+T+s46Z4UiXHw==
@@ -1530,10 +1530,10 @@
   version "0.0.0"
   uid ""
 
-"@zondax/zemu@=0.48.0":
-  version "0.48.0"
-  resolved "https://registry.yarnpkg.com/@zondax/zemu/-/zemu-0.48.0.tgz#55c7d44489b76798404e4af24217cd7a3592bedc"
-  integrity sha512-OYEJ+ZGkXoGfkvpUQ0acczrKTytYNJAuorEoohyFo7zENr/1XwGYn4v/6ZhL017BIK0d+Q9FO8/b6tsxSyO6eQ==
+"@zondax/zemu@=0.49.0":
+  version "0.49.0"
+  resolved "https://registry.yarnpkg.com/@zondax/zemu/-/zemu-0.49.0.tgz#bfd353a7a2b324b0c9cff86ae59cc334e9df1172"
+  integrity sha512-pauRxerKDEAO/sHso2mAz5Di+v3edRMbOHJjiB/XTfly9Mmy1Ygiq1MeWUq3S52xb1twPdDySiq8ggaDLZESZw==
   dependencies:
     "@grpc/grpc-js" "^1.10.6"
     "@grpc/proto-loader" "^0.7.12"
