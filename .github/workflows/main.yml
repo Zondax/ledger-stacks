@@ -24,7 +24,7 @@ jobs:
       image: zondax/rust-ci:latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Cache/restore Cargo dependencies
@@ -43,7 +43,7 @@ jobs:
       image: zondax/rust-ci:latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Cache/restore Cargo dependencies
@@ -70,7 +70,7 @@ jobs:
       size: ${{steps.build.outputs.size}}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Build Standard app
@@ -92,7 +92,7 @@ jobs:
       size: ${{steps.build.outputs.size}}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Build Production app
@@ -120,7 +120,7 @@ jobs:
       tests: ${{ steps.get-tests.outputs.tests }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -158,7 +158,7 @@ jobs:
           echo $HOME
           echo $DISPLAY
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - run: sudo apt-get update -y && sudo apt-get install -y libusb-1.0.0 libudev-dev
@@ -199,7 +199,7 @@ jobs:
         BOLOS_SDK: /opt/nanos-secure-sdk
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install deps
@@ -235,7 +235,7 @@ jobs:
         BOLOS_SDK: /opt/nanosplus-secure-sdk
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install deps
