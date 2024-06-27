@@ -12,10 +12,10 @@ mod zxformat;
 
 fn debug(_msg: &str) {}
 
-#[cfg(not(any(test, fuzzing, clippy)))]
+#[cfg(not(any(test, fuzzing, feature = "clippy")))]
 use core::panic::PanicInfo;
 
-#[cfg(not(any(test, fuzzing, clippy)))]
+#[cfg(not(any(test, fuzzing, feature = "clippy")))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}

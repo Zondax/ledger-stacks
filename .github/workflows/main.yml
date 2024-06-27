@@ -56,7 +56,7 @@ jobs:
       - name: clippy
         run: |
           cd ./app/rust
-          cargo clippy --all-targets
+          cargo clippy --all-targets --features "clippy"
 
   build_ledger:
     needs: configure

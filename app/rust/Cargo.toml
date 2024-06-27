@@ -11,6 +11,9 @@ resolver = "2"
 name = "rslib"
 crate-type = ["staticlib"]
 
+[features]
+clippy = []
+
 [dependencies]
 no-std-compat = { version = "0.4.1" }
 numtoa = "0.2.4"
