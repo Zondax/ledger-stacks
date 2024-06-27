@@ -1,7 +1,7 @@
-#******************************************************************************
-#   Ledger App
-#   (c) 2018-2021 Zondax GmbH
-#   (c) 2017 Ledger
+#*******************************************************************************
+#  Ledger App
+#  (c) 2018 - 2024 Zondax AG
+#  (c) 2017 Ledger
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -20,62 +20,50 @@ ifeq ($(BOLOS_SDK),)
 $(error BOLOS_SDK is not set)
 endif
 
+DEBUG := 0
+
 MY_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
-
-all: bin/app.elf
-	@echo "#!/usr/bin/env bash" > $(OUTPUT_INSTALLER)
-	@echo "APPNAME=\"${APPNAME}\"" >> $(OUTPUT_INSTALLER)
-	@echo "APPVERSION=\"${APPVERSION}\"" >> $(OUTPUT_INSTALLER)
-	@echo "APPPATH=\""${APPPATH}"\"" >> $(OUTPUT_INSTALLER)
-	@echo "LOAD_PARAMS=($$(echo "${APP_LOAD_PARAMS_INSTALLER}" | sed -e "s|"${APPNAME}"|\""${APPNAME}"\"|" | sed "s/\\\'//g"))" >> $(OUTPUT_INSTALLER)
-	@echo "DELETE_PARAMS=($$(echo "${COMMON_DELETE_PARAMS}" | sed -e "s|"${APPNAME}"|\""${APPNAME}"\"|" ))" >> $(OUTPUT_INSTALLER)
-	@echo "APPHEX=\"" >> $(OUTPUT_INSTALLER)
-	@cat $(CURDIR)/bin/app.hex >> $(OUTPUT_INSTALLER)
-	@echo "\"" >> $(OUTPUT_INSTALLER)
-	@cat $(CURDIR)/../deps/ledger-zxlib/scripts/template.sh >> $(OUTPUT_INSTALLER)
-	@chmod +x $(OUTPUT_INSTALLER)
-	@cp $(CURDIR)/bin/* $(CURDIR)/output
-	@cp $(CURDIR)/output/app.elf ${OUTPUT_ELF}
-	@rm $(CURDIR)/output/app.elf
-
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.installer_script
 include $(BOLOS_SDK)/Makefile.defines
 
-$(info ************ TARGET_NAME  = [$(TARGET_NAME)])
-
-ifeq ($(APP_TESTING),1)
-DEFINES += APP_TESTING
-DEFINES += ZEMU_LOGGING
+## Display whether this is a production build or for internal use
+ifeq ($(PRODUCTION_BUILD), 1)
+    $(info ************ PRODUCTION_BUILD  = [PRODUCTION BUILD])
+else
+    $(info ************ PRODUCTION_BUILD  = [INTERNAL USE])
 endif
 
+DEFINES += PRODUCTION_BUILD=$(PRODUCTION_BUILD)
+
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.app_testing
+
 ifndef COIN
-COIN=STX
+COIN = STX
 endif
 
 include $(CURDIR)/Makefile.version
 
 $(info COIN  = [$(COIN)])
 
-ifeq ($(COIN),STX)
+ifeq ($(COIN), STX)
 # Main app configuration
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
-APPPATH = "44'/5757'" --path "5757'" --path "888'/0'"
-APPPATH_INSTALLER = "44'/5757'" --path 5757\' --path "888'/0'"
-
-else ifeq ($(COIN),STX_variant1)
+APPPATH = "44'/5757'" --path "888'/0'" --path "44'/1'"
+PATH_APP_LOAD_PARAMS = "44'/5757'" "888'/0'" "44'/1'"
 else
 define error_message
+
 COIN value not supported: [$(COIN)]
+
 endef
 $(error "$(error_message)")
 endif
 
 APP_LOAD_PARAMS = --curve secp256k1 $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
-APP_LOAD_PARAMS_INSTALLER = --curve secp256k1 $(COMMON_LOAD_PARAMS) --path ${APPPATH_INSTALLER} --path "44'/1'"
 
 include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.devices
-RUST_TARGET := thumbv6m-none-eabi
 
 $(info TARGET_NAME  = [$(TARGET_NAME)])
 $(info ICONNAME  = [$(ICONNAME)])
@@ -84,18 +72,68 @@ ifndef ICONNAME
 $(error ICONNAME is not set)
 endif
 
-include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.platform
+# Add SDK BLAKE2b
+DEFINES += HAVE_HASH HAVE_BLAKE2
+INCLUDES_PATH += $(BOLOS_SDK)/lib_cxng/src
 
-LDFLAGS  += -z muldefs
-LDLIBS   += -Lrust/target/thumbv6m-none-eabi/release -lrslib
+# Configure minimun stack size
+ifeq ($(TARGET_NAME),TARGET_NANOS)
+	APP_STACK_MIN_SIZE := 1752
+else
+	APP_STACK_MIN_SIZE := 2000
+endif
+
+# Enable app features depending on the target device
+ifeq ($(TARGET_NAME), TARGET_NANOS)
+RUST_TARGET := thumbv6m-none-eabi
+endif
+
+ifeq ($(TARGET_NAME), TARGET_NANOX)
+RUST_TARGET := thumbv6m-none-eabi
+endif
+
+ifeq ($(TARGET_NAME), TARGET_NANOS2)
+RUST_TARGET := thumbv6m-none-eabi
+endif
+
+ifeq ($(TARGET_NAME), TARGET_STAX)
+RUST_TARGET := thumbv6m-none-eabi
+DEFINES += ICONGLYPH=C_icon_stax_64
+DEFINES += ICONBITMAP=C_icon_stax_64
+DEFINES += ICONGLYPH_SMALL=C_icon_stax_32
+endif
+
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.platform
+INCLUDES_PATH += $(CURDIR)/src/common/
+
+CC := $(CLANGPATH)clang
+
+ifeq ($(DEBUG), 1)
+CFLAGS += -O3 -Os -Wno-unknown-pragmas -Wno-unused-parameter -g
+else
+CFLAGS += -O3 -Os -Wno-unknown-pragmas -Wno-unused-parameter
+endif
+
+CFLAGS += -DAPPVERSION_M=$(APPVERSION_M) -DAPPVERSION_N=$(APPVERSION_N) -DAPPVERSION_P=$(APPVERSION_P)
+
+AS := $(GCCPATH)arm-none-eabi-gcc
+AFLAGS +=
+
+LD := $(GCCPATH)arm-none-eabi-gcc
+LDFLAGS += -z muldefs
+LDLIBS += -lm -lgcc -lc
+LDLIBS += -L$(MY_DIR)rust/target/$(RUST_TARGET)/release -lrslib
+
 APP_SOURCE_PATH += $(MY_DIR)/rust/include
 APP_SOURCE_PATH += $(MY_DIR)/../deps/sha512
 
-APP_CUSTOM_LINK_DEPENDENCIES = rust
+APP_SOURCE_PATH += $(CURDIR)/rust/include
+APP_CUSTOM_LINK_DEPENDENCIES := rust
 
 .PHONY: rust
 rust:
-	cd rust && RUSTC_BOOTSTRAP=1 CARGO_HOME="$(CURDIR)/rust/.cargo" cargo build --target $(RUST_TARGET) --release
+	cd rust && RUSTC_BOOTSTRAP=1 CARGO_HOME="$(CURDIR)/rust/.cargo" TARGET_NAME=$(TARGET_NAME) \
+	cargo build --release --target $(RUST_TARGET)
 
 .PHONY: rust_clean
 rust_clean:
@@ -103,30 +141,17 @@ rust_clean:
 
 clean: rust_clean
 
-# load, delete and listvariants are provided to comply with Ledger requirements
-.PHONY: load
-load:
-	python -m ledgerblue.loadApp $(APP_LOAD_PARAMS)
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.side_loading
 
-.PHONY: delete
-delete:
-	python -m ledgerblue.deleteApp $(COMMON_DELETE_PARAMS)
-
-# Import generic rules from the SDK
 include $(BOLOS_SDK)/Makefile.rules
 
-#add dependency on custom makefile filename
+
 dep/%.d: %.c Makefile
 
-.PHONY: listvariants
 listvariants:
 	@echo VARIANTS COIN STX
 
 .PHONY: version
 version:
-	@echo "v$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)" > app.version
-
-.PHONY: rust_tests
-rust_tests:
-	cd rust && CARGO_HOME="$(CURDIR)/rust/.cargo" cargo test
+	@echo "v$(APPVERSION)" > app.version
 
