@@ -24,10 +24,13 @@ DEBUG := 0
 
 MY_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
+include $(CURDIR)/Makefile.conf
+
 include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.installer_script
 include $(BOLOS_SDK)/Makefile.defines
 
 ## Display whether this is a production build or for internal use
+
 ifeq ($(PRODUCTION_BUILD), 1)
     $(info ************ PRODUCTION_BUILD  = [PRODUCTION BUILD])
 else

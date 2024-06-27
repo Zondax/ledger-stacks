@@ -168,7 +168,7 @@ jobs:
         run: |
           npm install -g yarn
       - name: Build Ledger app
-        run: make PRODUCTION_BUILD=1
+        run: make prod
 
       - name: Build/Install build js deps
         run: make zemu_install
