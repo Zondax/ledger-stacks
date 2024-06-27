@@ -224,7 +224,6 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
 
     cx_ecfp_private_key_t cx_privateKey;
     uint8_t privateKeyData[SK_LEN_25519];
-    // int signatureLength = 0;
     unsigned int info = 0;
 
     signature_t *const signature = (signature_t *) buffer;
