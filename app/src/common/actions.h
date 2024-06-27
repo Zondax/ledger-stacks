@@ -128,9 +128,8 @@ __Z_INLINE void app_sign() {
     }
 
     if (err != zxerr_ok) {
-        uint8_t errLen = get_error_message((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
@@ -140,9 +139,8 @@ __Z_INLINE void app_sign() {
     uint16_t replyLen;
     err = crypto_sign(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 3, presig_hash, CX_SHA256_SIZE, &replyLen);
     if (err != zxerr_ok) {
-        uint8_t errLen = get_error_message((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
@@ -183,18 +181,15 @@ __Z_INLINE void app_sign() {
             break;
                             }
         default: {
-            err = zxerr_no_data;
-            uint8_t errLen = get_error_message((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-            set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-            io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+            set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+            io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
             return;
         }
     }
 
     if (replyLen == 0) {
-        uint8_t errLen = get_error_message((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, zxerr_no_data);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
