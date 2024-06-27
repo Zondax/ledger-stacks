@@ -53,8 +53,8 @@ ifeq ($(COIN), STX)
 # Main app configuration
 DEFINES += APP_STANDARD
 APPNAME = "Stacks"
-APPPATH = "44'/5757'" --path "888'/0'" --path "44'/1'"
-PATH_APP_LOAD_PARAMS = "44'/5757'" "888'/0'" "44'/1'"
+APPPATH = "44'/5757'" --path "5757'" --path "888'/0'" --path "44'/1'"
+PATH_APP_LOAD_PARAMS = "44'/5757'" "5757'" "888'/0'" "44'/1'"
 else
 define error_message
 
@@ -64,7 +64,7 @@ endef
 $(error "$(error_message)")
 endif
 
-APP_LOAD_PARAMS = --curve secp256k1 $(COMMON_LOAD_PARAMS) --path ${APPPATH} --path "44'/1'"
+APP_LOAD_PARAMS = --curve secp256k1 $(COMMON_LOAD_PARAMS)
 
 include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.devices
 
