@@ -30,7 +30,7 @@ pub struct UInt128(u128);
 impl Int128 {
     pub(crate) fn new(value: &super::Value) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::Int) {
-            return Err(ParserError::UnexpectedType.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         // omit value_type as we know it is an int
@@ -61,7 +61,7 @@ impl Int128 {
 impl UInt128 {
     pub(crate) fn new(value: &super::Value) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::UInt) {
-            return Err(ParserError::UnexpectedType.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         // omit value_type as we know it is an uint

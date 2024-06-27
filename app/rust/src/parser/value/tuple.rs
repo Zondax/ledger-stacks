@@ -94,7 +94,8 @@ mod test {
         let mut count = 0;
         for (name, _) in tuple.iter() {
             count += 1;
-            assert!(names.contains(&name.name().to_vec()));
+            let key = name.name().to_vec();
+            assert!(names.contains(&key));
         }
 
         assert_eq!(count, tuple.num_elements());
@@ -118,7 +119,8 @@ mod test {
         let mut count = 0;
         for (name, _) in tuple.iter() {
             count += 1;
-            assert!(names.contains(&name.name().to_vec()));
+            let key = name.name().to_vec();
+            assert!(names.contains(&key));
         }
         assert_eq!(count, tuple.num_elements());
     }

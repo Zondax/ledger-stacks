@@ -246,7 +246,7 @@ impl<'a> SinglesigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         // we take 65-byte signature + 1-byte signature public-key encoding type
-        let len = SIGNATURE_LEN as usize + 1;
+        let len = SIGNATURE_LEN + 1;
         let (raw, _) = take(len)(bytes)?;
         let data = arrayref::array_ref!(bytes, 0, SINGLE_SPENDING_CONDITION_LEN);
         check_canary!();

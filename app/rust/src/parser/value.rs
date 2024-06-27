@@ -131,8 +131,7 @@ impl<'a> Value<'a> {
         }
 
         // get value_id
-        let (rem, id) =
-            ValueId::from_bytes(bytes).map_err(|_| ParserError::UnexpectedValue)?;
+        let (rem, id) = ValueId::from_bytes(bytes).map_err(|_| ParserError::UnexpectedValue)?;
 
         let len = match id {
             ValueId::Int | ValueId::UInt => BIG_INT_SIZE,
@@ -250,7 +249,7 @@ impl<'a> Value<'a> {
         // Check iteration counter
         if depth > MAX_DEPTH {
             c_zemu_log_stack("Error recursion limit reached!");
-            return Err(ParserError::RecursionLimit.into());
+            return Err(ParserError::RecursionLimit);
         }
         Ok(())
     }

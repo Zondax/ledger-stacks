@@ -16,7 +16,7 @@ pub struct Message<'a>(ByteString<'a>);
 
 impl<'a> Message<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
-        ByteString::from_bytes(data).map(|msg| Self(msg))
+        ByteString::from_bytes(data).map(Self)
     }
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
@@ -65,8 +65,7 @@ impl<'a> ByteString<'a> {
             return Err(ParserError::UnexpectedBufferEnd);
         }
 
-        let (rem, len) =
-            read_varint(data).map_err(|_| ParserError::InvalidBytestrMessage)?;
+        let (rem, len) = read_varint(data).map_err(|_| ParserError::InvalidBytestrMessage)?;
 
         let (_, message_content) = take::<_, _, ParserError>(len as usize)(rem)
             .map_err(|_| ParserError::InvalidBytestrMessage)?;

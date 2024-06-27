@@ -379,7 +379,7 @@ impl<'a> TransactionContractCall<'a> {
                     .apdu_unwrap()
                     .copy_from_slice(&address[0..address.len()]);
 
-                data[address.len()] = '.' as u8;
+                data[address.len()] = b'.';
                 let len = address.len() + 1;
 
                 // wont panic as we reserved enough space.

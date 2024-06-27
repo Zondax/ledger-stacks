@@ -189,7 +189,7 @@ impl NonfungibleConditionCode {
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
 pub enum PostConditionType {
-    STX = 0,
+    Stx = 0,
     FungibleToken = 1,
     NonFungibleToken = 2,
 }
@@ -199,7 +199,7 @@ impl TryFrom<u8> for PostConditionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         let t = match value {
-            0 => Self::STX,
+            0 => Self::Stx,
             1 => Self::FungibleToken,
             2 => Self::NonFungibleToken,
             _ => return Err(ParserError::InvalidPostCondition),
@@ -214,7 +214,7 @@ impl TryFrom<u8> for PostConditionType {
 #[derive(Clone, Copy, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 pub enum TransactionPostCondition<'a> {
-    STX(&'a [u8]),
+    Stx(&'a [u8]),
     Fungible(&'a [u8]),
     Nonfungible(&'a [u8]),
 }
@@ -227,10 +227,10 @@ impl<'a> TransactionPostCondition<'a> {
         let principal_len = raw.len() - principal.0.len();
 
         match PostConditionType::try_from(cond_type)? {
-            PostConditionType::STX => {
+            PostConditionType::Stx => {
                 let len = principal_len + 1 + 8;
                 let (raw, inner) = take(len)(raw)?;
-                Ok((raw, Self::STX(inner)))
+                Ok((raw, Self::Stx(inner)))
             }
             PostConditionType::FungibleToken => {
                 let asset = AssetInfo::read_as_bytes(principal.0)?;
@@ -253,7 +253,7 @@ impl<'a> TransactionPostCondition<'a> {
         let (raw, _) = PostConditionPrincipal::read_as_bytes(cond_type.0)?;
         let mut len = bytes.len() - raw.len();
         len += match PostConditionType::try_from(cond_type.1)? {
-            PostConditionType::STX => {
+            PostConditionType::Stx => {
                 // We take 9-bytes which comprises the 8-byte amount + 1-byte fungible code
                 9usize
             }
@@ -274,7 +274,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn is_origin_principal(&self) -> bool {
         match self {
-            Self::STX(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
                 principal[0] == PostConditionPrincipalId::Origin as u8
             }
         }
@@ -282,7 +282,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn is_standard_principal(&self) -> bool {
         match self {
-            Self::STX(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
                 principal[0] == PostConditionPrincipalId::Standard as u8
             }
         }
@@ -290,7 +290,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn is_contract_principal(&self) -> bool {
         match self {
-            Self::STX(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
                 principal[0] == PostConditionPrincipalId::Origin as u8
             }
         }
@@ -301,8 +301,8 @@ impl<'a> TransactionPostCondition<'a> {
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         match self {
-            Self::STX(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
-                let (_, principal) = PostConditionPrincipal::from_bytes(&principal)
+            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+                let (_, principal) = PostConditionPrincipal::from_bytes(principal)
                     .map_err(|_| ParserError::InvalidPostCondition)?;
                 principal.get_principal_address()
             }
@@ -310,7 +310,7 @@ impl<'a> TransactionPostCondition<'a> {
     }
 
     pub fn is_stx(&self) -> bool {
-        matches!(self, Self::STX(..))
+        matches!(self, Self::Stx(..))
     }
 
     pub fn is_fungible(&self) -> bool {
@@ -323,7 +323,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn tokens_amount(&self) -> Option<u64> {
         match *self {
-            Self::STX(inner) | Self::Fungible(inner) => {
+            Self::Stx(inner) | Self::Fungible(inner) => {
                 let at = inner.len() - 8;
                 be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
@@ -333,7 +333,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn amount_stx(&self) -> Option<u64> {
         match self {
-            Self::STX(inner) => {
+            Self::Stx(inner) => {
                 let at = inner.len() - 8;
                 be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
@@ -365,7 +365,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn fungible_condition_code(&self) -> Option<FungibleConditionCode> {
         let code = match self {
-            Self::STX(inner) | Self::Fungible(inner) => inner[inner.len() - 9], // TODO: comment this 9
+            Self::Stx(inner) | Self::Fungible(inner) => inner[inner.len() - 9], // TODO: comment this 9
             _ => return None,
         };
         FungibleConditionCode::from_u8(code)
@@ -393,7 +393,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn num_items(&self) -> u8 {
         match self {
-            Self::STX(..) | Self::Nonfungible(..) => 3,
+            Self::Stx(..) | Self::Nonfungible(..) => 3,
             Self::Fungible(..) => 4,
         }
     }
@@ -427,7 +427,7 @@ impl<'a> TransactionPostCondition<'a> {
             self.write_principal_address(out_key, out_value, page_idx)
         } else {
             match self {
-                Self::STX(..) => self.get_stx_items(index, out_key, out_value, page_idx),
+                Self::Stx(..) => self.get_stx_items(index, out_key, out_value, page_idx),
                 Self::Fungible(..) => self.get_fungible_items(index, out_key, out_value, page_idx),
                 Self::Nonfungible(..) => {
                     self.get_non_fungible_items(index, out_key, out_value, page_idx)
@@ -445,7 +445,7 @@ impl<'a> TransactionPostCondition<'a> {
     ) -> Result<u8, ParserError> {
         let mut writer_key = zxformat::Writer::new(out_key);
         match self {
-            Self::STX(..) => match display_idx {
+            Self::Stx(..) => match display_idx {
                 // PostCondition code
                 1 => {
                     writer_key
@@ -459,7 +459,7 @@ impl<'a> TransactionPostCondition<'a> {
                 // Amount in stx
                 2 => {
                     writer_key
-                        .write_str("STX amount")
+                        .write_str("Stx amount")
                         .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                     let amount = self.amount_stx_str().unwrap();
                     zxformat::pageString(out_value, amount.as_ref(), page_idx)
@@ -558,7 +558,7 @@ impl<'a> TransactionPostCondition<'a> {
     #[cfg(test)]
     pub fn get_inner_bytes(&self) -> &[u8] {
         match self {
-            Self::STX(inner) | Self::Fungible(inner) | Self::Nonfungible(inner) => inner,
+            Self::Stx(inner) | Self::Fungible(inner) | Self::Nonfungible(inner) => inner,
         }
     }
 }

@@ -211,6 +211,10 @@ impl<'a> ContractName<'a> {
     pub fn len(&self) -> usize {
         self.name().len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.name().is_empty()
+    }
 }
 
 // A clarity value used in tuples
@@ -247,6 +251,10 @@ impl<'a> ClarityName<'a> {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

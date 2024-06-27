@@ -441,13 +441,8 @@ impl<'a> Transaction<'a> {
             if post_conditions_items == 0 {
                 return Err(ParserError::DisplayIdxOutOfRange);
             }
-            self.post_conditions.get_items(
-                display_idx,
-                out_key,
-                out_value,
-                page_idx,
-                num_items as u8,
-            )
+            self.post_conditions
+                .get_items(display_idx, out_key, out_value, page_idx, num_items)
         } else {
             self.payload.get_items(
                 display_idx,

@@ -56,7 +56,7 @@ impl<'a> String<'a> {
 impl<'a> StringAscii<'a> {
     pub(crate) fn new(value: &Value<'a>) -> Result<StringAscii<'a>, ParserError> {
         if !matches!(value.value_id(), ValueId::StringAscii) {
-            return Err(ParserError::UnexpectedType.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         String::from_bytes_ascii(value.payload())
@@ -89,7 +89,7 @@ impl<'a> StringAscii<'a> {
 impl<'a> StringUtf8<'a> {
     pub(crate) fn new(value: &Value<'a>) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::StringUtf8) {
-            return Err(ParserError::UnexpectedType.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         let (_, string) = String::from_bytes(value.payload())?;

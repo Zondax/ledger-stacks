@@ -172,9 +172,10 @@ mod test {
 
     impl Header {
         fn with_other(other: Option<String>) -> Self {
-            let mut h = Header::default();
-            h.other = other;
-            h
+            Self {
+                other,
+                ..Default::default()
+            }
         }
     }
 
