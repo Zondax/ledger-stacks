@@ -1,0 +1,54 @@
+name: "Publish js packages"
+
+on:
+  release:
+    types:
+      - created
+    tags:
+      - "npm_v[0-9]+(\\.[0-9]+)*"
+
+jobs:
+  publish_npm_package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          registry-url: "https://registry.npmjs.org"
+          scope: "@zondax"
+      - name: Install yarn
+        run: npm install -g yarn
+      - name: Build package
+        run: |
+          cd js
+          yarn install
+          yarn build
+      - name: Get latest release version number
+        id: get_version
+        run: |
+          GITHUB_REF=${{ github.ref }}
+          echo "version=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+      - name: Show version
+        run: echo ${{ steps.get_version.outputs.version }}
+      - name: Clean latest release version number
+        id: get_version_cleaned
+        uses: bhowell2/github-substring-action@v1
+        with:
+          output_name: version
+          value: ${{ steps.get_version.outputs.version }}
+          index_of_str: "npm_"
+      - name: Update tag
+        run: |
+          cd js
+          echo Publishing as ${{ steps.get_version_cleaned.outputs.version }}
+          npm --allow-same-version --no-git-tag-version version ${{ steps.get_version_cleaned.outputs.version }}
+      - name: Publish package
+        run: |
+          cd js
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_PUBLISH_AUTO }}
