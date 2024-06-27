@@ -53,40 +53,38 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-\cmake-build-debug
-\.idea/
-/tmp/
-/deps/nano2-sdk/
-
-# Created by cmake
-googletest-download/
-googletest-src/
-googletest-build/
-CMakeFiles/
-CMakeCache.txt
-unittests
-*.cmake
-Testing/
-cmake-build-fuzz/
-
 # Others
-/cmake-build-debug/
-/cmake-build-fuzz/
 \.idea
-/app/bin/
-/app/debug/
-/app/obj/
-/app/output/app*.*
-app/hfuzz-parser/hfuzz_*
-app/build/*
+.vscode/*.log
+.DS_Store
+node_modules
 
-\deps/*
-!/deps/sha512
-!\deps/nanos-secure-sdk
-\deps/nano2-sdk
-!\deps/ledger-zxlib
-!\deps/BLAKE
+# Rust
+
+**/target
+# **/Cargo.lock
+**/.cargo/registry
+**/.cargo/git
+
+# Workspace specific
+
+app/build
+app/debug
+app/bin
+app/dep
+app/obj
+
 /build
-!/tests_zemu/yarn-error.log
-tests_zemu/yarn.lock
-.vscode
+
+app/glyphs/glyphs.*
+
+hfuzz/hfuzz_workspace
+
+tests_zemu/snapshots-tmp
+app/output/*.apdu
+app/output/*.sha256
+app/pkg/*
+
+app/rust/.cargo/.package-cache-mutate
+
+
