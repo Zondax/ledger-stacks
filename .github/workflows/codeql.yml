@@ -7,13 +7,15 @@ on:
     branches:
       - main
       - develop
+      - master # for safety reasons
+      - dev  # for safety reasons
 
 jobs:
   analyse:
     name: Analyse
     strategy:
       matrix:
-        sdk: ["$NANOS_SDK", "$NANOX_SDK", "$NANOSP_SDK"]
+        sdk: ["$NANOS_SDK", "$NANOX_SDK", "$NANOSP_SDK", "$STAX_SDK"]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-legacy:latest
@@ -31,6 +33,7 @@ jobs:
           queries: security-and-quality
 
       - name: Build
-        run: PRODUCTION_BUILD=1 make -j BOLOS_SDK=${{ matrix.sdk }}
+        run: |
+          make -j BOLOS_SDK=${{ matrix.sdk }}
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2

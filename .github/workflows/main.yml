@@ -77,28 +77,6 @@ jobs:
         id: build
         shell: bash -l {0}
         run: |
-          make PRODUCTION_BUILD=0
-          echo "size=$(python3 deps/ledger-zxlib/scripts/getSize.py s)" >> $GITHUB_OUTPUT
-
-  build_ledger_production:
-    needs: configure
-    runs-on: ubuntu-latest
-    container:
-      image: zondax/ledger-app-builder:latest
-      options: --user ${{ needs.configure.outputs.uid_gid }}
-      env:
-        BOLOS_SDK: /opt/nanos-secure-sdk
-    outputs:
-      size: ${{steps.build.outputs.size}}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Build Production app
-        id: build
-        shell: bash -l {0}
-        run: |
           make PRODUCTION_BUILD=1
           echo "size=$(python3 deps/ledger-zxlib/scripts/getSize.py s)" >> $GITHUB_OUTPUT
 
@@ -113,45 +91,9 @@ jobs:
           echo "LNS app size: ${{needs.build_ledger.outputs.size}} KiB"
           [ ${{needs.build_ledger.outputs.size}} -le $NANOS_LIMIT_SIZE ]
 
-  tests_zemu_setup:
-    if: ${{ !contains(toJSON(github.event.commits[*].message), '[skip-zemu]') }}
-    runs-on: ubuntu-latest
-    outputs:
-      tests: ${{ steps.get-tests.outputs.tests }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Install node
-        uses: actions/setup-node@v3
-
-      - name: Install yarn
-        run: npm install -g yarn
-
-      - name: Build/Install build js deps
-        run: |
-          export PATH=~/.cargo/bin:$PATH
-          make zemu_install
-
-      - name: Get test files
-        id: get-tests
-        run: |
-          cd tests_zemu
-          TESTS=`yarn test --listTests --json | head -n 3 | tail -n 1 | jq -cM 'to_entries | map({id: .key, file: .value})'`
-          echo "tests=$TESTS" >> "$GITHUB_OUTPUT"
-
   test_zemu:
-    needs: [configure, tests_zemu_setup]
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        test: ${{ fromJson(needs.tests_zemu_setup.outputs['tests']) }}
     steps:
-      - name: Debug needs context
-        run: echo "${{ toJson(needs) }}"
       - name: Test
         run: |
           id
@@ -160,36 +102,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
       - run: sudo apt-get update -y && sudo apt-get install -y libusb-1.0.0 libudev-dev
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - name: Install node
         uses: actions/setup-node@v3
       - name: Install yarn
         run: |
           npm install -g yarn
-      - name: Build Ledger app
-        run: make prod
-
-      - name: Build/Install build js deps
-        run: make zemu_install
-
-      - name: Run zemu tests
+      - name: Build and run zemu tests
         run: |
-          cd tests_zemu
-          yarn jest ${{ matrix.test.file }} --maxConcurrency 2 \
-                --reporters='@matteoh2o1999/github-actions-jest-reporter'
-        env:
-          FORCE_COLOR: 1
-
+          make test_all
       - name: Upload Snapshots (only failure)
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: snapshots-tmp
           path: tests_zemu/snapshots-tmp/
 
   build_package_nanos:
-    needs: [configure, build_ledger, tests_zemu_setup, test_zemu, rust_tests]
+    needs: [configure, build_ledger, test_zemu, rust_tests]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
@@ -208,7 +143,7 @@ jobs:
       - name: Build NanoS
         shell: bash -l {0}
         run: |
-          make
+          PRODUCTION_BUILD=0 make
           mv ./app/pkg/installer_s.sh ./app/pkg/installer_nanos.sh
       - name: Set tag
         id: nanos
@@ -225,7 +160,7 @@ jobs:
           prerelease: false
 
   build_package_nanosp:
-    needs: [configure, build_ledger, tests_zemu_setup, test_zemu, rust_tests]
+    needs: [configure, build_ledger, test_zemu, rust_tests]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
@@ -244,7 +179,7 @@ jobs:
       - name: Build NanoSP
         shell: bash -l {0}
         run: |
-          make
+          PRODUCTION_BUILD=0 make
           mv ./app/pkg/installer_s2.sh ./app/pkg/installer_nanos_plus.sh
       - name: Set tag
         id: nanosp
@@ -257,5 +192,40 @@ jobs:
         with:
           files: ./app/pkg/installer_nanos_plus.sh
           tag_name: ${{ steps.nanosp.outputs.tag_name }}
+          draft: false
+          prerelease: false
+
+  build_package_stax:
+    needs: [configure, build_ledger, test_zemu, rust_tests]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    container:
+      image: zondax/ledger-app-builder:latest
+      options: --user ${{ needs.configure.outputs.uid_gid }}
+      env:
+        BOLOS_SDK: /opt/stax-secure-sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install deps
+        run: pip install ledgerblue
+
+      - name: Build Stax
+        shell: bash -l {0}
+        run: |
+          PRODUCTION_BUILD=0 make
+      - name: Set tag
+        id: stax
+        run: echo "tag_name=$(./app/pkg/installer_stax.sh version)" >> $GITHUB_OUTPUT
+      - name: Update Release
+        id: update_release_2
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          files: ./app/pkg/installer_stax.sh
+          tag_name: ${{ steps.stax.outputs.tag_name }}
           draft: false
           prerelease: false
