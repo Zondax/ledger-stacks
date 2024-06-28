@@ -32,7 +32,6 @@ bool isTestnet() {
            hdPath[1] == HDPATH_1_TESTNET;
 }
 
-#if defined(TARGET_NANOS) || defined(TARGET_NANOX) || defined(TARGET_NANOS2) || defined(TARGET_STAX)
 #include "cx.h"
 
 bool ripemd160(uint8_t *in, uint16_t inLen, uint8_t *out) {
@@ -180,6 +179,7 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
         return false;
     }
 
+#ifdef APP_TESTING
     {
         zemu_log("pubKey: ***");
         char buffer[PK_LEN_SECP256K1 * 3];
@@ -187,6 +187,7 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
         zemu_log(buffer);
         zemu_log("\n");
     }
+#endif
 
     // calculates the sha256 + ripemd160
     address_temp_t address_temp;
@@ -273,7 +274,3 @@ catch_cx_error:
 
     return zxerr;
 }
-
-#endif
-
-

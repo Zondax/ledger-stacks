@@ -86,26 +86,6 @@ else
 	APP_STACK_MIN_SIZE := 2000
 endif
 
-# Enable app features depending on the target device
-ifeq ($(TARGET_NAME), TARGET_NANOS)
-RUST_TARGET := thumbv6m-none-eabi
-endif
-
-ifeq ($(TARGET_NAME), TARGET_NANOX)
-RUST_TARGET := thumbv6m-none-eabi
-endif
-
-ifeq ($(TARGET_NAME), TARGET_NANOS2)
-RUST_TARGET := thumbv6m-none-eabi
-endif
-
-ifeq ($(TARGET_NAME), TARGET_STAX)
-RUST_TARGET := thumbv6m-none-eabi
-DEFINES += ICONGLYPH=C_icon_stax_64
-DEFINES += ICONBITMAP=C_icon_stax_64
-DEFINES += ICONGLYPH_SMALL=C_icon_stax_32
-endif
-
 include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.platform
 INCLUDES_PATH += $(CURDIR)/src/common/
 
@@ -121,6 +101,8 @@ CFLAGS += -DAPPVERSION_M=$(APPVERSION_M) -DAPPVERSION_N=$(APPVERSION_N) -DAPPVER
 
 AS := $(GCCPATH)arm-none-eabi-gcc
 AFLAGS +=
+
+RUST_TARGET := thumbv6m-none-eabi
 
 LD := $(GCCPATH)arm-none-eabi-gcc
 LDFLAGS += -z muldefs
