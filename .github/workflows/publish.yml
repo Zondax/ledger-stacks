@@ -12,13 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           submodules: true
       - name: Install node
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v3
         with:
-          node-version: '14.17.0'
           registry-url: "https://registry.npmjs.org"
           scope: "@zondax"
       - name: Install yarn
@@ -30,7 +29,9 @@ jobs:
           yarn build
       - name: Get latest release version number
         id: get_version
-        uses: battila7/get-version-action@v2
+        run: |
+          GITHUB_REF=${{ github.ref }}
+          echo "version=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
       - name: Show version
         run: echo ${{ steps.get_version.outputs.version }}
       - name: Clean latest release version number

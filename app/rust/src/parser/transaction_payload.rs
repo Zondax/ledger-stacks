@@ -45,7 +45,7 @@ impl TokenTranferPrincipal {
         match v {
             5 => Ok(Self::Standard),
             6 => Ok(Self::Contract),
-            _ => Err(ParserError::parser_invalid_token_transfer_principal),
+            _ => Err(ParserError::InvalidTokenTransferPrincipal),
         }
     }
 }
@@ -77,10 +77,10 @@ impl<'a> StxTokenTransfer<'a> {
 
     pub fn amount(&self) -> Result<u64, ParserError> {
         let at = self.0.len() - 34 - 8;
-        let amount = self.0.get(at..).ok_or(ParserError::parser_no_data)?;
-        be_u64::<'a, ParserError>(amount)
+        let amount = self.0.get(at..).ok_or(ParserError::NoData)?;
+        be_u64::<_, ParserError>(amount)
             .map(|res| res.1)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)
+            .map_err(|_| ParserError::UnexpectedBufferEnd)
     }
 
     pub fn raw_address(&self) -> &[u8] {
@@ -94,12 +94,10 @@ impl<'a> StxTokenTransfer<'a> {
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         // Skips the principal-id at [0] and uses hash_mode and the follow 20-bytes
-        let version = self.0.get(1).ok_or(ParserError::parser_no_data)?;
+        let version = self.0.get(1).ok_or(ParserError::NoData)?;
         c32::c32_address(
             *version,
-            self.0
-                .get(2..22)
-                .ok_or(ParserError::parser_invalid_address)?,
+            self.0.get(2..22).ok_or(ParserError::InvalidAddress)?,
         )
     }
 
@@ -128,7 +126,7 @@ impl<'a> StxTokenTransfer<'a> {
             0 => {
                 writer_key
                     .write_str("Amount uSTX")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let amount = self.amount_stx()?;
                 check_canary!();
                 zxformat::pageString(out_value, amount.as_ref(), page_idx)
@@ -137,7 +135,7 @@ impl<'a> StxTokenTransfer<'a> {
             1 => {
                 writer_key
                     .write_str("To")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let recipient = self.encoded_address()?;
                 check_canary!();
                 zxformat::pageString(out_value, recipient.as_ref(), page_idx)
@@ -145,11 +143,11 @@ impl<'a> StxTokenTransfer<'a> {
             2 => {
                 writer_key
                     .write_str("Memo")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 check_canary!();
                 zxformat::pageString(out_value, self.memo(), page_idx)
             }
-            _ => Err(ParserError::parser_display_idx_out_of_range),
+            _ => Err(ParserError::DisplayIdxOutOfRange),
         }
     }
 }
@@ -164,10 +162,10 @@ impl<'a> Arguments<'a> {
     fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         check_canary!();
 
-        let (_, num_args) = be_u32(bytes)?;
+        let (_, num_args) = be_u32::<_, ParserError>(bytes)?;
 
         if num_args > MAX_NUM_ARGS && !is_expert_mode() {
-            return Err(ParserError::parser_invalid_transaction_payload.into());
+            return Err(ParserError::InvalidTransactionPayload.into());
         }
         let (raw, args) = take(bytes.len())(bytes)?;
 
@@ -179,9 +177,9 @@ impl<'a> Arguments<'a> {
     }
 
     pub fn num_args(&self) -> Result<u32, ParserError> {
-        be_u32::<'a, ParserError>(self.0)
+        be_u32::<_, ParserError>(self.0)
             .map(|res| res.1)
-            .map_err(|_| ParserError::parser_unexpected_error)
+            .map_err(|_| ParserError::UnexpectedError)
     }
 
     pub fn argument_at(&self, at: usize) -> Result<Value<'a>, ParserError> {
@@ -195,7 +193,7 @@ impl<'a> Arguments<'a> {
 
         while idx < num_args as usize {
             let (bytes, value) = Value::from_bytes::<TX_DEPTH_LIMIT>(leftover)
-                .map_err(|_| ParserError::parser_invalid_argument_id)?;
+                .map_err(|_| ParserError::InvalidArgumentId)?;
 
             leftover = bytes;
             if idx == at {
@@ -203,7 +201,7 @@ impl<'a> Arguments<'a> {
             }
             idx += 1;
         }
-        Err(ParserError::parser_display_idx_out_of_range)
+        Err(ParserError::DisplayIdxOutOfRange)
     }
 }
 
@@ -237,7 +235,7 @@ impl<'a> TransactionContractCall<'a> {
         ContractName::from_bytes(&self.0[(HASH160_LEN + 1)..])
             .and_then(|b| ClarityName::from_bytes(b.0))
             .map(|res| (res.1).0)
-            .map_err(|_| ParserError::parser_unexpected_error)
+            .map_err(|_| ParserError::UnexpectedError)
     }
 
     pub fn function_args(&self) -> Result<Arguments<'a>, ParserError> {
@@ -245,7 +243,7 @@ impl<'a> TransactionContractCall<'a> {
             .and_then(|b| ClarityName::from_bytes(b.0))
             .and_then(|c| Arguments::from_bytes(c.0))
             .map(|res| res.1)
-            .map_err(|_| ParserError::parser_invalid_argument_id)
+            .map_err(|_| ParserError::InvalidArgumentId)
     }
 
     pub fn num_args(&self) -> Result<u32, ParserError> {
@@ -275,13 +273,13 @@ impl<'a> TransactionContractCall<'a> {
                 let mut writer = zxformat::Writer::new(key);
                 writer
                     .write_str("stacked uSTX")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             } else if name == "delegate-stx".as_bytes() {
                 key.iter_mut().for_each(|v| *v = 0);
                 let mut writer = zxformat::Writer::new(key);
                 writer
                     .write_str("delegated uSTX")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             }
         }
         Ok(())
@@ -295,7 +293,7 @@ impl<'a> TransactionContractCall<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         if display_idx < CONTRACT_CALL_BASE_ITEMS {
-            return Err(ParserError::parser_display_idx_out_of_range);
+            return Err(ParserError::DisplayIdxOutOfRange);
         }
         let arg_num = display_idx - CONTRACT_CALL_BASE_ITEMS;
 
@@ -310,10 +308,10 @@ impl<'a> TransactionContractCall<'a> {
 
             writer_key
                 .write_str("arg")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             writer_key
                 .write_str(arg_num_str)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         }
 
         // return the value content including the valueID
@@ -321,7 +319,7 @@ impl<'a> TransactionContractCall<'a> {
 
         match value.value_id() {
             ValueId::Int => {
-                let value = value.int().ok_or(ParserError::parser_unexpected_error)?;
+                let value = value.int().ok_or(ParserError::UnexpectedError)?;
                 let mut buff = [0u8; 39];
 
                 zxformat::pageString(
@@ -331,7 +329,7 @@ impl<'a> TransactionContractCall<'a> {
                 )
             }
             ValueId::UInt => {
-                let value = value.uint().ok_or(ParserError::parser_unexpected_error)?;
+                let value = value.uint().ok_or(ParserError::UnexpectedError)?;
                 let mut buff = [0u8; 39];
 
                 if arg_num == 0 {
@@ -381,7 +379,7 @@ impl<'a> TransactionContractCall<'a> {
                     .apdu_unwrap()
                     .copy_from_slice(&address[0..address.len()]);
 
-                data[address.len()] = '.' as u8;
+                data[address.len()] = b'.';
                 let len = address.len() + 1;
 
                 // wont panic as we reserved enough space.
@@ -420,7 +418,7 @@ impl<'a> TransactionContractCall<'a> {
         let num_args = self.num_args()? as u8;
         num_args
             .checked_add(CONTRACT_CALL_BASE_ITEMS)
-            .ok_or(ParserError::parser_value_out_of_range)
+            .ok_or(ParserError::ValueOutOfRange)
     }
 
     fn get_base_items(
@@ -431,7 +429,7 @@ impl<'a> TransactionContractCall<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         if display_idx > CONTRACT_CALL_BASE_ITEMS {
-            return Err(ParserError::parser_display_idx_out_of_range);
+            return Err(ParserError::DisplayIdxOutOfRange);
         }
         let mut writer_key = zxformat::Writer::new(out_key);
         match display_idx {
@@ -439,7 +437,7 @@ impl<'a> TransactionContractCall<'a> {
             0 => {
                 writer_key
                     .write_str("Contract address")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let address = self.contract_address()?;
                 check_canary!();
                 zxformat::pageString(out_value, address.as_ref(), page_idx)
@@ -448,7 +446,7 @@ impl<'a> TransactionContractCall<'a> {
             1 => {
                 writer_key
                     .write_str("Contract name")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let name = self.contract_name()?;
                 check_canary!();
                 zxformat::pageString(out_value, name.name(), page_idx)
@@ -457,12 +455,12 @@ impl<'a> TransactionContractCall<'a> {
             2 => {
                 writer_key
                     .write_str("Function name")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let name = self.function_name()?;
                 check_canary!();
                 zxformat::pageString(out_value, name, page_idx)
             }
-            _ => Err(ParserError::parser_display_idx_out_of_range),
+            _ => Err(ParserError::DisplayIdxOutOfRange),
         }
     }
 
@@ -500,7 +498,7 @@ impl<'a> VersionedSmartContract<'a> {
         let parse_length_1_byte = map(be_u8, |length| std::cmp::min(length, 128u8) as usize);
         let parse_length_4_bytes = flat_map(be_u32, take);
 
-        let parser = tuple((
+        let mut parser = tuple((
             parse_tag,
             flat_map(parse_length_1_byte, take),
             parse_length_4_bytes,
@@ -535,12 +533,12 @@ impl<'a> VersionedSmartContract<'a> {
             0 => {
                 writer_key
                     .write_str("Contract Name")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 check_canary!();
                 let name = self.contract_name()?;
                 zxformat::pageString(out_value, name.name(), page_idx)
             }
-            _ => Err(ParserError::parser_value_out_of_range),
+            _ => Err(ParserError::ValueOutOfRange),
         }
     }
 }
@@ -561,7 +559,7 @@ impl<'a> TransactionSmartContract<'a> {
         let parse_length_1_byte = map(be_u8, |length| std::cmp::min(length, 128u8) as usize);
         let parse_length_4_bytes = flat_map(be_u32, take);
 
-        let parser = tuple((flat_map(parse_length_1_byte, take), parse_length_4_bytes));
+        let mut parser = tuple((flat_map(parse_length_1_byte, take), parse_length_4_bytes));
         let (_, (name, code)) = parser(bytes)?;
 
         // 1-byte name_len, name, 4-byte code_len, code
@@ -591,12 +589,12 @@ impl<'a> TransactionSmartContract<'a> {
             0 => {
                 writer_key
                     .write_str("Contract Name")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 check_canary!();
                 let name = self.contract_name()?;
                 zxformat::pageString(out_value, name.name(), page_idx)
             }
-            _ => Err(ParserError::parser_value_out_of_range),
+            _ => Err(ParserError::ValueOutOfRange),
         }
     }
 }
@@ -618,7 +616,7 @@ impl TransactionPayloadId {
             1 => Ok(Self::SmartContract),
             2 => Ok(Self::ContractCall),
             6 => Ok(Self::VersionedSmartContract),
-            _ => Err(ParserError::parser_invalid_transaction_payload),
+            _ => Err(ParserError::InvalidTransactionPayload),
         }
     }
 }

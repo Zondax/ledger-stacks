@@ -30,7 +30,7 @@ pub struct UInt128(u128);
 impl Int128 {
     pub(crate) fn new(value: &super::Value) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::Int) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         // omit value_type as we know it is an int
@@ -41,11 +41,11 @@ impl Int128 {
 
     pub fn from_bytes(data: &[u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         if data.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end.into());
+            return Err(ParserError::UnexpectedBufferEnd.into());
         }
 
         if !matches!(ValueId::try_from(data[0])?, ValueId::Int) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType.into());
         }
 
         // check the number is parsed
@@ -61,7 +61,7 @@ impl Int128 {
 impl UInt128 {
     pub(crate) fn new(value: &super::Value) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::UInt) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         // omit value_type as we know it is an uint
@@ -72,11 +72,11 @@ impl UInt128 {
 
     pub fn from_bytes(data: &[u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         if data.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end.into());
+            return Err(ParserError::UnexpectedBufferEnd.into());
         }
 
         if !matches!(ValueId::try_from(data[0])?, ValueId::UInt) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType.into());
         }
 
         // check the number is parsed

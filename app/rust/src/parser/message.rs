@@ -16,7 +16,7 @@ pub struct Message<'a>(ByteString<'a>);
 
 impl<'a> Message<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
-        ByteString::from_bytes(data).map(|msg| Self(msg))
+        ByteString::from_bytes(data).map(Self)
     }
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
@@ -62,17 +62,16 @@ impl<'a> ByteString<'a> {
     // returns the message content
     fn get_msg(data: &'a [u8]) -> Result<&'a [u8], ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end);
+            return Err(ParserError::UnexpectedBufferEnd);
         }
 
-        let (rem, len) =
-            read_varint(data).map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+        let (rem, len) = read_varint(data).map_err(|_| ParserError::InvalidBytestrMessage)?;
 
         let (_, message_content) = take::<_, _, ParserError>(len as usize)(rem)
-            .map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+            .map_err(|_| ParserError::InvalidBytestrMessage)?;
 
         if !message_content.is_ascii() {
-            return Err(ParserError::parser_invalid_bytestr_message);
+            return Err(ParserError::InvalidBytestrMessage);
         }
 
         Ok(message_content)
@@ -80,7 +79,7 @@ impl<'a> ByteString<'a> {
 
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if !Self::contain_header(data) {
-            return Err(ParserError::parser_invalid_bytestr_message);
+            return Err(ParserError::InvalidBytestrMessage);
         }
         let message = Self::get_msg(&data[BYTE_STRING_HEADER_LEN..])?;
         Ok(Self(message))
@@ -99,7 +98,7 @@ impl<'a> ByteString<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         if display_idx != 0 {
-            return Err(ParserError::parser_display_idx_out_of_range);
+            return Err(ParserError::DisplayIdxOutOfRange);
         }
 
         let mut writer_key = Writer::new(out_key);
@@ -120,7 +119,7 @@ impl<'a> ByteString<'a> {
         let mut copy_len = if self.0.len() > MAX_ASCII_LEN {
             let m = msg
                 .get_mut(MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len())
-                .ok_or(ParserError::parser_unexpected_buffer_end)?;
+                .ok_or(ParserError::UnexpectedBufferEnd)?;
             m.copy_from_slice(&suffix[..]);
             MAX_ASCII_LEN
         } else {
@@ -138,7 +137,7 @@ impl<'a> ByteString<'a> {
 
         writer_key
             .write_str("Sign Message")
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
         pageString(out_value, &msg[..copy_len], page_idx)
     }

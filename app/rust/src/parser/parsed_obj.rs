@@ -36,7 +36,7 @@ pub struct ParsedObj<'a> {
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
         // we expect a transaction
         let tag;
@@ -57,7 +57,7 @@ impl<'a> ParsedObj<'a> {
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
 
         // we expect a transaction
@@ -87,7 +87,7 @@ impl<'a> ParsedObj<'a> {
                 Tag::Message => Ok(self.obj.message().num_items()),
                 Tag::StructuredMsg => Ok(self.obj.structured_msg().num_items()),
                 Tag::Jwt => Ok(self.obj.jwt().num_items()),
-                _ => Err(ParserError::parser_unexpected_error),
+                _ => Err(ParserError::UnexpectedError),
             }
         }
     }
@@ -116,7 +116,7 @@ impl<'a> ParsedObj<'a> {
                         .get_item(display_idx, key, value, page_idx)
                 }
                 Tag::Jwt => self.obj.jwt().get_item(display_idx, key, value, page_idx),
-                _ => Err(ParserError::parser_unexpected_error),
+                _ => Err(ParserError::UnexpectedError),
             }
         }
     }
@@ -222,40 +222,40 @@ impl<'a> Obj<'a> {
             Tag::Jwt => Ok(Self {
                 jwt: ManuallyDrop::new(Jwt::from_bytes(data)?),
             }),
-            _ => Err(ParserError::parser_unexpected_type),
+            _ => Err(ParserError::UnexpectedType),
         }
     }
     pub unsafe fn read_tx(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.tx).read(data)
+        (*self.tx).read(data)
     }
 
     pub unsafe fn read_msg(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.msg).read(data)
+        (*self.msg).read(data)
     }
 
     pub unsafe fn read_structured_msg(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.structured_msg).read(data)
+        (*self.structured_msg).read(data)
     }
 
     pub unsafe fn read_jwt(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.jwt).read(data)
+        (*self.jwt).read(data)
     }
 
     #[inline(always)]
     pub unsafe fn transaction(&mut self) -> &mut Transaction<'a> {
-        &mut *self.tx
+        &mut self.tx
     }
 
     pub unsafe fn message(&mut self) -> &mut Message<'a> {
-        &mut *self.msg
+        &mut self.msg
     }
 
     pub unsafe fn structured_msg(&mut self) -> &mut StructuredMsg<'a> {
-        &mut *self.structured_msg
+        &mut self.structured_msg
     }
 
     pub unsafe fn jwt(&mut self) -> &mut Jwt<'a> {
-        &mut *self.jwt
+        &mut self.jwt
     }
 }
 
@@ -766,7 +766,7 @@ mod test {
     #[test]
     fn parse_contract_call_tx() {
         let bytes_str = "0000000001040061e115b4463fb27425e80fa8e3e2616b4e5a17e40000000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003020000000200021661e115b4463fb27425e80fa8e3e2616b4e5a17e40500000000000f4240010316e685b016b3b6cd9ebf35f38e5ae29392e2acd51d0a616c65782d7661756c7416e685b016b3b6cd9ebf35f38e5ae29392e2acd51d176167653030302d676f7665726e616e63652d746f6b656e04616c657803000000001a6e83360216e685b016b3b6cd9ebf35f38e5ae29392e2acd51d11737761702d68656c7065722d76312d30330b737761702d68656c706572000000040616e685b016b3b6cd9ebf35f38e5ae29392e2acd51d0a746f6b656e2d777374780616e685b016b3b6cd9ebf35f38e5ae29392e2acd51d176167653030302d676f7665726e616e63652d746f6b656e0100000000000000000000000005f5e1000a010000000000000000000000001a6e8336";
-        let bytes = hex::decode(&bytes_str).unwrap();
+        let bytes = hex::decode(bytes_str).unwrap();
 
         let mut transaction = ParsedObj::from_bytes(&bytes).unwrap();
         transaction.read(&bytes).unwrap();

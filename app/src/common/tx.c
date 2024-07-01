@@ -200,3 +200,19 @@ transaction_type_t tx_get_transaction_type(){
 zxerr_t tx_structured_msg_hash(uint8_t *out, uint16_t out_len){
     return parser_structured_msg_hash(out, out_len);
 }
+
+uint16_t get_error_message(char *out, uint16_t outLen, parser_error_t error_code) {
+    const char *error_message = parser_getErrorDescription(error_code);
+    if (error_message == NULL || outLen == 0) {
+        return 0;
+    }
+
+    uint16_t len = strlen(error_message);
+
+    if (outLen < len )
+        return 0;
+
+    memcpy(out, error_message, len);
+
+    return len;
+}

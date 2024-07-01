@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - develop
+      - master # for safety reasons
+      - dev # for safety reasons
 
 jobs:
   configure:
@@ -16,19 +18,45 @@ jobs:
       - id: get-user
         run: echo "uid_gid=$(id -u):$(id -g)" >> $GITHUB_OUTPUT
 
-  rust_test:
+  rust_tests:
     runs-on: ubuntu-latest
+    container:
+      image: zondax/rust-ci:latest
     steps:
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Rust tests
+      - name: Cache/restore Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: ./app/rust/.cargo
+          key: ${{ runner.os }}-${{ hashFiles('./Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ github.sha }}
+      - name: run rust tests
         run: make rust_test
+
+  clippy:
+    runs-on: ubuntu-latest
+    container:
+      image: zondax/rust-ci:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Cache/restore Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: ./app/rust/.cargo
+          key: ${{ runner.os }}-${{ hashFiles('./Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ github.sha }}
+      - name: clippy
+        run: |
+          cd ./app/rust
+          cargo clippy --all-targets --features "clippy"
 
   build_ledger:
     needs: configure
@@ -42,19 +70,20 @@ jobs:
       size: ${{steps.build.outputs.size}}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
       - name: Build Standard app
         id: build
         shell: bash -l {0}
         run: |
-          make
+          make PRODUCTION_BUILD=1
           echo "size=$(python3 deps/ledger-zxlib/scripts/getSize.py s)" >> $GITHUB_OUTPUT
 
   size_nano_s:
     needs: build_ledger
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       NANOS_LIMIT_SIZE: 136
     steps:
@@ -63,7 +92,6 @@ jobs:
           [ ${{needs.build_ledger.outputs.size}} -le $NANOS_LIMIT_SIZE ]
 
   test_zemu:
-    timeout-minutes: 25
     runs-on: ubuntu-latest
     steps:
       - name: Test
@@ -72,26 +100,31 @@ jobs:
           echo $HOME
           echo $DISPLAY
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - run: sudo apt-get update -y && sudo apt-get install -y libusb-1.0.0 libudev-dev
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - name: Install node
         uses: actions/setup-node@v3
       - name: Install yarn
         run: |
           npm install -g yarn
-      - name: Build Ledger app
-        run: make test_all
+      - name: Build and run zemu tests
+        run: |
+          make test_all
       - name: Upload Snapshots (only failure)
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: snapshots-tmp
           path: tests_zemu/snapshots-tmp/
 
   build_package_nanos:
-    needs: [configure, rust_test, build_ledger, test_zemu]
+    needs: [configure, build_ledger, test_zemu, rust_tests]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
@@ -101,16 +134,16 @@ jobs:
         BOLOS_SDK: /opt/nanos-secure-sdk
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
       - name: Install deps
         run: pip install ledgerblue
 
       - name: Build NanoS
         shell: bash -l {0}
         run: |
-          make
+          PRODUCTION_BUILD=0 make
           mv ./app/pkg/installer_s.sh ./app/pkg/installer_nanos.sh
       - name: Set tag
         id: nanos
@@ -127,7 +160,7 @@ jobs:
           prerelease: false
 
   build_package_nanosp:
-    needs: [configure, rust_test, build_ledger, test_zemu]
+    needs: [configure, build_ledger, test_zemu, rust_tests]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
@@ -137,16 +170,16 @@ jobs:
         BOLOS_SDK: /opt/nanosplus-secure-sdk
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
       - name: Install deps
         run: pip install ledgerblue
 
       - name: Build NanoSP
         shell: bash -l {0}
         run: |
-          make
+          PRODUCTION_BUILD=0 make
           mv ./app/pkg/installer_s2.sh ./app/pkg/installer_nanos_plus.sh
       - name: Set tag
         id: nanosp
@@ -159,5 +192,40 @@ jobs:
         with:
           files: ./app/pkg/installer_nanos_plus.sh
           tag_name: ${{ steps.nanosp.outputs.tag_name }}
+          draft: false
+          prerelease: false
+
+  build_package_stax:
+    needs: [configure, build_ledger, test_zemu, rust_tests]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    container:
+      image: zondax/ledger-app-builder:latest
+      options: --user ${{ needs.configure.outputs.uid_gid }}
+      env:
+        BOLOS_SDK: /opt/stax-secure-sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install deps
+        run: pip install ledgerblue
+
+      - name: Build Stax
+        shell: bash -l {0}
+        run: |
+          PRODUCTION_BUILD=0 make
+      - name: Set tag
+        id: stax
+        run: echo "tag_name=$(./app/pkg/installer_stax.sh version)" >> $GITHUB_OUTPUT
+      - name: Update Release
+        id: update_release_2
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          files: ./app/pkg/installer_stax.sh
+          tag_name: ${{ steps.stax.outputs.tag_name }}
           draft: false
           prerelease: false

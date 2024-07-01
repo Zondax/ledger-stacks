@@ -19,7 +19,7 @@ impl<'a> StandardPrincipal<'a> {
 
     pub fn version(&self) -> u8 {
         // safe to unwrap as this was checked when parsing
-        *self.0.get(0).apdu_unwrap()
+        *self.0.first().apdu_unwrap()
     }
 
     pub fn raw_address(&self) -> &'a [u8] {

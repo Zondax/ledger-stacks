@@ -20,3 +20,5 @@
 #else
 #error "APP MODE IS NOT SUPPORTED"
 #endif
+
+#define SK_LEN_25519 64u

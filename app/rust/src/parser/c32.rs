@@ -89,7 +89,7 @@ fn c32_encode(
         let c32_value = (low_bits << carry_bits) + carry;
         result
             .try_push(C32_CHARACTERS[c32_value as usize])
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         carry_bits = (8 + carry_bits) - 5;
         carry = current_value >> (8 - carry_bits);
 
@@ -97,7 +97,7 @@ fn c32_encode(
             let c32_value = carry & ((1 << 5) - 1);
             result
                 .try_push(C32_CHARACTERS[c32_value as usize])
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             carry_bits -= 5;
             carry >>= 5;
         }
@@ -106,7 +106,7 @@ fn c32_encode(
     if carry_bits > 0 {
         result
             .try_push(C32_CHARACTERS[carry as usize])
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
     }
 
     // remove leading zeros from c32 encoding
@@ -114,7 +114,7 @@ fn c32_encode(
         if v != C32_CHARACTERS[0] {
             result
                 .try_push(v)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             break;
         }
     }
@@ -124,7 +124,7 @@ fn c32_encode(
         if *current_value == 0 {
             result
                 .try_push(C32_CHARACTERS[0])
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         } else {
             break;
         }
@@ -140,7 +140,7 @@ fn c32_check_encode(
     c32_string: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>,
 ) -> Result<(), ParserError> {
     if version >= 32 {
-        return Err(ParserError::parser_invalid_address_version);
+        return Err(ParserError::InvalidAddressVersion);
     }
 
     // check_data will contain our initial version + signature hash

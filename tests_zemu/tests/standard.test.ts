@@ -118,6 +118,22 @@ describe('Standard', function () {
     }
   })
 
+  test.concurrent.each(models)(`get address2`, async function (m) {
+    const sim = new Zemu(m.path)
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      // Verify that the app works for m/5757'/x/x/x/x
+      const response = await app.getAddressAndPubKey("m/5757'/0'/5'/0/0", AddressVersion.MainnetSingleSig)
+      console.log(response)
+      expect(response.returnCode).toEqual(0x9000)
+
+    } finally {
+      await sim.close()
+    }
+  })
+
   test.concurrent.each(models)(`get identify publicKey`, async function (m) {
     const sim = new Zemu(m.path)
     try {

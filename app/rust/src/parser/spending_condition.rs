@@ -62,7 +62,7 @@ impl TryFrom<u8> for TransactionAuthFieldID {
             x if x == Self::PublicKeyUncompressed as u8 => Ok(Self::PublicKeyUncompressed),
             x if x == Self::SignatureCompressed as u8 => Ok(Self::SignatureCompressed),
             x if x == Self::SignatureUncompressed as u8 => Ok(Self::SignatureUncompressed),
-            _ => Err(ParserError::parser_value_out_of_range),
+            _ => Err(ParserError::ValueOutOfRange),
         }
     }
 }
@@ -148,15 +148,15 @@ impl<'a> SpendingConditionSigner<'a> {
     }
 
     pub fn nonce(&self) -> Result<u64, ParserError> {
-        be_u64::<'a, ParserError>(&self.data[21..])
+        be_u64::<_, ParserError>(&self.data[21..])
             .map(|res| res.1)
-            .map_err(|_| ParserError::parser_unexpected_value)
+            .map_err(|_| ParserError::UnexpectedValue)
     }
 
     pub fn fee(&self) -> Result<u64, ParserError> {
-        be_u64::<'a, ParserError>(&self.data[29..])
+        be_u64::<_, ParserError>(&self.data[29..])
             .map(|res| res.1)
-            .map_err(|_| ParserError::parser_unexpected_value)
+            .map_err(|_| ParserError::UnexpectedValue)
     }
 
     #[inline(never)]
@@ -246,7 +246,7 @@ impl<'a> SinglesigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
         // we take 65-byte signature + 1-byte signature public-key encoding type
-        let len = SIGNATURE_LEN as usize + 1;
+        let len = SIGNATURE_LEN + 1;
         let (raw, _) = take(len)(bytes)?;
         let data = arrayref::array_ref!(bytes, 0, SINGLE_SPENDING_CONDITION_LEN);
         check_canary!();
@@ -261,7 +261,7 @@ impl<'a> SinglesigSpendingCondition<'a> {
             x if x == TransactionPublicKeyEncoding::Uncompressed as u8 => {
                 Ok(TransactionPublicKeyEncoding::Uncompressed)
             }
-            _ => Err(ParserError::parser_invalid_pubkey_encoding),
+            _ => Err(ParserError::InvalidPubkeyEncoding),
         }
     }
 
@@ -353,7 +353,7 @@ impl<'a> MultisigSpendingCondition<'a> {
         };
 
         if index >= num_fields {
-            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+            return Err(nom::Err::Error(ParserError::ValueOutOfRange));
         };
 
         // Parse and ignore preceding fields
@@ -382,7 +382,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     pub fn num_fields(&self) -> Result<u32, ParserError> {
         Self::num_fields_from_bytes(self.auth_fields_raw)
             .map(|num| num.1)
-            .map_err(|_| ParserError::parser_unexpected_value)
+            .map_err(|_| ParserError::UnexpectedValue)
     }
 
     fn clear_signature(&mut self) {
@@ -415,7 +415,7 @@ impl<'a> TransactionSpendingCondition<'a> {
             HashMode::P2PKH | HashMode::P2WPKH => {
                 let (raw, sig) = SinglesigSpendingCondition::from_bytes(raw)?;
                 if !sig.key_encoding()?.is_valid_hash_mode(hash_mode) {
-                    return Err(nom::Err::Error(ParserError::parser_invalid_pubkey_encoding));
+                    return Err(nom::Err::Error(ParserError::InvalidPubkeyEncoding));
                 }
                 (raw, SpendingConditionSignature::Singlesig(sig))
             }
@@ -514,13 +514,11 @@ impl<'a> TransactionSpendingCondition<'a> {
             buf.iter_mut().take(20).for_each(|v| *v = 0);
 
             // append the signatures count at the end 2-bytes
-            let count = self
-                .required_signatures()
-                .ok_or(ParserError::parser_no_data)?;
+            let count = self.required_signatures().ok_or(ParserError::NoData)?;
             buf[20..STANDARD_MULTISIG_AUTH_LEN].copy_from_slice(&count.to_be_bytes());
             return Ok(STANDARD_MULTISIG_AUTH_LEN);
         }
-        Err(ParserError::parser_no_data)
+        Err(ParserError::NoData)
     }
 }
 
