@@ -32,7 +32,6 @@ bool isTestnet() {
            hdPath[1] == HDPATH_1_TESTNET;
 }
 
-#if defined(TARGET_NANOS) || defined(TARGET_NANOX) || defined(TARGET_NANOS2) || defined(TARGET_STAX)
 #include "cx.h"
 
 bool ripemd160(uint8_t *in, uint16_t inLen, uint8_t *out) {
@@ -128,47 +127,44 @@ uint16_t crypto_fillAuthkey_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
 zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t *pubKey, uint16_t pubKeyLen) {
     cx_ecfp_public_key_t cx_publicKey;
     cx_ecfp_private_key_t cx_privateKey;
-    uint8_t privateKeyData[32];
+    uint8_t privateKeyData[SK_LEN_25519];
     MEMZERO(&cx_publicKey, sizeof(cx_publicKey));
 
     if (pubKeyLen < PK_LEN_SECP256K1 || path_len == 0) {
         return zxerr_invalid_crypto_settings;
     }
 
-    zxerr_t err = zxerr_ok;
-    BEGIN_TRY
-    {
-        TRY {
-            os_perso_derive_node_bip32(CX_CURVE_256K1,
-                                       path,
-                                       path_len,
-                                       privateKeyData, NULL);
+    zxerr_t error = zxerr_unknown;
+    CATCH_CXERROR(os_derive_bip32_no_throw(CX_CURVE_256K1,
+                                           path,
+                                           path_len,
+                                           privateKeyData, NULL));
 
-            cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);
-            cx_ecfp_init_public_key(CX_CURVE_256K1, NULL, 0, &cx_publicKey);
-            cx_ecfp_generate_pair(CX_CURVE_256K1, &cx_publicKey, &cx_privateKey, 1);
+    CATCH_CXERROR(cx_ecfp_init_private_key_no_throw(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey));
+    CATCH_CXERROR(cx_ecfp_init_public_key_no_throw(CX_CURVE_256K1, NULL, 0, &cx_publicKey));
+    CATCH_CXERROR(cx_ecfp_generate_pair_no_throw(CX_CURVE_256K1, &cx_publicKey, &cx_privateKey, 1));
 
-            // Format pubkey
-            for (int i = 0; i < 32; i++) {
-                pubKey[i] = cx_publicKey.W[64 - i];
-            }
-            cx_publicKey.W[0] = cx_publicKey.W[64] & 1 ? 0x03 : 0x02; // "Compress" public key in place
-            if ((cx_publicKey.W[32] & 1) != 0) {
-                pubKey[31] |= 0x80;
-            }
-            MEMCPY(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
-        }
-        CATCH_ALL {
-            err = zxerr_ledger_api_error;
-        }
-        FINALLY {
-            MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
-            MEMZERO(privateKeyData, 32);
-        }
+    error = zxerr_ok;
+
+    // Format pubkey
+    for (int i = 0; i < 32; i++) {
+        pubKey[i] = cx_publicKey.W[64 - i];
     }
-    END_TRY;
+    cx_publicKey.W[0] = cx_publicKey.W[64] & 1 ? 0x03 : 0x02; // "Compress" public key in place
+    if ((cx_publicKey.W[32] & 1) != 0) {
+        pubKey[31] |= 0x80;
+    }
+    MEMCPY(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
 
-    return err;
+catch_cx_error:
+    MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
+    MEMZERO(privateKeyData, sizeof(privateKeyData));
+
+    if (error != zxerr_ok) {
+        MEMZERO(pubKey, pubKeyLen);
+    }
+
+    return error;
 }
 
 bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
@@ -183,6 +179,7 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
         return false;
     }
 
+#ifdef APP_TESTING
     {
         zemu_log("pubKey: ***");
         char buffer[PK_LEN_SECP256K1 * 3];
@@ -190,6 +187,7 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
         zemu_log(buffer);
         zemu_log("\n");
     }
+#endif
 
     // calculates the sha256 + ripemd160
     address_temp_t address_temp;
@@ -226,53 +224,35 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
     #endif
 
     cx_ecfp_private_key_t cx_privateKey;
-    uint8_t privateKeyData[32];
-    int signatureLength = 0;
+    uint8_t privateKeyData[SK_LEN_25519];
     unsigned int info = 0;
 
     signature_t *const signature = (signature_t *) buffer;
 
     zxerr_t zxerr = zxerr_unknown;
-    BEGIN_TRY
-    {
-        TRY
-        {
-            // Generate keys
-            os_perso_derive_node_bip32(CX_CURVE_256K1,
-                                       hdPath,
-                                       hdPath_len,
-                                       privateKeyData, NULL);
 
-            cx_ecfp_init_private_key(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey);
+    CATCH_CXERROR(os_derive_bip32_no_throw(CX_CURVE_256K1,
+                                hdPath,
+                                hdPath_len,
+                                privateKeyData, NULL));
 
-            // Sign
-            signatureLength = cx_ecdsa_sign(&cx_privateKey,
-                                            CX_RND_RFC6979 | CX_LAST,
-                                            CX_SHA256,
-                                            message,
-                                            CX_SHA256_SIZE,
-                                            signature->der_signature,
-                                            sizeof_field(signature_t, der_signature),
-                                            &info);
+    CATCH_CXERROR(cx_ecfp_init_private_key_no_throw(CX_CURVE_256K1, privateKeyData, 32, &cx_privateKey));
 
-            zxerr = zxerr_ok;
-        }
-        CATCH_ALL {
-            signatureLength = 0;
-            zxerr = zxerr_ledger_api_error;
-        };
-        FINALLY {
-            MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
-            MEMZERO(privateKeyData, 32);
-        }
-    }
-    END_TRY;
+    // Sign
+    size_t signatureLength = sizeof_field(signature_t, der_signature);
+    CATCH_CXERROR(cx_ecdsa_sign_no_throw(&cx_privateKey,
+                                    CX_RND_RFC6979 | CX_LAST,
+                                    CX_SHA256,
+                                    message,
+                                    CX_SHA256_SIZE,
+                                    signature->der_signature,
+                                    &signatureLength,
+                                    &info));
 
-    if(zxerr != zxerr_ok) {
-        return zxerr;
-    }
+    zxerr = zxerr_ok;
 
     err_convert_e err = convertDERtoRSV(signature->der_signature, info,  signature->r, signature->s, &signature->v);
+
     if (err != no_error) {
         return zxerr_encoding_failed;
     }
@@ -284,9 +264,13 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
                sizeof_field(signature_t, post_sighash) +
                signatureLength;
 
+catch_cx_error:
+    MEMZERO(&cx_privateKey, sizeof(cx_privateKey));
+    MEMZERO(privateKeyData, 32);
+
+    if (zxerr != zxerr_ok) {
+        MEMZERO(signature, signatureMaxlen);
+    }
+
     return zxerr;
 }
-
-#endif
-
-

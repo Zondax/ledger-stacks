@@ -12,7 +12,7 @@ impl<'a> Tuple<'a> {
     // That is wrapped-up here to better access/handle tuple fields/operations
     pub(crate) fn new(value: &'a Value) -> Result<Tuple<'a>, ParserError> {
         if !matches!(value.value_id(), ValueId::Tuple) {
-            return Err(ParserError::parser_unexpected_type);
+            return Err(ParserError::UnexpectedType);
         }
 
         // Omit the type
@@ -22,7 +22,7 @@ impl<'a> Tuple<'a> {
     pub fn num_elements(&self) -> usize {
         // This wont panic as this type was already parsed.
         // and is wrapped-up here to better access its fields.
-        be_u32::<ParserError>(self.0)
+        be_u32::<_, ParserError>(self.0)
             .map(|(_, len)| len as usize)
             .unwrap()
     }
@@ -94,7 +94,8 @@ mod test {
         let mut count = 0;
         for (name, _) in tuple.iter() {
             count += 1;
-            assert!(names.contains(&name.name().to_vec()));
+            let key = name.name().to_vec();
+            assert!(names.contains(&key));
         }
 
         assert_eq!(count, tuple.num_elements());
@@ -118,7 +119,8 @@ mod test {
         let mut count = 0;
         for (name, _) in tuple.iter() {
             count += 1;
-            assert!(names.contains(&name.name().to_vec()));
+            let key = name.name().to_vec();
+            assert!(names.contains(&key));
         }
         assert_eq!(count, tuple.num_elements());
     }
