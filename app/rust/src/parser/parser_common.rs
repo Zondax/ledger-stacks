@@ -47,7 +47,7 @@ impl TryFrom<u8> for TransactionVersion {
         match value {
             0x00 => Ok(Self::Mainnet),
             0x80 => Ok(Self::Testnet),
-            _ => Err(ParserError::parser_unexpected_value),
+            _ => Err(ParserError::UnexpectedValue),
         }
     }
 }
@@ -78,7 +78,7 @@ impl TryFrom<u8> for AssetInfoId {
             0 => AssetInfoId::STX,
             1 => AssetInfoId::FungibleAsset,
             2 => AssetInfoId::NonfungibleAsset,
-            _ => return Err(ParserError::parser_unexpected_value),
+            _ => return Err(ParserError::UnexpectedValue),
         };
         Ok(s)
     }
@@ -160,7 +160,7 @@ impl TryFrom<u8> for HashMode {
             x if x == HashMode::P2WSH as u8 => HashMode::P2WSH,
             x if x == HashMode::P2SHNS as u8 => HashMode::P2SHNS,
             x if x == HashMode::P2WSHNS as u8 => HashMode::P2WSHNS,
-            _ => return Err(ParserError::parser_invalid_hash_mode),
+            _ => return Err(ParserError::InvalidHashMode),
         };
         Ok(mode)
     }
@@ -198,7 +198,7 @@ impl<'a> ContractName<'a> {
         // Contract names, but the docs do not say nothing about what is a valid clarity name either
         // ascii or utf8 values, lets check it here.
         if !name.0.is_ascii() {
-            return Err(ParserError::parser_invalid_contract_name.into());
+            return Err(ParserError::InvalidContractName.into());
         }
 
         Ok((rem, Self(name)))
@@ -210,6 +210,10 @@ impl<'a> ContractName<'a> {
 
     pub fn len(&self) -> usize {
         self.name().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.name().is_empty()
     }
 }
 
@@ -234,7 +238,7 @@ impl<'a> ClarityName<'a> {
         let (_, len) = le_u8(bytes)?;
 
         if len >= Self::MAX_LEN {
-            return Err(ParserError::parser_value_out_of_range.into());
+            return Err(ParserError::ValueOutOfRange.into());
         }
 
         // include the 1-byte len
@@ -247,6 +251,10 @@ impl<'a> ClarityName<'a> {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

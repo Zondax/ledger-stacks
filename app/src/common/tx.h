@@ -90,3 +90,5 @@ uint16_t tx_previous_signer_data(uint8_t **data);
 transaction_type_t tx_get_transaction_type();
 
 zxerr_t tx_structured_msg_hash(uint8_t *out, uint16_t out_len);
+
+uint16_t get_error_message(char *out, uint16_t outLen, parser_error_t error_code);

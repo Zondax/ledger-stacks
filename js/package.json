@@ -21,7 +21,7 @@
   "homepage": "https://github.com/zondax/ledger-stacks",
   "dependencies": {
     "@babel/runtime": "^7.12.5",
-    "@ledgerhq/hw-transport": "^6.28.1",
+    "@ledgerhq/hw-transport": "^6.30.5",
     "@stacks/transactions": "^4.1.0",
     "varuint-bitcoin": "^1.1.2"
   },

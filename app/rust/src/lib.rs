@@ -12,10 +12,10 @@ mod zxformat;
 
 fn debug(_msg: &str) {}
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, fuzzing, feature = "clippy")))]
 use core::panic::PanicInfo;
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, fuzzing, feature = "clippy")))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
@@ -47,7 +47,7 @@ pub fn is_expert_mode() -> bool {
 #[macro_export]
 macro_rules! check_canary {
     () => {
-        use crate::canary;
+        use $crate::canary;
         canary();
     };
 }

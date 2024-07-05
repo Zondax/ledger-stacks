@@ -42,7 +42,7 @@ macro_rules! num_to_str {
     ($name: ident, $number: ty) => {
         pub fn $name(output: &mut [u8], number: $number) -> Result<usize, ParserError> {
             if output.len() < 2 {
-                return Err(ParserError::parser_unexpected_buffer_end);
+                return Err(ParserError::UnexpectedBufferEnd);
             }
 
             let len;
@@ -50,8 +50,8 @@ macro_rules! num_to_str {
             #[cfg(any(test, fuzzing))]
             {
                 let mut writer = Writer::new(output);
-                core::write!(writer, "{}", number)
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                core::write!(writer, "{}", number).map_err(|_| ParserError::UnexpectedBufferEnd)?;
+
                 len = writer.offset;
             }
 
@@ -144,7 +144,7 @@ pub(crate) fn fpstr_to_str(
     let mut writer = Writer::new(out);
 
     // Reproduce our input value as a str
-    let str = core::str::from_utf8(value).map_err(|_| ParserError::parser_context_invalid_chars)?;
+    let str = core::str::from_utf8(value).map_err(|_| ParserError::ContextInvalidChars)?;
     let in_len = str.len();
 
     // edge case when no decimals
@@ -155,27 +155,25 @@ pub(crate) fn fpstr_to_str(
             return writer
                 .write_char('0')
                 .map(|_| 1)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end);
+                .map_err(|_| ParserError::UnexpectedBufferEnd);
         }
         return writer
             .write_str(str)
             .map(|_| writer.offset)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end);
+            .map_err(|_| ParserError::UnexpectedBufferEnd);
     }
 
     if in_len <= decimals as usize {
         if str.starts_with('-') {
             // we need to remove the sign before continuing
-            let remainder = str
-                .get(1..)
-                .ok_or(ParserError::parser_unexpected_characters)?;
+            let remainder = str.get(1..).ok_or(ParserError::UnexpectedCharacters)?;
             return write!(&mut writer, "-0.{:0>1$}", remainder, decimals as usize)
                 .map(|_| writer.offset)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end);
+                .map_err(|_| ParserError::UnexpectedBufferEnd);
         }
         return write!(&mut writer, "0.{:0>1$}", str, decimals as usize)
             .map(|_| writer.offset)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end);
+            .map_err(|_| ParserError::UnexpectedBufferEnd);
     }
 
     let fp = in_len - decimals as usize;
@@ -183,7 +181,7 @@ pub(crate) fn fpstr_to_str(
     let right = str.get(fp..in_len).unwrap();
     write!(&mut writer, "{}.{}", left, right)
         .map(|_| writer.offset)
-        .map_err(|_| ParserError::parser_unexpected_buffer_end)
+        .map_err(|_| ParserError::UnexpectedBufferEnd)
 }
 
 #[inline(never)]
@@ -199,7 +197,7 @@ pub fn pageString(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result
     let in_len = in_value.len();
 
     if out_len == 0 || in_len == 0 {
-        return Err(ParserError::parser_no_data);
+        return Err(ParserError::NoData);
     }
     page_count = (in_len / out_len) as u8;
     let last_chunk_len = in_len % out_len;
