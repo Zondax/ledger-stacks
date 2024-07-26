@@ -256,6 +256,110 @@ impl<'a> Value<'a> {
 }
 
 #[cfg(test)]
+pub fn value_to_string_impl<const MAX_DEPTH: u8>(
+    depth: &mut u8,
+    bytes: &[u8],
+) -> Result<std::string::String, nom::Err<ParserError>> {
+    use nom::number::complete::{be_i128, be_u128, be_u32};
+    use std::format;
+    use std::string::ToString;
+    use std::vec::Vec;
+    if bytes.is_empty() {
+        return Ok("Empty".to_string());
+    }
+    // get value_id
+    let (rem, id) = ValueId::from_bytes(bytes).map_err(|_| ParserError::UnexpectedValue)?;
+    let value_str = match id {
+        ValueId::Int => {
+            let (_, value) = be_i128(rem)?;
+            format!("Int: {}", value)
+        }
+        ValueId::UInt => {
+            let (_, value) = be_u128(rem)?;
+            format!("UInt: {}", value)
+        }
+        ValueId::Buffer => {
+            let (rem, len) = be_u32(rem)?;
+            let buffer = &rem[..len as usize];
+            format!("Buffer: \"{}\"", hex::encode(buffer))
+        }
+        ValueId::BoolTrue => "Bool: true".to_string(),
+        ValueId::BoolFalse => "Bool: false".to_string(),
+        ValueId::StandardPrincipal => {
+            let (_, principal) = StandardPrincipal::from_bytes(rem)?;
+            format!("StandardPrincipal: \"{}\"", hex::encode(principal.0))
+        }
+        ValueId::ContractPrincipal => {
+            let (_, contract_principal) = ContractPrincipal::read_as_bytes(rem)?;
+            format!("ContractPrincipal: \"{}\"", hex::encode(contract_principal))
+        }
+        ValueId::OptionalNone => "Optional: None".to_string(),
+        ValueId::List => {
+            let (mut remain, num_items) = be_u32(rem)?;
+            let mut list_items = Vec::new();
+            for _ in 0..num_items {
+                *depth += 1;
+                let item = value_to_string_impl::<MAX_DEPTH>(depth, remain)?;
+                list_items.push(item);
+                let value_len = Value::value_len_impl::<MAX_DEPTH>(depth, remain)?;
+
+                // Move to the next item
+                let (rem, _) = take(value_len)(remain)?;
+                remain = rem;
+            }
+            format!("List: [{}]", list_items.join(", "))
+        }
+        ValueId::Tuple => {
+            let (mut remain, num_pairs) = be_u32(rem)?;
+            let mut tuple_items = Vec::new();
+            for _ in 0..num_pairs {
+                let (rem, key) = ClarityName::read_as_bytes(remain)?;
+                let key_str =
+                    std::str::from_utf8(&key[1..]).map_err(|_| ParserError::InvalidUnicode)?;
+
+                let value = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+                tuple_items.push(format!("{}: {}", key_str, value));
+
+                let value_len = Value::value_len_impl::<MAX_DEPTH>(depth, rem)?;
+
+                // Move to the next pair
+                let (rem, _) = take(key.len() + value_len)(remain)?;
+                remain = rem;
+            }
+            format!("Tuple: {{{}}}", tuple_items.join(", "))
+        }
+        ValueId::StringAscii => {
+            let (rem, len) = be_u32(rem)?;
+            let s = std::str::from_utf8(&rem[..len as usize])
+                .map_err(|_| ParserError::InvalidUnicode)?;
+            format!("StringAscii: \"{}\"", s)
+        }
+        ValueId::StringUtf8 => {
+            let (rem, len) = be_u32(rem)?;
+            let s = std::str::from_utf8(&rem[..len as usize])
+                .map_err(|_| ParserError::InvalidUnicode)?;
+            format!("StringUtf8: \"{}\"", s)
+        }
+        ValueId::ResponseErr => {
+            *depth += 1;
+            let inner = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+            format!("ResponseErr: {}", inner)
+        }
+        ValueId::ResponseOk => {
+            *depth += 1;
+            let inner = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+            format!("ResponseOk: {}", inner)
+        }
+        ValueId::OptionalSome => {
+            *depth += 1;
+            let inner = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+            format!("Optional: Some({})", inner)
+        }
+    };
+    Ok(value_str)
+}
+
+#[cfg(test)]
 mod test {
     use super::*;
 
@@ -350,5 +454,26 @@ mod test {
         let bytes = hex::decode(encoded).unwrap();
         let (_, value) = Value::from_bytes::<10>(&bytes).unwrap();
         assert!(matches!(value.value_id(), ValueId::StringUtf8));
+    }
+
+    #[test]
+    fn print_value() {
+        let domain = "0c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e30";
+        let data = hex::decode(domain).unwrap();
+        let mut depth = 0;
+        let res = value_to_string_impl::<100>(&mut depth, &data).unwrap();
+        std::println!("domain: {}", res);
+
+        let data = hex::decode("0c0000000a016100ffffffffffffffffffffffffffffffff01620200000008616263646566676808636861696e2d69640100000000000000000000000000000001096572726f725f6d7367080e0000000b756e6b6e6f776e20555249016d0b0000000400ffffffffffffffffffffffffffffffff00ffffffffffffffffffffffffffffffff00ffffffffffffffffffffffffffffffff00ffffffffffffffffffffffffffffffff046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e30066e65737465640a0b00000002090a00ffffffffffffffffffffffffffffff9c097072696e636970616c0516a5d9d331000f5b79578ce56bd157f29a9056f0d60b726573756c745f63616c6c070d00000004646f6e650776657273696f6e0b000000030c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e30010000000000000000000000000008f4eb").unwrap();
+        let res = value_to_string_impl::<100>(&mut depth, &data).unwrap();
+        std::println!("msg1: {}", res);
+
+        let data = hex::decode("0000000001040025a6b5c2c50a2abbff700b87c8dfe29bda77523b0000000000000003000000000000e41800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003020000000101021625a6b5c2c50a2abbff700b87c8dfe29bda77523b16dbd1c48f77bf2f9506a3d79117fc1c7eda3b89100f577261707065642d426974636f696e0f777261707065642d626974636f696e05000000000015e3070216982f3ec112a5f5928a5c96a914bd733793b896a51f61726b6164696b6f2d7661756c74732d6f7065726174696f6e732d76312d320a6f70656e2d7661756c740000000b0616982f3ec112a5f5928a5c96a914bd733793b896a51b61726b6164696b6f2d7661756c74732d746f6b656e732d76312d310616982f3ec112a5f5928a5c96a914bd733793b896a51961726b6164696b6f2d7661756c74732d646174612d76312d310616982f3ec112a5f5928a5c96a914bd733793b896a51b61726b6164696b6f2d7661756c74732d736f727465642d76312d310616982f3ec112a5f5928a5c96a914bd733793b896a52061726b6164696b6f2d7661756c74732d706f6f6c2d6163746976652d76312d310616982f3ec112a5f5928a5c96a914bd733793b896a51c61726b6164696b6f2d7661756c74732d68656c706572732d76312d310616982f3ec112a5f5928a5c96a914bd733793b896a51461726b6164696b6f2d6f7261636c652d76322d330616dbd1c48f77bf2f9506a3d79117fc1c7eda3b89100f577261707065642d426974636f696e010000000000000000000000000015e307010000000000000000000000001ddca7400a0516c9a03720732a3148129a121f58d2ba37f6c649450100000000000000000000000000000000").unwrap();
+        let res = value_to_string_impl::<100>(&mut depth, &data).unwrap();
+        std::println!("bug1: {}", res);
+        let mut depth = 0;
+        let len = Value::value_len_impl::<100>(&mut depth, &data).unwrap();
+        let res = value_to_string_impl::<100>(&mut depth, &data[BIG_INT_SIZE + 1..]).unwrap();
+        std::println!("bug2: {}", res);
     }
 }
