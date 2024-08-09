@@ -35,7 +35,7 @@ The general structure of commands and responses is as follows:
 | 0x6F00      | Unknown                 |
 | 0x9000      | Success                 |
 
----------
+---
 
 ## Command definition
 
@@ -120,7 +120,7 @@ _First Packet_
 | Path[3] | byte (4) | Derivation Path Data | ?          |
 | Path[4] | byte (4) | Derivation Path Data | ?          |
 
-*Other Chunks/Packets*
+_Other Chunks/Packets_
 
 | Field | Type     | Content | Expected |
 | ----- | -------- | ------- | -------- |
@@ -141,3 +141,53 @@ Data is defined as:
 | secp256k1 V | byte (1)        | Signature   |                          |
 | SIG         | byte (variable) | Signature   | DER format               |
 | SW1-SW2     | byte (2)        | Return code | see list of return codes |
+
+### INS_SIGN_JWT_SECP256K1
+
+#### Command
+
+| Field   | Type     | Content                | Expected    |
+| ------- | -------- | ---------------------- | ----------- |
+| CLA     | byte (1) | Application Identifier | 0x09        |
+| INS     | byte (1) | Instruction ID         | 0x04        |
+| P1      | byte (1) | Chunk index            | 1 to N      |
+| P2      | byte (1) | Total chunks           | N           |
+| L       | byte (1) | Bytes in payload       | (depends)   |
+| Path    | byte (?) | Derivation Path Data   | (see below) |
+| Message | byte (?) | JWT message to sign    | (variable)  |
+
+##### Derivation Path
+
+- Starts with "m"
+- Can be either 6 or 4 levels deep
+- For 6 levels: "m/44'/5757'/5'/0/3"
+- For 4 levels (Identity): "m/888'/0'/<account>"
+- Each level is serialized as a 4-byte little-endian unsigned integer
+- Hardened levels (with ') have 0x80000000 added to their value
+
+#### Response
+
+| Field            | Type      | Content               | Note                     |
+| ---------------- | --------- | --------------------- | ------------------------ |
+| returnCode       | byte (2)  | Return code           | see list of return codes |
+| errorMessage     | byte (??) | Error message string  | Optional                 |
+| postSignHash     | byte (32) | Hash after signing    | Optional                 |
+| signatureCompact | byte (65) | Compact signature     | Optional                 |
+| signatureDER     | byte (??) | DER-encoded signature | Optional                 |
+
+#### Processing
+
+1. The message is split into chunks of up to 250 bytes each.
+2. Each chunk is sent in a separate APDU command.
+3. P1 indicates the current chunk index (starting from 1).
+4. P2 indicates the total number of chunks.
+5. The first chunk includes the derivation path.
+6. Subsequent chunks only contain message data.
+7. The device processes all chunks and returns the final result.
+
+#### Notes
+
+- The CLA (0x09) is specific to this application.
+- The INS (0x04) identifies this as a SIGN_JWT_SECP256K1 operation.
+- The message length is determined by the total payload across all chunks.
+- Error responses may not include all fields of the success response.
