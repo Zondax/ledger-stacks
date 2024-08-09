@@ -92,6 +92,53 @@ The general structure of commands and responses is as follows:
 
 ---
 
+### INS_GET_AUTH_PUBKEY
+
+#### Command
+
+| Field | Type     | Content                | Expected          |
+| ----- | -------- | ---------------------- | ----------------- |
+| CLA   | byte (1) | Application Identifier | 0x09              |
+| INS   | byte (1) | Instruction ID         | 0x03              |
+| P1    | byte (1) | Retrieval mode         | 0 (Only retrieve) |
+| P2    | byte (1) | Parameter 2            | 0 (ignored)       |
+| L     | byte (1) | Bytes in payload       | (depends)         |
+| Path  | byte (?) | Derivation Path Data   | (see below)       |
+
+##### Derivation Path
+
+- Starts with "m"
+- Can be either 6 or 4 levels deep
+- For 6 levels: "m/44'/5757'/5'/0/3"
+- For 4 levels (Identity): "m/888'/0'/<account>"
+- Each level is serialized as a 4-byte little-endian unsigned integer
+- Hardened levels (with ') have 0x80000000 added to their value
+
+#### Response
+
+| Field     | Type      | Content           | Note               |
+| --------- | --------- | ----------------- | ------------------ |
+| publicKey | byte (??) | Public Key        |                    |
+| address   | byte (??) | Address as String |                    |
+| SW1-SW2   | byte (2)  | Return code       | 0x9000 for success |
+
+#### Processing
+
+1. The command is sent with the serialized derivation path as payload.
+2. The device derives the public key and address for the given path.
+3. The device returns the public key and address in the response.
+
+#### Notes
+
+- The CLA (0x09) is specific to this application.
+- The INS (0x03) identifies this as a GET_AUTH_PUBKEY operation.
+- P1 is set to 0, indicating "only retrieve" mode.
+- P2 is ignored in this command.
+- The expected successful return code is 0x9000.
+- In case of an error, the response will include a return code and an error message instead of the public key and address.
+
+---
+
 ### INS_SIGN_SECP256K1
 
 #### Command
