@@ -146,14 +146,8 @@ zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t
 
     error = zxerr_ok;
 
-    // Format pubkey
-    for (int i = 0; i < 32; i++) {
-        pubKey[i] = cx_publicKey.W[64 - i];
-    }
-    cx_publicKey.W[0] = cx_publicKey.W[64] & 1 ? 0x03 : 0x02; // "Compress" public key in place
-    if ((cx_publicKey.W[32] & 1) != 0) {
-        pubKey[31] |= 0x80;
-    }
+    // "Compress" public key in place
+    cx_publicKey.W[0] = cx_publicKey.W[64] & 1 ? 0x03 : 0x02;
     MEMCPY(pubKey, cx_publicKey.W, PK_LEN_SECP256K1);
 
 catch_cx_error:
