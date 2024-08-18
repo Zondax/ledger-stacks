@@ -5,12 +5,15 @@ extern "C" {
     fn _zemu_log_stack(buffer: *const u8);
 }
 
-#[cfg(not(test))]
+#[cfg(not(any(test, fuzzing)))]
 pub fn c_zemu_log_stack<S: AsRef<[u8]>>(s: S) {
     unsafe { _zemu_log_stack(s.as_ref().as_ptr()) }
 }
-#[cfg(test)]
-pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {}
+
+#[cfg(any(test, fuzzing))]
+pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {
+    std::println!("{:?}", std::str::from_utf8(_s.as_ref()).unwrap());
+}
 
 // extern function that uses the device sdk to compute a hash
 extern "C" {

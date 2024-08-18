@@ -78,7 +78,8 @@ app/obj
 
 app/glyphs/glyphs.*
 
-hfuzz/hfuzz_workspace
+app/hfuzz-parser/hfuzz_workspace/transaction/input/*.honggfuzz.cov
+
 
 tests_zemu/snapshots-tmp
 app/output/*.apdu
