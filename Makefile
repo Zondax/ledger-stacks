@@ -44,3 +44,8 @@ test_all:
 prod:
 	make PRODUCTION_BUILD=1
 
+rust_fuzz:
+	cd app/hfuzz-parser/ && cargo hfuzz run transaction
+
+
+

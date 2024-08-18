@@ -349,7 +349,9 @@ impl<'a> MultisigSpendingCondition<'a> {
         // Compute and check index
         let index = match index {
             Index::FromZero(i) => i,
-            Index::FromLast(i) => num_fields - 1 - i,
+            Index::FromLast(i) => num_fields // num_field -1 - i
+                .checked_sub(i + 1)
+                .ok_or(ParserError::ValueOutOfRange)?,
         };
 
         if index >= num_fields {
