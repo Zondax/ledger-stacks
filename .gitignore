@@ -79,6 +79,9 @@ app/obj
 app/glyphs/glyphs.*
 
 app/hfuzz-parser/hfuzz_workspace/transaction/input/*.honggfuzz.cov
+app/hfuzz-parser/hfuzz_target
+app/hfuzz-parser/hfuzz_workspace/transaction/*.TXT
+app/hfuzz-parser/hfuzz_workspace/transaction/*.fuzz
 
 
 tests_zemu/snapshots-tmp
