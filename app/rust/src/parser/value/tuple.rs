@@ -3,7 +3,8 @@ use nom::number::complete::be_u32;
 
 // This type is meant to get from the Value type
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Tuple<'a>(pub &'a [u8]);
 
 impl<'a> Tuple<'a> {
@@ -11,7 +12,7 @@ impl<'a> Tuple<'a> {
     // That is wrapped-up here to better access/handle tuple fields/operations
     pub(crate) fn new(value: &'a Value) -> Result<Tuple<'a>, ParserError> {
         if !matches!(value.value_id(), ValueId::Tuple) {
-            return Err(ParserError::parser_unexpected_type);
+            return Err(ParserError::UnexpectedType);
         }
 
         // Omit the type
@@ -21,7 +22,7 @@ impl<'a> Tuple<'a> {
     pub fn num_elements(&self) -> usize {
         // This wont panic as this type was already parsed.
         // and is wrapped-up here to better access its fields.
-        be_u32::<ParserError>(self.0)
+        be_u32::<_, ParserError>(self.0)
             .map(|(_, len)| len as usize)
             .unwrap()
     }
@@ -42,7 +43,8 @@ impl<'a> Tuple<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TupleIter<'a> {
     data: &'a [u8],
     read: usize,
@@ -54,9 +56,9 @@ impl<'a> Iterator for TupleIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.read < self.data.len() {
             // We unwrap here as all the inner fields of this tuple were already parsed
-            let (rem, name) = ClarityName::from_bytes(&self.data[self.read..]).unwrap();
+            let (rem, name) = ClarityName::from_bytes(&self.data[self.read..]).ok()?;
             // limit recursion to MAX_DEPTH
-            let (rem, value) = Value::from_bytes::<MAX_DEPTH>(rem).unwrap();
+            let (rem, value) = Value::from_bytes::<MAX_DEPTH>(rem).ok()?;
             self.read = self.data.len() - rem.len();
 
             Some((name, value))
@@ -92,7 +94,8 @@ mod test {
         let mut count = 0;
         for (name, _) in tuple.iter() {
             count += 1;
-            assert!(names.contains(&name.name().to_vec()));
+            let key = name.name().to_vec();
+            assert!(names.contains(&key));
         }
 
         assert_eq!(count, tuple.num_elements());
@@ -116,7 +119,8 @@ mod test {
         let mut count = 0;
         for (name, _) in tuple.iter() {
             count += 1;
-            assert!(names.contains(&name.name().to_vec()));
+            let key = name.name().to_vec();
+            assert!(names.contains(&key));
         }
         assert_eq!(count, tuple.num_elements());
     }

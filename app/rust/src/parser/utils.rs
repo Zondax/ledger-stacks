@@ -30,3 +30,55 @@ pub fn read_varint(input: &[u8]) -> Result<(&[u8], u64), nom::Err<ParserError>> 
         _ => Ok((rem, prefix as _)),
     }
 }
+
+pub trait ApduPanic: Sized {
+    type Item;
+
+    fn apdu_unwrap(self) -> Self::Item;
+
+    fn apdu_expect(self, s: &str) -> Self::Item;
+}
+
+impl<T, E> ApduPanic for Result<T, E> {
+    type Item = T;
+
+    #[inline]
+    fn apdu_unwrap(self) -> Self::Item {
+        match self {
+            Ok(t) => t,
+            // be sure this point is unreachable when calling this function
+            Err(_) => unsafe { std::hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    fn apdu_expect(self, _: &str) -> Self::Item {
+        match self {
+            Ok(t) => t,
+            // be sure this point is unreachable when calling this function
+            Err(_) => unsafe { std::hint::unreachable_unchecked() },
+        }
+    }
+}
+
+impl<T> ApduPanic for Option<T> {
+    type Item = T;
+
+    #[inline]
+    fn apdu_unwrap(self) -> Self::Item {
+        match self {
+            Some(t) => t,
+            // be sure this point is unreachable when calling this function
+            _ => unsafe { std::hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    fn apdu_expect(self, _: &str) -> Self::Item {
+        match self {
+            Some(t) => t,
+            // be sure this point is unreachable when calling this function
+            _ => unsafe { std::hint::unreachable_unchecked() },
+        }
+    }
+}

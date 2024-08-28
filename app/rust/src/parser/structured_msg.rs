@@ -13,7 +13,8 @@ use crate::bolos::{sha256, SHA256_LEN};
 use hex::encode_to_slice;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Domain<'a>(Value<'a>);
 
 impl<'a> Domain<'a> {
@@ -26,7 +27,7 @@ impl<'a> Domain<'a> {
         // Domain is a tuple with 3 elements
         let tuple = value
             .tuple()
-            .ok_or(ParserError::parser_invalid_structured_msg)?;
+            .ok_or(ParserError::InvalidStructuredMsg)?;
 
         let mut items = 0;
         for (key, value) in tuple.iter() {
@@ -35,13 +36,13 @@ impl<'a> Domain<'a> {
                 (b"name", ValueId::StringAscii) => {}
                 (b"version", ValueId::StringAscii) => {}
                 (b"chain-id", ValueId::UInt) => {}
-                _ => return Err(ParserError::parser_invalid_structured_msg.into()),
+                _ => return Err(ParserError::InvalidStructuredMsg.into()),
             }
             items += 1;
         }
 
         if items != tuple.num_elements() || items != Self::LEN {
-            return Err(ParserError::parser_invalid_structured_msg.into());
+            return Err(ParserError::InvalidStructuredMsg.into());
         }
 
         Ok((rem, Self(value)))
@@ -74,7 +75,11 @@ impl<'a> Domain<'a> {
         let mut buff = [0; 39];
 
         if let Some((key, value)) = self.tuple().iter().nth(display_idx as usize) {
-            out_key[0..key.name().len()].copy_from_slice(key.name());
+            let name = key.name();
+            let m = out_key
+                .get_mut(0..name.len())
+                .ok_or(ParserError::UnexpectedBufferEnd)?;
+            m.copy_from_slice(name);
 
             let id = value.value_id();
 
@@ -90,13 +95,14 @@ impl<'a> Domain<'a> {
                 pageString(out_value, string.content(), page_idx)
             }
         } else {
-            Err(ParserError::parser_unexpected_number_items)
+            Err(ParserError::UnexpectedNumberItems)
         }
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StructuredMsg<'a>(&'a [u8]);
 
 impl<'a> StructuredMsg<'a> {
@@ -156,7 +162,7 @@ impl<'a> StructuredMsg<'a> {
     fn validate(data: &[u8]) -> Result<(), ParserError> {
         let (rem, _) = Value::from_bytes::<MAX_DEPTH>(data)?;
         if !rem.is_empty() {
-            return Err(ParserError::parser_unexpected_value);
+            return Err(ParserError::UnexpectedValue);
         }
         Ok(())
     }
@@ -179,7 +185,7 @@ impl<'a> StructuredMsg<'a> {
     #[inline(never)]
     pub fn get_hash(&self, out: &mut [u8]) -> Result<(), ParserError> {
         if out.len() < SHA256_LEN {
-            return Err(ParserError::parser_unexpected_buffer_end);
+            return Err(ParserError::UnexpectedBufferEnd);
         }
         // get prefix
         let prefix = Self::prefix();
@@ -230,7 +236,7 @@ impl<'a> StructuredMsg<'a> {
                 let mut writer_key = Writer::new(out_key);
                 writer_key
                     .write_str("Message Hash")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
                 // 1. get prefix hash
                 let mut hash = [0; SHA256_LEN];
@@ -241,12 +247,12 @@ impl<'a> StructuredMsg<'a> {
                 let mut hex = [0; SHA256_LEN * 2];
 
                 encode_to_slice(&hash[..], &mut hex[..])
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
                 pageString(out_value, &hex[..], page_idx)
             }
 
-            _ => Err(ParserError::parser_unexpected_number_items),
+            _ => Err(ParserError::UnexpectedNumberItems),
         }
     }
 }

@@ -21,13 +21,6 @@
 #include "coin.h"
 #include "rslib.h"
 
-#if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
-// For some reason NanoX requires this function
-void __assert_fail(const char * assertion, const char * file, unsigned int line, const char * function){
-    while(1) {};
-}
-#endif
-
 static zxerr_t parser_allocate();
 static zxerr_t parser_deallocate();
 
@@ -131,6 +124,18 @@ uint16_t parser_last_transaction_block(uint8_t **last_block) {
 
 int8_t parser_is_transaction_multisig() {
     return _is_multisig(&parser_state);
+}
+
+uint32_t parser_num_multisig_fields() {
+    return _num_multisig_fields(&parser_state);
+}
+
+parser_error_t parser_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data) {
+    return _get_multisig_field(&parser_state, index, id, data);
+}
+
+parser_error_t parser_hash_mode(uint8_t *hash_mode) {
+    return _hash_mode(&parser_state, hash_mode);
 }
 
 uint16_t parser_previous_signer_data(uint8_t **data) {
@@ -261,7 +266,7 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Invalid json web token";
         case parser_invalid_structured_msg:
             return "Invalid structured message";
-        case parser_recursion_limit: 
+        case parser_recursion_limit:
             return "Recursion limit reached while parsing";
         case parser_invalid_token_transfer_principal:
             return "Invalid token transfer principal";

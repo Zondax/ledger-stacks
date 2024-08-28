@@ -19,6 +19,7 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 // handle
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
+pub const PUBKEY_LEN: usize = 33;
 pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
 
 // A recursion limit use to control ram usage when parsing
@@ -32,7 +33,8 @@ pub const MAX_DEPTH: u8 = 20;
 
 /// Stacks transaction versions
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionVersion {
     Mainnet = 0x00,
     Testnet = 0x80,
@@ -45,7 +47,7 @@ impl TryFrom<u8> for TransactionVersion {
         match value {
             0x00 => Ok(Self::Mainnet),
             0x80 => Ok(Self::Testnet),
-            _ => Err(ParserError::parser_unexpected_value),
+            _ => Err(ParserError::UnexpectedValue),
         }
     }
 }
@@ -60,7 +62,8 @@ impl TransactionVersion {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Copy, Debug)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum AssetInfoId {
     STX = 0,
     FungibleAsset = 1,
@@ -75,14 +78,15 @@ impl TryFrom<u8> for AssetInfoId {
             0 => AssetInfoId::STX,
             1 => AssetInfoId::FungibleAsset,
             2 => AssetInfoId::NonfungibleAsset,
-            _ => return Err(ParserError::parser_unexpected_value),
+            _ => return Err(ParserError::UnexpectedValue),
         };
         Ok(s)
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct AssetInfo<'a> {
     pub address: StacksAddress<'a>,
     pub contract_name: ContractName<'a>,
@@ -121,7 +125,8 @@ impl<'a> AssetInfo<'a> {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 // Flag used to know if the signer is valid and
 // who is
 pub enum SignerId {
@@ -133,12 +138,15 @@ pub enum SignerId {
 // tag address hash modes as "singlesig" or "multisig" so we can't accidentally construct an
 // invalid spending condition
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum HashMode {
     P2PKH = 0x00,
     P2SH = 0x01,
     P2WPKH = 0x02,
     P2WSH = 0x03,
+    P2SHNS = 0x05,  // Non-sequential multisig
+    P2WSHNS = 0x07, // Non-sequential multisig
 }
 
 impl TryFrom<u8> for HashMode {
@@ -150,7 +158,9 @@ impl TryFrom<u8> for HashMode {
             x if x == HashMode::P2WPKH as u8 => HashMode::P2WPKH,
             x if x == HashMode::P2SH as u8 => HashMode::P2SH,
             x if x == HashMode::P2WSH as u8 => HashMode::P2WSH,
-            _ => return Err(ParserError::parser_invalid_hash_mode),
+            x if x == HashMode::P2SHNS as u8 => HashMode::P2SHNS,
+            x if x == HashMode::P2WSHNS as u8 => HashMode::P2WSHNS,
+            _ => return Err(ParserError::InvalidHashMode),
         };
         Ok(mode)
     }
@@ -175,7 +185,8 @@ impl HashMode {
 // contract name with valid charactes being
 // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct ContractName<'a>(ClarityName<'a>);
 
 impl<'a> ContractName<'a> {
@@ -187,7 +198,7 @@ impl<'a> ContractName<'a> {
         // Contract names, but the docs do not say nothing about what is a valid clarity name either
         // ascii or utf8 values, lets check it here.
         if !name.0.is_ascii() {
-            return Err(ParserError::parser_invalid_contract_name.into());
+            return Err(ParserError::InvalidContractName.into());
         }
 
         Ok((rem, Self(name)))
@@ -200,15 +211,20 @@ impl<'a> ContractName<'a> {
     pub fn len(&self) -> usize {
         self.name().len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.name().is_empty()
+    }
 }
 
 // A clarity value used in tuples
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct ClarityName<'a>(pub &'a [u8]);
 
 impl<'a> ClarityName<'a> {
-    const MAX_LEN: u8 = 128;
+    pub const MAX_LEN: u8 = 128;
 
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
@@ -222,7 +238,7 @@ impl<'a> ClarityName<'a> {
         let (_, len) = le_u8(bytes)?;
 
         if len >= Self::MAX_LEN {
-            return Err(ParserError::parser_value_out_of_range.into());
+            return Err(ParserError::ValueOutOfRange.into());
         }
 
         // include the 1-byte len
@@ -236,10 +252,15 @@ impl<'a> ClarityName<'a> {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 // we take HASH160_LEN + 1-byte hash mode
 pub struct StacksAddress<'a>(pub &'a [u8; STACKS_ADDR_LEN]);
 

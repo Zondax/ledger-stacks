@@ -2,7 +2,10 @@
 
 use core::fmt::{self, Write};
 
-use crate::parser::{fp_uint64_to_str, ParserError};
+use crate::parser::ParserError;
+
+#[cfg(not(any(test, fuzzing)))]
+use crate::parser::fp_uint64_to_str;
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
 
@@ -39,26 +42,33 @@ macro_rules! num_to_str {
     ($name: ident, $number: ty) => {
         pub fn $name(output: &mut [u8], number: $number) -> Result<usize, ParserError> {
             if output.len() < 2 {
-                return Err(ParserError::parser_unexpected_buffer_end);
+                return Err(ParserError::UnexpectedBufferEnd);
             }
-            let len = if cfg!(any(test, fuzzing)) {
+
+            let len;
+
+            #[cfg(any(test, fuzzing))]
+            {
                 let mut writer = Writer::new(output);
-                core::write!(writer, "{}", number)
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
-                writer.offset
-            } else {
-                // We add this path here because of the issue with the write! fmt trait
+                core::write!(writer, "{}", number).map_err(|_| ParserError::UnexpectedBufferEnd)?;
+
+                len = writer.offset;
+            }
+
+            #[cfg(not(any(test, fuzzing)))]
+            {
+                // We add this path here because pic issues with the write! trait
                 // so that it is preferable to use the c implementation when running on
-                // the ledger nano, nanoX.
+                // the device.
                 unsafe {
-                    fp_uint64_to_str(
+                    len = fp_uint64_to_str(
                         output.as_mut_ptr() as _,
                         output.len() as u16,
                         number as _,
                         0,
-                    ) as usize
+                    ) as usize;
                 }
-            };
+            }
             Ok(len)
         }
     };
@@ -100,11 +110,7 @@ pub fn fpu64_to_str_check_test(
     value: u64,
     decimals: u8,
 ) -> Result<usize, ParserError> {
-    let len = if cfg!(any(test, fuzzing)) {
-        fpu64_to_str(out, value, decimals)? as usize
-    } else {
-        unsafe { fp_uint64_to_str(out.as_mut_ptr() as _, out.len() as _, value, decimals) as usize }
-    };
+    let len = fpu64_to_str(out, value, decimals)? as usize;
     Ok(len)
 }
 
@@ -138,7 +144,7 @@ pub(crate) fn fpstr_to_str(
     let mut writer = Writer::new(out);
 
     // Reproduce our input value as a str
-    let str = core::str::from_utf8(value).map_err(|_| ParserError::parser_context_invalid_chars)?;
+    let str = core::str::from_utf8(value).map_err(|_| ParserError::ContextInvalidChars)?;
     let in_len = str.len();
 
     // edge case when no decimals
@@ -149,27 +155,25 @@ pub(crate) fn fpstr_to_str(
             return writer
                 .write_char('0')
                 .map(|_| 1)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end);
+                .map_err(|_| ParserError::UnexpectedBufferEnd);
         }
         return writer
             .write_str(str)
             .map(|_| writer.offset)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end);
+            .map_err(|_| ParserError::UnexpectedBufferEnd);
     }
 
     if in_len <= decimals as usize {
         if str.starts_with('-') {
             // we need to remove the sign before continuing
-            let remainder = str
-                .get(1..)
-                .ok_or(ParserError::parser_unexpected_characters)?;
+            let remainder = str.get(1..).ok_or(ParserError::UnexpectedCharacters)?;
             return write!(&mut writer, "-0.{:0>1$}", remainder, decimals as usize)
                 .map(|_| writer.offset)
-                .map_err(|_| ParserError::parser_unexpected_buffer_end);
+                .map_err(|_| ParserError::UnexpectedBufferEnd);
         }
         return write!(&mut writer, "0.{:0>1$}", str, decimals as usize)
             .map(|_| writer.offset)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end);
+            .map_err(|_| ParserError::UnexpectedBufferEnd);
     }
 
     let fp = in_len - decimals as usize;
@@ -177,7 +181,7 @@ pub(crate) fn fpstr_to_str(
     let right = str.get(fp..in_len).unwrap();
     write!(&mut writer, "{}.{}", left, right)
         .map(|_| writer.offset)
-        .map_err(|_| ParserError::parser_unexpected_buffer_end)
+        .map_err(|_| ParserError::UnexpectedBufferEnd)
 }
 
 #[inline(never)]
@@ -193,7 +197,7 @@ pub fn pageString(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result
     let in_len = in_value.len();
 
     if out_len == 0 || in_len == 0 {
-        return Err(ParserError::parser_no_data);
+        return Err(ParserError::NoData);
     }
     page_count = (in_len / out_len) as u8;
     let last_chunk_len = in_len % out_len;

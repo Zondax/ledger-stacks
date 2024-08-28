@@ -11,23 +11,26 @@ const INT_WIDTH: usize = 16;
 // Represents the inner bytes which conform either a Int128 as defined by SIP005 regarding
 // clarity values types.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 struct IntBytes<'a>(&'a [u8; INT_WIDTH]);
 
 // Represents a clarity signed integer of 128 bits
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Int128(i128);
 
 // Represents a clarity unsigned integer of 128 bits
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct UInt128(u128);
 
 impl Int128 {
     pub(crate) fn new(value: &super::Value) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::Int) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         // omit value_type as we know it is an int
@@ -38,11 +41,11 @@ impl Int128 {
 
     pub fn from_bytes(data: &[u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         if data.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end.into());
+            return Err(ParserError::UnexpectedBufferEnd.into());
         }
 
         if !matches!(ValueId::try_from(data[0])?, ValueId::Int) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType.into());
         }
 
         // check the number is parsed
@@ -58,7 +61,7 @@ impl Int128 {
 impl UInt128 {
     pub(crate) fn new(value: &super::Value) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::UInt) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         // omit value_type as we know it is an uint
@@ -69,11 +72,11 @@ impl UInt128 {
 
     pub fn from_bytes(data: &[u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
         if data.is_empty() {
-            return Err(ParserError::parser_unexpected_buffer_end.into());
+            return Err(ParserError::UnexpectedBufferEnd.into());
         }
 
         if !matches!(ValueId::try_from(data[0])?, ValueId::UInt) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType.into());
         }
 
         // check the number is parsed

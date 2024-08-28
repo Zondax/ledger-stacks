@@ -1,3 +1,5 @@
+#[cfg(not(any(test, fuzzing)))]
+use crate::parser::utils::ApduPanic;
 use crate::parser::{
     error::ParserError,
     parser_common::{C32_ENCODED_ADDRS_LENGTH, HASH160_LEN},
@@ -64,15 +66,20 @@ fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
 fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     let mut output = [0u8; SHA256_LEN];
     // safe to unwrap as we are passing the right len
-    sha256(&data[..21], &mut output[..]).unwrap();
+    sha256(&data[..21], &mut output[..]).apdu_unwrap();
     data.copy_from_slice(output.as_ref());
     // safe to unwrap as we are passing the right len
-    sha256(&data[..], &mut output).unwrap();
-    data[20..24].copy_from_slice(&output[..4])
+    sha256(&data[..], &mut output).apdu_unwrap();
+    let d = data.get_mut(20..24).apdu_unwrap();
+    let o = output.get(..4).apdu_unwrap();
+    d.copy_from_slice(o);
 }
 
 #[inline(never)]
-fn c32_encode(input_bytes: &[u8], result: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>) {
+fn c32_encode(
+    input_bytes: &[u8],
+    result: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>,
+) -> Result<(), ParserError> {
     let mut carry = 0;
     let mut carry_bits = 0;
 
@@ -80,26 +87,34 @@ fn c32_encode(input_bytes: &[u8], result: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_L
         let low_bits_to_take = 5 - carry_bits;
         let low_bits = current_value & ((1 << low_bits_to_take) - 1);
         let c32_value = (low_bits << carry_bits) + carry;
-        result.push(C32_CHARACTERS[c32_value as usize]);
+        result
+            .try_push(C32_CHARACTERS[c32_value as usize])
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         carry_bits = (8 + carry_bits) - 5;
         carry = current_value >> (8 - carry_bits);
 
         if carry_bits >= 5 {
             let c32_value = carry & ((1 << 5) - 1);
-            result.push(C32_CHARACTERS[c32_value as usize]);
+            result
+                .try_push(C32_CHARACTERS[c32_value as usize])
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             carry_bits -= 5;
             carry >>= 5;
         }
     }
 
     if carry_bits > 0 {
-        result.push(C32_CHARACTERS[carry as usize]);
+        result
+            .try_push(C32_CHARACTERS[carry as usize])
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
     }
 
     // remove leading zeros from c32 encoding
     while let Some(v) = result.pop() {
         if v != C32_CHARACTERS[0] {
-            result.push(v);
+            result
+                .try_push(v)
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
             break;
         }
     }
@@ -107,12 +122,15 @@ fn c32_encode(input_bytes: &[u8], result: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_L
     // add leading zeros from input.
     for current_value in input_bytes.iter() {
         if *current_value == 0 {
-            result.push(C32_CHARACTERS[0]);
+            result
+                .try_push(C32_CHARACTERS[0])
+                .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         } else {
             break;
         }
     }
     result.reverse();
+    Ok(())
 }
 
 #[inline(never)]
@@ -122,7 +140,7 @@ fn c32_check_encode(
     c32_string: &mut ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>,
 ) -> Result<(), ParserError> {
     if version >= 32 {
-        return Err(ParserError::parser_invalid_address_version);
+        return Err(ParserError::InvalidAddressVersion);
     }
 
     // check_data will contain our initial version + signature hash
@@ -137,7 +155,7 @@ fn c32_check_encode(
     check_data[..20].copy_from_slice(data);
 
     // here we use only the 24-bytes
-    c32_encode(&check_data[..24], c32_string);
+    c32_encode(&check_data[..24], c32_string)?;
     let version_char = C32_CHARACTERS[version as usize];
     c32_string.insert(0, version_char);
     Ok(())

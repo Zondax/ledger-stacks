@@ -3,8 +3,10 @@ use nom::number::complete::le_u8;
 use crate::check_canary;
 use crate::parser::{
     error::ParserError,
-    parser_common::SignerId,
-    spending_condition::{SpendingConditionSigner, TransactionSpendingCondition},
+    parser_common::{HashMode, SignerId},
+    spending_condition::{
+        SpendingConditionSigner, TransactionAuthField, TransactionSpendingCondition,
+    },
 };
 
 // The sponsor sentinel length that includes:
@@ -18,7 +20,8 @@ const SPONSOR_SENTINEL_LEN: usize = 21 + 16 + 66;
 /// this structure contains the address of the origin account,
 /// signature(s) and signature threshold for the origin account
 #[repr(C)]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAuth<'a> {
     // 0x04
     Standard(TransactionSpendingCondition<'a>),
@@ -36,7 +39,7 @@ impl<'a> TransactionAuth<'a> {
         let auth = match auth_type.1 {
             0x04 => Self::standard_from_bytes(auth_type.0)?,
             0x05 => Self::sponsored_from_bytes(auth_type.0)?,
-            _ => return Err(nom::Err::Error(ParserError::parser_invalid_auth_type)),
+            _ => return Err(nom::Err::Error(ParserError::InvalidAuthType)),
         };
         Ok(auth)
     }
@@ -66,6 +69,30 @@ impl<'a> TransactionAuth<'a> {
         match self {
             Self::Standard(origin) => origin.is_multisig(),
             Self::Sponsored(origin, _) => origin.is_multisig(),
+        }
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
+        match self {
+            Self::Standard(origin) => origin.hash_mode(),
+            Self::Sponsored(origin, _) => origin.hash_mode(),
+        }
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn num_auth_fields(&self) -> Option<u32> {
+        match self {
+            Self::Standard(origin) => origin.num_auth_fields(),
+            Self::Sponsored(origin, _) => origin.num_auth_fields(),
+        }
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField, ParserError>> {
+        match self {
+            Self::Standard(origin) => origin.get_auth_field(index),
+            Self::Sponsored(origin, _) => origin.get_auth_field(index),
         }
     }
 
@@ -151,7 +178,7 @@ impl<'a> TransactionAuth<'a> {
 
     pub fn write_sponsor_sentinel(buf: &mut [u8]) -> Result<usize, ParserError> {
         if buf.len() < SPONSOR_SENTINEL_LEN {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
         buf.iter_mut()
             .take(SPONSOR_SENTINEL_LEN)

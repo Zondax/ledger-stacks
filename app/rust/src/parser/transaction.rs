@@ -11,7 +11,8 @@ use arrayvec::ArrayVec;
 use crate::parser::{
     error::ParserError,
     parser_common::{
-        SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH, NUM_SUPPORTED_POST_CONDITIONS,
+        HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH,
+        NUM_SUPPORTED_POST_CONDITIONS,
     },
     post_condition::TransactionPostCondition,
     transaction_auth::TransactionAuth,
@@ -27,14 +28,16 @@ use crate::{check_canary, zxformat};
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAuthFlags {
     Standard = 0x04,
     Sponsored = 0x05,
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionPostConditionMode {
     Allow = 0x01, // allow any other changes not specified
     Deny = 0x02,  // deny any other changes not specified
@@ -53,14 +56,15 @@ impl TransactionPostConditionMode {
     #[inline(never)]
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
-        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
+        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::UnexpectedError)?;
         check_canary!();
         Ok((mode.0, tx_mode))
     }
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum TransactionAnchorMode {
     OnChainOnly = 1,  // must be included in a StacksBlock
     OffChainOnly = 2, // must be included in a StacksMicroBlock
@@ -81,14 +85,15 @@ impl TransactionAnchorMode {
     #[inline(never)]
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
         let mode = le_u8(bytes)?;
-        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::parser_unexpected_error)?;
+        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::UnexpectedError)?;
         check_canary!();
         Ok((mode.0, tx_mode))
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct PostConditions<'a> {
     pub(crate) conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]>,
     num_items: u8,
@@ -98,9 +103,9 @@ pub struct PostConditions<'a> {
 impl<'a> PostConditions<'a> {
     #[inline(never)]
     fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, len) = be_u32(bytes)?;
+        let (raw, len) = be_u32::<_, ParserError>(bytes)?;
         if len > NUM_SUPPORTED_POST_CONDITIONS as u32 {
-            return Err(nom::Err::Error(ParserError::parser_value_out_of_range));
+            return Err(nom::Err::Error(ParserError::ValueOutOfRange));
         }
         let mut conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]> = ArrayVec::new();
         let mut iter = iterator(raw, TransactionPostCondition::read_as_bytes);
@@ -160,7 +165,7 @@ impl<'a> PostConditions<'a> {
             self.current_idx += 1;
             // this should not happen
             if self.current_idx > self.num_items {
-                return Err(ParserError::parser_unexpected_error);
+                return Err(ParserError::UnexpectedError);
             }
         } else if idx < limit && idx > 0 {
             self.current_idx -= 1;
@@ -198,7 +203,7 @@ impl<'a> PostConditions<'a> {
 
     fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
         TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
-            .map_err(|_| ParserError::parser_post_condition_failed)
+            .map_err(|_| ParserError::PostConditionFailed)
             .map(|res| res.1)
     }
 }
@@ -229,7 +234,8 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Transaction<'a> {
     pub version: TransactionVersion,
     pub chain_id: u32,
@@ -238,7 +244,7 @@ pub struct Transaction<'a> {
     pub post_conditions: PostConditions<'a>,
     pub payload: TransactionPayload<'a>,
     signer: SignerId,
-    // If this is a multisig transaction this field should content
+    // If this is a multisig transaction this field should contain
     // the previous signer's post_sig_hash, pubkey type(compressed/uncom..), and the signature(vrs)
     // with them, we can construct the pre_sig_hash for the current signer
     // we would ideally verify it, but we can lend such responsability to the application
@@ -265,7 +271,7 @@ impl<'a> Transaction<'a> {
         let is_standard_auth = self.transaction_auth.is_standard_auth();
 
         if is_token_transfer && !is_standard_auth {
-            return Err(ParserError::parser_invalid_transaction_payload);
+            return Err(ParserError::InvalidTransactionPayload);
         }
 
         // At this point we do not know who the signer is
@@ -276,10 +282,10 @@ impl<'a> Transaction<'a> {
     #[inline(never)]
     fn read_header(&mut self) -> Result<(), ParserError> {
         let (next_data, version) = TransactionVersion::from_bytes(self.remainder)
-            .map_err(|_| ParserError::parser_unexpected_value)?;
+            .map_err(|_| ParserError::UnexpectedValue)?;
 
-        let (next_data, chain_id) = be_u32::<'a, ParserError>(next_data)
-            .map_err(|_| ParserError::parser_unexpected_value)?;
+        let (next_data, chain_id) =
+            be_u32::<_, ParserError>(next_data).map_err(|_| ParserError::UnexpectedValue)?;
 
         self.version = version;
         self.chain_id = chain_id;
@@ -293,7 +299,7 @@ impl<'a> Transaction<'a> {
     #[inline(never)]
     fn read_auth(&mut self) -> Result<(), ParserError> {
         let (next_data, auth) = TransactionAuth::from_bytes(self.remainder)
-            .map_err(|_| ParserError::parser_invalid_auth_type)?;
+            .map_err(|_| ParserError::InvalidAuthType)?;
         self.transaction_auth = auth;
         self.update_remainder(next_data);
         check_canary!();
@@ -305,7 +311,7 @@ impl<'a> Transaction<'a> {
         // two modes are included here,
         // anchor mode and postcondition mode
         let (raw, _) = take::<_, _, ParserError>(2usize)(self.remainder)
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         let modes = arrayref::array_ref!(self.remainder, 0, 2);
         self.transaction_modes = modes;
         self.update_remainder(raw);
@@ -316,7 +322,7 @@ impl<'a> Transaction<'a> {
     #[inline(never)]
     fn read_post_conditions(&mut self) -> Result<(), ParserError> {
         let (raw, conditions) = PostConditions::from_bytes(self.remainder)
-            .map_err(|_| ParserError::parser_post_condition_failed)?;
+            .map_err(|_| ParserError::PostConditionFailed)?;
         self.post_conditions = conditions;
         self.update_remainder(raw);
         check_canary!();
@@ -326,7 +332,7 @@ impl<'a> Transaction<'a> {
     #[inline(never)]
     fn read_payload(&mut self) -> Result<(), ParserError> {
         let (raw, payload) = TransactionPayload::from_bytes(self.remainder)
-            .map_err(|_| ParserError::parser_invalid_transaction_payload)?;
+            .map_err(|_| ParserError::InvalidTransactionPayload)?;
         self.payload = payload;
         self.update_remainder(raw);
         check_canary!();
@@ -347,11 +353,11 @@ impl<'a> Transaction<'a> {
                 // Note that if a transaction contains a token-transfer payload,
                 // it MUST have only a standard authorization field. It cannot be sponsored.
                 if (tx.1).5.is_token_transfer_payload() && !(tx.1).2.is_standard_auth() {
-                    return Err(ParserError::parser_invalid_transaction_payload);
+                    return Err(ParserError::InvalidTransactionPayload);
                 }
                 Ok(Self::from(tx))
             }
-            Err(_e) => Err(ParserError::parser_unexpected_error),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -365,7 +371,7 @@ impl<'a> Transaction<'a> {
         // nonce + origin + fee-rate + payload + post-conditions
         3u8.checked_add(self.payload.num_items())
             .and_then(|res| res.checked_add(self.post_conditions.num_items))
-            .ok_or(ParserError::parser_value_out_of_range)
+            .ok_or(ParserError::ValueOutOfRange)
     }
 
     fn get_origin_items(
@@ -386,8 +392,8 @@ impl<'a> Transaction<'a> {
             SignerId::Sponsor => self
                 .transaction_auth
                 .sponsor()
-                .ok_or(ParserError::parser_invalid_auth_type)?,
-            _ => return Err(ParserError::parser_invalid_auth_type),
+                .ok_or(ParserError::InvalidAuthType)?,
+            _ => return Err(ParserError::InvalidAuthType),
         };
 
         match display_idx {
@@ -395,7 +401,7 @@ impl<'a> Transaction<'a> {
             0 => {
                 writer_key
                     .write_str("Origin")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let origin_address = origin.signer_address(self.version)?;
                 zxformat::pageString(out_value, origin_address.as_ref(), page_idx)
             }
@@ -403,7 +409,7 @@ impl<'a> Transaction<'a> {
             1 => {
                 writer_key
                     .write_str("Nonce")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let nonce_str = origin.nonce_str()?;
                 zxformat::pageString(out_value, nonce_str.as_ref(), page_idx)
             }
@@ -411,7 +417,7 @@ impl<'a> Transaction<'a> {
             2 => {
                 writer_key
                     .write_str("Fee (uSTX)")
-                    .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let fee_str = origin.fee_str()?;
                 zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
             }
@@ -433,15 +439,10 @@ impl<'a> Transaction<'a> {
 
         if display_idx >= (num_items - post_conditions_items) {
             if post_conditions_items == 0 {
-                return Err(ParserError::parser_display_idx_out_of_range);
+                return Err(ParserError::DisplayIdxOutOfRange);
             }
-            self.post_conditions.get_items(
-                display_idx,
-                out_key,
-                out_value,
-                page_idx,
-                num_items as u8,
-            )
+            self.post_conditions
+                .get_items(display_idx, out_key, out_value, page_idx, num_items)
         } else {
             self.payload.get_items(
                 display_idx,
@@ -461,7 +462,7 @@ impl<'a> Transaction<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         if display_idx >= self.num_items()? {
-            return Err(ParserError::parser_display_idx_out_of_range);
+            return Err(ParserError::DisplayIdxOutOfRange);
         }
 
         if display_idx < 3 {
@@ -524,9 +525,9 @@ impl<'a> Transaction<'a> {
     pub fn check_signer_pk_hash(&mut self, signer_pk: &[u8]) -> ParserError {
         self.signer = self.transaction_auth.check_signer(signer_pk);
         if self.signer != SignerId::Invalid {
-            return ParserError::parser_ok;
+            return ParserError::ParserOk;
         }
-        ParserError::parser_invalid_auth_type
+        ParserError::InvalidAuthType
     }
 
     // returns a slice of the last block to be used in the presighash calculation
@@ -547,5 +548,10 @@ impl<'a> Transaction<'a> {
 
     pub fn is_multisig(&self) -> bool {
         self.transaction_auth.is_multisig()
+    }
+
+    // check just for origin, meaning we support standard transaction only
+    pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
+        self.transaction_auth.hash_mode()
     }
 }

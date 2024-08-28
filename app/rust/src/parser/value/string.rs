@@ -3,17 +3,20 @@ use nom::{bytes::complete::take, number::complete::be_u32};
 
 // Represent a clarity value string
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 struct String<'a>(&'a [u8]);
 
 // Represent a clarity value string
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StringAscii<'a>(String<'a>);
 
 // Represent a clarity value string
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct StringUtf8<'a>(String<'a>);
 
 impl<'a> String<'a> {
@@ -31,7 +34,7 @@ impl<'a> String<'a> {
         let (rem, s) = Self::from_bytes(bytes)?;
 
         if !s.0.is_ascii() {
-            return Err(ParserError::parser_unexpected_value.into());
+            return Err(ParserError::UnexpectedValue.into());
         }
 
         Ok((rem, s))
@@ -53,7 +56,7 @@ impl<'a> String<'a> {
 impl<'a> StringAscii<'a> {
     pub(crate) fn new(value: &Value<'a>) -> Result<StringAscii<'a>, ParserError> {
         if !matches!(value.value_id(), ValueId::StringAscii) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         String::from_bytes_ascii(value.payload())
@@ -66,7 +69,7 @@ impl<'a> StringAscii<'a> {
         let (rem, id) = ValueId::from_bytes(bytes)?;
 
         if !matches!(id, ValueId::StringAscii) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType.into());
         }
 
         let (rem, string) = String::from_bytes_ascii(rem)?;
@@ -86,7 +89,7 @@ impl<'a> StringAscii<'a> {
 impl<'a> StringUtf8<'a> {
     pub(crate) fn new(value: &Value<'a>) -> Result<Self, ParserError> {
         if !matches!(value.value_id(), ValueId::StringUtf8) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType);
         }
 
         let (_, string) = String::from_bytes(value.payload())?;
@@ -98,7 +101,7 @@ impl<'a> StringUtf8<'a> {
         let (rem, id) = ValueId::from_bytes(bytes)?;
 
         if !matches!(id, ValueId::StringUtf8) {
-            return Err(ParserError::parser_unexpected_type.into());
+            return Err(ParserError::UnexpectedType.into());
         }
 
         let (rem, string) = String::from_bytes(rem)?;

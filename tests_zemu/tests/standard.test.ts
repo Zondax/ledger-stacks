@@ -14,14 +14,15 @@
  *  limitations under the License.
  ******************************************************************************* */
 
-import Zemu, { DEFAULT_START_OPTIONS } from '@zondax/zemu'
+import Zemu, { ButtonKind, DEFAULT_START_OPTIONS, isTouchDevice, zondaxMainmenuNavigation } from '@zondax/zemu'
 import StacksApp from '@zondax/ledger-stacks'
 import { APP_SEED, models } from './common'
-import {encode} from 'varuint-bitcoin';
+import { encode } from 'varuint-bitcoin'
 
 import {
   AddressVersion,
   PubKeyEncoding,
+  StacksMessageType,
   TransactionSigner,
   createStacksPrivateKey,
   createTransactionAuthField,
@@ -31,8 +32,10 @@ import {
   makeUnsignedContractCall,
   makeUnsignedSTXTokenTransfer,
   pubKeyfromPrivKey,
+  publicKeyFromBuffer,
   publicKeyToString,
   standardPrincipalCV,
+  contractPrincipalCV,
   uintCV,
   stringAsciiCV,
   stringUtf8CV,
@@ -52,8 +55,10 @@ const defaultOptions = {
   X11: false,
 }
 
+jest.setTimeout(180000)
+
 describe('Standard', function () {
-  test.each(models)('can start and stop container', async function (m) {
+  test.concurrent.each(models)('can start and stop container', async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -62,18 +67,18 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)('main menu', async function (m) {
+  test.concurrent.each(models)('main menu', async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
-      //await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-mainmenu`, [1, 0, 0, 5, -5])
-      await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-mainmenu`, [1, 0, 0, 4, -5])
+      const nav = zondaxMainmenuNavigation(m.name, [1, 0, 0, 4, -5])
+      await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-mainmenu`, nav.schedule)
     } finally {
       await sim.close()
     }
   })
 
-  test.each(models)(`get app version`, async function (m) {
+  test.concurrent.each(models)(`get app version`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -93,7 +98,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`get address`, async function (m) {
+  test.concurrent.each(models)(`get address`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -113,7 +118,23 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`get identify publicKey`, async function (m) {
+  test.concurrent.each(models)(`get address2`, async function (m) {
+    const sim = new Zemu(m.path)
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      // Verify that the app works for m/5757'/x/x/x/x
+      const response = await app.getAddressAndPubKey("m/5757'/0'/5'/0/0", AddressVersion.MainnetSingleSig)
+      console.log(response)
+      expect(response.returnCode).toEqual(0x9000)
+
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.concurrent.each(models)(`get identify publicKey`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -131,10 +152,15 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`show address`, async function (m) {
+  test.concurrent.each(models)(`show address`, async function (m) {
     const sim = new Zemu(m.path)
     try {
-      await sim.start({ ...defaultOptions, model: m.name })
+      await sim.start({
+        ...defaultOptions,
+        model: m.name,
+        approveKeyword: isTouchDevice(m.name) ? 'Confirm' : '',
+        approveAction: ButtonKind.DynamicTapButton,
+      })
       const app = new StacksApp(sim.getTransport())
 
       // Derivation path. First 3 items are automatically hardened!
@@ -144,7 +170,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-show_address`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-show_address`)
 
       const resp = await respRequest
       console.log(resp)
@@ -167,7 +193,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`sign`, async function (m) {
+  test.concurrent.each(models)(`sign`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
@@ -219,7 +245,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -232,7 +258,6 @@ describe('Standard', function () {
       console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
       console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
       console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
-
 
       console.log('unsignedTx serialized ', unsignedTx.serialize().toString('hex'))
 
@@ -254,11 +279,11 @@ describe('Standard', function () {
       const hash = sha512_256(to_hash)
       console.log('computed postSignHash: ', hash.toString('hex'))
 
-      // compare hashes 
+      // compare hashes
       expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
 
       //Verify signature
-      const ec = new EC("secp256k1")
+      const ec = new EC('secp256k1')
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
       // @ts-ignore
@@ -285,7 +310,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`multisig`, async function (m) {
+  test.concurrent.each(models)(`multisig`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const path = "m/44'/5757'/0'/0/0"
@@ -299,7 +324,8 @@ describe('Standard', function () {
       console.log(pkResponse)
       expect(pkResponse.returnCode).toEqual(0x9000)
       expect(pkResponse.errorMessage).toEqual('No errors')
-      const devicePublicKey = pkResponse.publicKey.toString('hex')
+      const devicePublicKey = publicKeyFromBuffer(pkResponse.publicKey);
+      const devicePublicKeyString = pkResponse.publicKey.toString('hex')
 
       const recipient = standardPrincipalCV('ST2XADQKC3EPZ62QTG5Q2RSPV64JG6KXCND0PHT7F')
       const amount = new BN(2500000)
@@ -309,53 +335,39 @@ describe('Standard', function () {
 
       const priv_key_signer0 = createStacksPrivateKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
       const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
-      const pubKeyStrings = [pub_key_signer0, devicePublicKey]
+      const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
 
-      const unsignedTx = await makeUnsignedSTXTokenTransfer({
+      const tx = await makeUnsignedSTXTokenTransfer({
         anchorMode: AnchorMode.Any,
-        recipient: recipient,
+        recipient,
         network,
-        nonce: nonce,
-        fee: fee,
-        amount: amount,
-        memo: memo,
+        nonce,
+        fee,
+        amount,
+        memo,
         numSignatures: 2,
         publicKeys: pubKeyStrings,
       })
       const sigHashPreSign = makeSigHashPreSign(
-        unsignedTx.signBegin(),
+        tx.signBegin(),
         // @ts-ignore
-        unsignedTx.auth.authType,
-        unsignedTx.auth.spendingCondition?.fee,
-        unsignedTx.auth.spendingCondition?.nonce,
+        tx.auth.authType,
+        tx.auth.spendingCondition?.fee,
+        tx.auth.spendingCondition?.nonce,
       ).toString()
 
       // Signer0 sign the transaction and append its post_sig_hash to the transaction buffer
-      const signer0 = new TransactionSigner(unsignedTx)
+      const signer0 = new TransactionSigner(tx)
 
       signer0.signOrigin(priv_key_signer0)
+      signer0.appendOrigin(devicePublicKey)
 
-      // get signer0 post_sig_hash
-      const postsig_hash_blob = Buffer.from(signer0.sigHash, 'hex')
+      const serializeTx = tx.serialize().toString('hex')
 
-      const serializeTx = unsignedTx.serialize().toString('hex')
-      const publicKey = pubKeyfromPrivKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
-      let key_type
-      if (isCompressed(publicKey)) {
-        key_type = PubKeyEncoding.Compressed
-      } else {
-        key_type = PubKeyEncoding.Uncompressed
-      }
-      const blob3 = Buffer.alloc(1, key_type)
       // @ts-ignore
-      const signature_signer0_hex = signer0.transaction.auth.spendingCondition.fields[0].contents.data
-      const signer0_signature = Buffer.from(signature_signer0_hex, 'hex')
+      const signature_signer0_hex = tx.auth.spendingCondition.fields[0].contents.data
 
-      const blob1 = Buffer.from(serializeTx, 'hex')
-      // Pass a full transaction buffer, and the previous signer postsig_hash,  pubkey type
-      // and vrs signature
-      const arr = [blob1, postsig_hash_blob, blob3, signer0_signature]
-      const blob = Buffer.concat(arr)
+      const blob = Buffer.from(serializeTx, 'hex')
 
       // Signs the transaction that includes the previous signer post_sig_hash
       const signatureRequest = app.sign(path, blob)
@@ -363,7 +375,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-multisigTest`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-multisigTest`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -373,9 +385,16 @@ describe('Standard', function () {
       console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
       console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
 
-      const signedTx = signer0.transaction
       // @ts-ignore
-      signedTx.auth.spendingCondition.fields.push(createTransactionAuthField(signature.signatureVRS.toString('hex')))
+      // Add Ledger signature to transaction
+      tx.auth.spendingCondition.fields[1] = createTransactionAuthField(PubKeyEncoding.Compressed, {
+        data: signature.signatureVRS.toString('hex'),
+        type: StacksMessageType.MessageSignature
+      })
+
+      // For full tx validation, use `stacks-inspect decode-tx <hex-encoded-tx>`
+      const txBytes = tx.serialize().toString('hex')
+      console.log('tx-bytes', txBytes)
 
       // Verifies the first signer signature using the preSigHash and signer0 data
       const ec = new EC('secp256k1')
@@ -390,12 +409,12 @@ describe('Standard', function () {
       // Verifies that the second signer's signature is ok
 
       // Construct the presig_hash from the prior_postsig_hash, authflag, fee and nonce
-      const feeBytes = new BN(unsignedTx.auth.getFee()).toBuffer('le', 8)
+      const feeBytes = new BN(tx.auth.getFee()).toBuffer('le', 8)
       // @ts-ignore
-      const nonceBytes = new BN(unsignedTx.auth.spendingCondition.nonce).toBuffer('le', 8)
+      const nonceBytes = new BN(tx.auth.spendingCondition.nonce).toBuffer('le', 8)
 
       // @ts-ignore
-      const presig_hash = [Buffer.from(signer0.sigHash, 'hex'), Buffer.alloc(1, unsignedTx.auth.authType), feeBytes, nonceBytes]
+      const presig_hash = [Buffer.from(signer0.sigHash, 'hex'), Buffer.alloc(1, tx.auth.authType), feeBytes, nonceBytes]
 
       const signer2_hash = Buffer.concat(presig_hash)
       const hash = sha512_256(signer2_hash)
@@ -403,14 +422,128 @@ describe('Standard', function () {
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
       // @ts-ignore
-      const signature1Ok = ec.verify(hash, signature1_obj, devicePublicKey, 'hex')
+      const signature1Ok = ec.verify(hash, signature1_obj, devicePublicKeyString, 'hex')
       expect(signature1Ok).toEqual(true)
     } finally {
       await sim.close()
     }
   })
 
-  test.each(models)(`sign standard_contract_call_tx`, async function (m) {
+  test.concurrent.each(models)(`order-independent multisig`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = new StacksTestnet()
+    const path = "m/44'/5757'/0'/0/0"
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      // Get pubkey and check
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      console.log(pkResponse)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = publicKeyFromBuffer(pkResponse.publicKey);
+      const devicePublicKeyString = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST2XADQKC3EPZ62QTG5Q2RSPV64JG6KXCND0PHT7F')
+      const amount = new BN(2500000)
+      const fee = new BN(0)
+      const nonce = new BN(0)
+      const memo = 'multisig tx'
+
+      const priv_key_signer0 = createStacksPrivateKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
+      const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
+      const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
+
+      const tx = await makeUnsignedSTXTokenTransfer({
+        anchorMode: AnchorMode.Any,
+        recipient,
+        network,
+        nonce,
+        fee,
+        amount,
+        memo,
+        numSignatures: 2,
+        publicKeys: pubKeyStrings,
+      })
+
+      // @ts-ignore
+      // Use order-independent multisig P2SH
+      // TODO: Replace with constant once support is added in Stacks.js
+      tx.auth.spendingCondition.hashMode = 5;
+
+      const sigHashPreSign = makeSigHashPreSign(
+        tx.signBegin(),
+        // @ts-ignore
+        tx.auth.authType,
+        tx.auth.spendingCondition?.fee,
+        tx.auth.spendingCondition?.nonce,
+      ).toString()
+
+      // Signer0 sign the transaction and append its post_sig_hash to the transaction buffer
+      const signer0 = new TransactionSigner(tx)
+
+      signer0.signOrigin(priv_key_signer0)
+      signer0.appendOrigin(devicePublicKey)
+
+      const serializeTx = tx.serialize().toString('hex')
+
+      // @ts-ignore
+      const signature_signer0_hex = tx.auth.spendingCondition.fields[0].contents.data
+
+      const blob = Buffer.from(serializeTx, 'hex')
+
+      // Signs the transaction that includes the previous signer post_sig_hash
+      const signatureRequest = app.sign(path, blob)
+
+      // Wait until we are not in the main men
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-order_independent_multisigTest`)
+
+      const signature = await signatureRequest
+      console.log(signature)
+
+      const signatureVRS = signature.signatureVRS.toString('hex')
+      console.log('ledger-postSignHash: ', signature.postSignHash.toString('hex'))
+      console.log('ledger-compact: ', signature.signatureCompact.toString('hex'))
+      console.log('ledger-vrs', signatureVRS)
+      console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
+
+      // @ts-ignore
+      // Add Ledger signature to transaction
+      tx.auth.spendingCondition.fields[1] = createTransactionAuthField(PubKeyEncoding.Compressed, {
+        type: StacksMessageType.MessageSignature,
+        data: signatureVRS,
+      })
+
+      // For full tx validation, use `stacks-inspect decode-tx <hex-encoded-tx>`
+      const txBytes = tx.serialize().toString('hex')
+      console.log('tx-bytes', txBytes)
+
+      // Verifies the first signer signature using the preSigHash and signer0 data
+      const ec = new EC('secp256k1')
+      const signer0_signature_obj = {
+        r: signature_signer0_hex.substr(2, 64),
+        s: signature_signer0_hex.substr(66, 64),
+      }
+      // @ts-ignore
+      const signatureOk = ec.verify(sigHashPreSign, signer0_signature_obj, pub_key_signer0, 'hex')
+      expect(signatureOk).toEqual(true)
+
+      // Verifies that the second signer's signature is ok
+      const signature1_obj = { r: signatureVRS.substr(2, 64), s: signatureVRS.substr(66, 64) }
+
+      // @ts-ignore
+      const signature1Ok = ec.verify(sigHashPreSign, signature1_obj, devicePublicKeyString, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.concurrent.each(models)(`sign standard_contract_call_tx`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
@@ -427,6 +560,7 @@ describe('Standard', function () {
       const devicePublicKey = pkResponse.publicKey.toString('hex')
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const contract_principal = contractPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5', 'some-contract-name')
       const fee = new BN(10)
       const nonce = new BN(0)
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
@@ -435,7 +569,7 @@ describe('Standard', function () {
         contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
-        functionArgs: [uintCV(20000), recipient, uintCV(2), uintCV(10)],
+        functionArgs: [uintCV(20000), recipient, uintCV(2), contract_principal, uintCV(10)],
         network: network,
         fee: fee,
         nonce: nonce,
@@ -451,7 +585,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_standard_contract_call_tx`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_standard_contract_call_tx`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -478,11 +612,11 @@ describe('Standard', function () {
       const hash = sha512_256(to_hash)
       console.log('computed postSignHash: ', hash.toString('hex'))
 
-      // compare hashes 
+      // compare hashes
       expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
 
       //Verify signature
-      const ec = new EC("secp256k1")
+      const ec = new EC('secp256k1')
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
       // @ts-ignore
@@ -493,7 +627,7 @@ describe('Standard', function () {
     }
   })
 
-  test.each(models)(`sign_message`, async function (m) {
+  test.concurrent.each(models)(`sign_message`, async function (m) {
     const sim = new Zemu(m.path)
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const path = "m/44'/5757'/0'/0/0"
@@ -516,7 +650,8 @@ describe('Standard', function () {
 
       expect(testPublicKey).toEqual('02' + expectedPublicKey.slice(2, 2 + 32 * 2))
 
-      const msg = "Welcome!\nSign this message to access Gamma's full feature set.\nAs always, by using Gamma, you agree to our terms of use: https://gamma.io/terms\nDomain: gamma.io\nAccount: SP2PH3XAPDMSKXQVS1WZ80JGZACY713JQQEE1DY48\nNonce: c83024f9e9aef40f5d72076e883054c07100035112826b14f78e5a893d62b1bf\n"
+      const msg =
+        "Welcome!\nSign this message to access Gamma's full feature set.\nAs always, by using Gamma, you agree to our terms of use: https://gamma.io/terms\nDomain: gamma.io\nAccount: SP2PH3XAPDMSKXQVS1WZ80JGZACY713JQQEE1DY48\nNonce: c83024f9e9aef40f5d72076e883054c07100035112826b14f78e5a893d62b1bf\n"
 
       // Check the signature
       const signatureRequest = app.sign_msg(path, msg)
@@ -524,7 +659,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_message`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_message`)
 
       const signature = await signatureRequest
 
@@ -533,16 +668,16 @@ describe('Standard', function () {
       expect(signature.errorMessage).toEqual('No errors')
 
       //Verify signature
-      const ec = new EC("secp256k1")
+      const ec = new EC('secp256k1')
 
       const len_buf = encode(msg.length)
-      const header = Buffer.from("\x17Stacks Signed Message:\n", 'utf8')
+      const header = Buffer.from('\x17Stacks Signed Message:\n', 'utf8')
       const msg_buf = Buffer.from(msg, 'utf8')
 
-      const arr = [header, len_buf, msg_buf];
+      const arr = [header, len_buf, msg_buf]
       const data = Buffer.concat(arr)
 
-      const msgHash = sha256(data);
+      const msgHash = sha256(data)
       const sig = signature.signatureVRS.toString('hex')
 
       const signature_obj = {
@@ -550,15 +685,14 @@ describe('Standard', function () {
         s: Buffer.from(sig.substr(66, 64), 'hex'),
       }
       const pubkey = Buffer.from(testPublicKey, 'hex')
-      const signatureOk = ec.verify(msgHash, signature_obj, pubkey, "hex");
-      expect(signatureOk).toEqual(true);
-
+      const signatureOk = ec.verify(msgHash, signature_obj, pubkey, 'hex')
+      expect(signatureOk).toEqual(true)
     } finally {
       await sim.close()
     }
   })
 
- test.each(models)(`sign_jwt`, async function (m) {
+  test.concurrent.each(models)(`sign_jwt`, async function (m) {
     const sim = new Zemu(m.path)
     const path = "m/888'/0'/1"
 
@@ -566,7 +700,8 @@ describe('Standard', function () {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new StacksApp(sim.getTransport())
 
-      const jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ=="
+      const jwt =
+        'eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ==.eyJpc3N1ZWRfYXQiOjE0NDA3MTM0MTQuODUsImNoYWxsZW5nZSI6IjdjZDllZDVlLWJiMGUtNDllYS1hMzIzLWYyOGJkZTNhMDU0OSIsImlzc3VlciI6InhwdWI2NjFNeU13QXFSYmNGUVZyUXI0UTRrUGphUDRKaldhZjM5ZkJWS2pQZEs2b0dCYXlFNDZHQW1Lem81VURQUWRMU005RHVmWmlQOGVhdXk1NlhOdUhpY0J5U3ZacDdKNXdzeVFWcGkyYXh6WiIsImJsb2NrY2hhaW5pZCI6InJ5YW4ifQ=='
 
       const pkResponse = await app.getIdentityPubKey(path)
 
@@ -576,7 +711,7 @@ describe('Standard', function () {
       // Wait until we are not in the main men
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-sign_jwt`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_jwt`)
 
       const signature = await signatureRequest
 
@@ -595,25 +730,25 @@ describe('Standard', function () {
 
       // Verify we sign the same hash
       const postSignHash = signature.postSignHash.toString('hex')
-      console.log("postSignHash: ", postSignHash)
+      console.log('postSignHash: ', postSignHash)
 
-      expect(jwt_hash).toEqual(postSignHash);
+      expect(jwt_hash).toEqual(postSignHash)
 
-      const ec = new EC("secp256k1");
+      const ec = new EC('secp256k1')
       const sig = signature.signatureVRS.toString('hex')
       const signature_obj = {
         r: sig.substr(2, 64),
         s: sig.substr(66, 64),
       }
       //@ts-ignore
-      const signatureOk = ec.verify(postSignHash, signature_obj, testPublicKey, "hex");
-      expect(signatureOk).toEqual(true);
+      const signatureOk = ec.verify(postSignHash, signature_obj, testPublicKey, 'hex')
+      expect(signatureOk).toEqual(true)
     } finally {
       await sim.close()
     }
   })
 
-  test.each(models)(`sign call_with_string_args`, async function (m) {
+  test.concurrent.each(models)(`sign call_with_string_args`, async function (m) {
     const sim = new Zemu(m.path)
     const network = new StacksTestnet()
     const path = "m/44'/5757'/0'/0/0"
@@ -631,7 +766,8 @@ describe('Standard', function () {
       const fee = new BN(10)
       const nonce = new BN(0)
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
-      const long_ascii_string = '%s{Lorem} ipsum dolor sit amet, consectetur adipiscing elit. Etiam quis bibendum mauris. Sed ac placerat ante. Donec sodales sapien id nulla convallis egestas'
+      const long_ascii_string =
+        '%s{Lorem} ipsum dolor sit amet, consectetur adipiscing elit. Etiam quis bibendum mauris. Sed ac placerat ante. Donec sodales sapien id nulla convallis egestas'
       const txOptions = {
         anchorMode: AnchorMode.Any,
         contractAddress: contract_address,
@@ -646,7 +782,7 @@ describe('Standard', function () {
 
       const transaction = await makeUnsignedContractCall(txOptions)
       const serializeTx = transaction.serialize().toString('hex')
-      console.log("serialized transaction length {}", serializeTx.length)
+      console.log('serialized transaction length {}', serializeTx.length)
 
       const blob = Buffer.from(serializeTx, 'hex')
       const signatureRequest = app.sign(path, blob)
@@ -654,7 +790,7 @@ describe('Standard', function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove(".", `${m.prefix.toLowerCase()}-call_with_string_args`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-call_with_string_args`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -681,11 +817,11 @@ describe('Standard', function () {
       const hash = sha512_256(to_hash)
       console.log('computed postSignHash: ', hash.toString('hex'))
 
-      // compare hashes 
+      // compare hashes
       expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
 
       //Verify signature
-      const ec = new EC("secp256k1")
+      const ec = new EC('secp256k1')
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
       // @ts-ignore
@@ -695,5 +831,4 @@ describe('Standard', function () {
       await sim.close()
     }
   })
-
 })
