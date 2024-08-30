@@ -61,6 +61,8 @@ pub enum ParserError {
     CryptoError = 42,
     InvalidTokenTransferPrincipal = 43,
     RecursionLimit = 44,
+    // TODO: Remove
+    InvalidUnicode,
 }
 impl From<ErrorKind> for ParserError {
     fn from(err: ErrorKind) -> Self {

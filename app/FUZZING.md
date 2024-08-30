@@ -21,19 +21,20 @@ cargo install honggfuzz
 Start fuzzing a desirable target:
 
 ```bash
-cd hfuzz-parser && cargo hfuzz run transaction
+make rust_fuzz
 ```
 
 ### Debugging
 
 If there are crashes reported, debug the application with the generated input to figure out where the problem is.
-The supported debuggers are: *lldb*, *rust-gdb*, *gdb*, *rust-lldb*. By default *rust-lldb* is used  but,
-this can be changed using the __HFUZZ_DEBUGGER__ env variable:
+The supported debuggers are: _lldb_, _rust-gdb_, _gdb_, _rust-lldb_. By default _rust-lldb_ is used:
 
 ```bash
-export HFUZZ_DEBUGGER="rust-gdb"
 cd hfuzz-parser
-HFUZZ_BUILD_ARGS="--features baking" cargo hfuzz run-debug transaction hfuzz_workspace/transaction/*.fuzz
+cargo hfuzz run-debug transaction hfuzz_workspace/*/*.fuzz
+
 ```
 
-*note*: There could be more than one *.fuzz* file.
+This will deploy a gdb console with a backtrace with the first crash
+
+_note_: There could be more than one _.fuzz_ file.

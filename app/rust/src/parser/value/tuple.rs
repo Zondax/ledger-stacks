@@ -56,9 +56,9 @@ impl<'a> Iterator for TupleIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.read < self.data.len() {
             // We unwrap here as all the inner fields of this tuple were already parsed
-            let (rem, name) = ClarityName::from_bytes(&self.data[self.read..]).unwrap();
+            let (rem, name) = ClarityName::from_bytes(&self.data[self.read..]).ok()?;
             // limit recursion to MAX_DEPTH
-            let (rem, value) = Value::from_bytes::<MAX_DEPTH>(rem).unwrap();
+            let (rem, value) = Value::from_bytes::<MAX_DEPTH>(rem).ok()?;
             self.read = self.data.len() - rem.len();
 
             Some((name, value))
