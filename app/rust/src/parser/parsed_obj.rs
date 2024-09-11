@@ -1,16 +1,18 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 
-use super::Jwt;
 use super::{error::ParserError, transaction::Transaction, Message};
+use super::{Jwt, StructuredMsg};
 
 use core::mem::ManuallyDrop;
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Tag {
     Transaction,
     Message,
     Jwt,
+    StructuredMsg,
     Invalid,
 }
 
@@ -21,6 +23,7 @@ pub enum Tag {
 pub union Obj<'a> {
     tx: ManuallyDrop<Transaction<'a>>,
     msg: ManuallyDrop<Message<'a>>,
+    structured_msg: ManuallyDrop<StructuredMsg<'a>>,
     jwt: ManuallyDrop<Jwt<'a>>,
 }
 
@@ -33,7 +36,7 @@ pub struct ParsedObj<'a> {
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
         // we expect a transaction
         let tag;
@@ -42,6 +45,8 @@ impl<'a> ParsedObj<'a> {
             tag = Tag::Message;
         } else if Jwt::is_jwt(data) {
             tag = Tag::Jwt;
+        } else if StructuredMsg::is_msg(data) {
+            tag = Tag::StructuredMsg;
         } else {
             tag = Tag::Transaction;
         }
@@ -52,7 +57,7 @@ impl<'a> ParsedObj<'a> {
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
         if data.is_empty() {
-            return Err(ParserError::parser_no_data);
+            return Err(ParserError::NoData);
         }
 
         // we expect a transaction
@@ -65,6 +70,9 @@ impl<'a> ParsedObj<'a> {
             } else if Jwt::is_jwt(data) {
                 self.tag = Tag::Jwt;
                 self.obj.read_jwt(data)
+            } else if StructuredMsg::is_msg(data) {
+                self.tag = Tag::StructuredMsg;
+                self.obj.read_structured_msg(data)
             } else {
                 self.tag = Tag::Transaction;
                 self.obj.read_tx(data)
@@ -77,8 +85,9 @@ impl<'a> ParsedObj<'a> {
             match self.tag {
                 Tag::Transaction => self.obj.transaction().num_items(),
                 Tag::Message => Ok(self.obj.message().num_items()),
+                Tag::StructuredMsg => Ok(self.obj.structured_msg().num_items()),
                 Tag::Jwt => Ok(self.obj.jwt().num_items()),
-                _ => Err(ParserError::parser_unexpected_error),
+                _ => Err(ParserError::UnexpectedError),
             }
         }
     }
@@ -101,8 +110,13 @@ impl<'a> ParsedObj<'a> {
                     .obj
                     .message()
                     .get_item(display_idx, key, value, page_idx),
+                Tag::StructuredMsg => {
+                    self.obj
+                        .structured_msg()
+                        .get_item(display_idx, key, value, page_idx)
+                }
                 Tag::Jwt => self.obj.jwt().get_item(display_idx, key, value, page_idx),
-                _ => Err(ParserError::parser_unexpected_error),
+                _ => Err(ParserError::UnexpectedError),
             }
         }
     }
@@ -156,6 +170,16 @@ impl<'a> ParsedObj<'a> {
         }
     }
 
+    pub fn structured_msg(&mut self) -> Option<&mut StructuredMsg<'a>> {
+        unsafe {
+            if self.tag == Tag::StructuredMsg {
+                Some(self.obj.structured_msg())
+            } else {
+                None
+            }
+        }
+    }
+
     #[cfg(any(test, fuzzing))]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
         use std::*;
@@ -192,35 +216,46 @@ impl<'a> Obj<'a> {
             Tag::Message => Ok(Self {
                 msg: ManuallyDrop::new(Message::from_bytes(data)?),
             }),
+            Tag::StructuredMsg => Ok(Self {
+                structured_msg: ManuallyDrop::new(StructuredMsg::from_bytes(data)?),
+            }),
             Tag::Jwt => Ok(Self {
                 jwt: ManuallyDrop::new(Jwt::from_bytes(data)?),
             }),
-            _ => Err(ParserError::parser_unexpected_type),
+            _ => Err(ParserError::UnexpectedType),
         }
     }
     pub unsafe fn read_tx(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.tx).read(data)
+        (*self.tx).read(data)
     }
 
     pub unsafe fn read_msg(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.msg).read(data)
+        (*self.msg).read(data)
+    }
+
+    pub unsafe fn read_structured_msg(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        (*self.structured_msg).read(data)
     }
 
     pub unsafe fn read_jwt(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        (&mut *self.jwt).read(data)
+        (*self.jwt).read(data)
     }
 
     #[inline(always)]
     pub unsafe fn transaction(&mut self) -> &mut Transaction<'a> {
-        &mut *self.tx
+        &mut self.tx
     }
 
     pub unsafe fn message(&mut self) -> &mut Message<'a> {
-        &mut *self.msg
+        &mut self.msg
+    }
+
+    pub unsafe fn structured_msg(&mut self) -> &mut StructuredMsg<'a> {
+        &mut self.structured_msg
     }
 
     pub unsafe fn jwt(&mut self) -> &mut Jwt<'a> {
-        &mut *self.jwt
+        &mut self.jwt
     }
 }
 
@@ -476,8 +511,8 @@ mod test {
 
         assert!(transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_smart_contract_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        let contract_name = transaction.payload.contract_name().unwrap();
+        let contract_name = core::str::from_utf8(contract_name.name()).unwrap();
         assert_eq!(json.contract_name, contract_name);
 
         let spending_condition = transaction.transaction_auth.origin();
@@ -513,8 +548,8 @@ mod test {
 
         assert!(!transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_smart_contract_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        let contract_name = transaction.payload.contract_name().unwrap();
+        let contract_name = core::str::from_utf8(contract_name.name()).unwrap();
         assert_eq!(json.contract_name, contract_name);
 
         let spending_condition = transaction.transaction_auth.origin();
@@ -556,8 +591,8 @@ mod test {
 
         assert!(transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        let contract_name = transaction.payload.contract_name().unwrap();
+        let contract_name = core::str::from_utf8(contract_name.name()).unwrap();
         assert_eq!(json.contract_name, contract_name);
 
         let function_name =
@@ -597,8 +632,8 @@ mod test {
 
         assert!(transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        let contract_name = transaction.payload.contract_name().unwrap();
+        let contract_name = core::str::from_utf8(contract_name.name()).unwrap();
         assert_eq!(json.contract_name, contract_name);
 
         let function_name =
@@ -648,8 +683,8 @@ mod test {
 
         assert!(!transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        let contract_name = transaction.payload.contract_name().unwrap();
+        let contract_name = core::str::from_utf8(contract_name.name()).unwrap();
         assert_eq!(json.contract_name, contract_name);
 
         let function_name =
@@ -697,8 +732,8 @@ mod test {
 
         assert!(transaction.transaction_auth.is_standard_auth());
         assert!(transaction.payload.is_contract_call_payload());
-        let contract_name =
-            core::str::from_utf8(transaction.payload.contract_name().unwrap()).unwrap();
+        let contract_name = transaction.payload.contract_name().unwrap();
+        let contract_name = core::str::from_utf8(contract_name.name()).unwrap();
         assert_eq!(json.contract_name, contract_name);
 
         let function_name =
@@ -731,12 +766,31 @@ mod test {
     #[test]
     fn parse_contract_call_tx() {
         let bytes_str = "0000000001040061e115b4463fb27425e80fa8e3e2616b4e5a17e40000000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003020000000200021661e115b4463fb27425e80fa8e3e2616b4e5a17e40500000000000f4240010316e685b016b3b6cd9ebf35f38e5ae29392e2acd51d0a616c65782d7661756c7416e685b016b3b6cd9ebf35f38e5ae29392e2acd51d176167653030302d676f7665726e616e63652d746f6b656e04616c657803000000001a6e83360216e685b016b3b6cd9ebf35f38e5ae29392e2acd51d11737761702d68656c7065722d76312d30330b737761702d68656c706572000000040616e685b016b3b6cd9ebf35f38e5ae29392e2acd51d0a746f6b656e2d777374780616e685b016b3b6cd9ebf35f38e5ae29392e2acd51d176167653030302d676f7665726e616e63652d746f6b656e0100000000000000000000000005f5e1000a010000000000000000000000001a6e8336";
-        let bytes = hex::decode(&bytes_str).unwrap();
+        let bytes = hex::decode(bytes_str).unwrap();
 
         let mut transaction = ParsedObj::from_bytes(&bytes).unwrap();
         transaction.read(&bytes).unwrap();
         ParsedObj::validate(&mut transaction).unwrap();
+
         let transaction = transaction.transaction().unwrap();
         assert_eq!(transaction.origin_fee(), 0);
+    }
+
+    #[test]
+    fn parse_structured_msg() {
+        let input = "5349503031380c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c00000008016100ffffffffffffffffffffffffffffffff01620200000008616263646566676808636861696e2d69640100000000000000000000000000000001016d0b0000000400ffffffffffffffffffffffffffffffff00ffffffffffffffffffffffffffffffff00ffffffffffffffffffffffffffffffff00ffffffffffffffffffffffffffffffff046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e30057475706c650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0d00000005312e302e30067475706c65320c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0b000000020c0000000308636861696e2d69640100000000000000000000000000025983046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0b000000050c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0b000000050c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e30";
+        let bytes = hex::decode(input).unwrap();
+        let mut msg = ParsedObj::from_bytes(&bytes).unwrap();
+        msg.read(&bytes).unwrap();
+        ParsedObj::validate(&mut msg).unwrap();
+    }
+
+    #[test]
+    fn parse_versioned_contract() {
+        let input = "8080000000040060dbb32efe0c56e1d418c020f4cb71c556b6a60d0000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000301000000000602107468656e2d677265656e2d6d61636177000004cf3b3b2068656c6c6f2d776f726c6420636f6e74726163740a0a28646566696e652d636f6e7374616e742073656e6465722027535a324a365a593438475631455a35563256355242394d5036365357383650594b4b51394836445052290a28646566696e652d636f6e7374616e7420726563697069656e742027534d324a365a593438475631455a35563256355242394d5036365357383650594b4b51565838583047290a0a28646566696e652d66756e6769626c652d746f6b656e206e6f76656c2d746f6b656e2d3139290a2866742d6d696e743f206e6f76656c2d746f6b656e2d3139207531322073656e646572290a2866742d7472616e736665723f206e6f76656c2d746f6b656e2d31392075322073656e64657220726563697069656e74290a0a28646566696e652d6e6f6e2d66756e6769626c652d746f6b656e2068656c6c6f2d6e66742075696e74290a0a286e66742d6d696e743f2068656c6c6f2d6e66742075312073656e646572290a286e66742d6d696e743f2068656c6c6f2d6e66742075322073656e646572290a286e66742d7472616e736665723f2068656c6c6f2d6e66742075312073656e64657220726563697069656e74290a0a28646566696e652d7075626c69632028746573742d656d69742d6576656e74290a202028626567696e0a20202020287072696e7420224576656e74212048656c6c6f20776f726c64220a20202020286f6b207531290a2020290a290a0a28626567696e2028746573742d656d69742d6576656e7429290a0a28646566696e652d7075626c69632028746573742d6576656e742d7479706573290a202028626567696e0a2020202028756e777261702d70616e6963202866742d6d696e743f206e6f76656c2d746f6b656e2d313920753320726563697069656e7429290a2020202028756e777261702d70616e696320286e66742d6d696e743f2068656c6c6f2d6e667420753220726563697069656e7429290a2020202028756e777261702d70616e696320287374782d7472616e736665723f207536302074782d73656e6465722027535a324a365a593438475631455a35563256355242394d5036365357383650594b4b5139483644505229290a2020202028756e777261702d70616e696320287374782d6275726e3f207532302074782d73656e64657229290a20202020286f6b207531290a2020290a290a0a28646566696e652d6d61702073746f7265207b206b65793a20286275666620333229207d207b2076616c75653a20286275666620333229207d290a0a28646566696e652d7075626c696320286765742d76616c756520286b65792028627566662033322929290a202028626567696e0a20202020286d6174636820286d61702d6765743f2073746f7265207b206b65793a206b6579207d290a202020202020656e74727920286f6b20286765742076616c756520656e74727929290a202020202020286572722030290a20202020290a2020290a290a0a28646566696e652d7075626c696320287365742d76616c756520286b65792028627566662033322929202876616c75652028627566662033322929290a202028626567696e0a20202020286d61702d7365742073746f7265207b206b65793a206b6579207d207b2076616c75653a2076616c7565207d290a20202020286f6b207531290a2020290a290a";
+        let bytes = hex::decode(input).unwrap();
+        let mut msg = ParsedObj::from_bytes(&bytes).unwrap();
+        msg.read(&bytes).unwrap();
+        ParsedObj::validate(&mut msg).unwrap();
     }
 }

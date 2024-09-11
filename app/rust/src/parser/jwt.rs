@@ -1,9 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 use super::error::ParserError;
-use crate::{
-    parser::c32::hash_sha256,
-    zxformat::{pageString, Writer},
-};
+use crate::zxformat::{pageString, Writer};
+
+use crate::bolos::{sha256, SHA256_LEN};
 use core::{fmt::Write, str};
 use hex::encode_to_slice;
 
@@ -14,26 +13,12 @@ fn decode_data(input: &[u8], output: &mut [u8]) -> Result<usize, ParserError> {
     let estimate_len = estimate_len * 3;
 
     if output.len() < estimate_len {
-        return Err(ParserError::parser_unexpected_buffer_end);
+        return Err(ParserError::UnexpectedBufferEnd);
     }
 
     // TODO: Add new error for this decoding error
     base64::decode_config_slice(input, base64::URL_SAFE, output)
-        .map_err(|_| ParserError::parser_unexpected_type)
-}
-
-#[cfg(not(any(test, fuzzing)))]
-fn sha256_hash(data: &[u8], out: &mut [u8]) {
-    unsafe {
-        hash_sha256(data.as_ptr(), data.len() as u16, out.as_mut_ptr());
-    }
-}
-
-#[cfg(any(test, fuzzing))]
-fn sha256_hash(data: &[u8], out: &mut [u8]) {
-    use sha2::Digest;
-    use sha2::Sha256;
-    out.copy_from_slice(Sha256::digest(data).as_slice());
+        .map_err(|_| ParserError::UnexpectedType)
 }
 
 #[repr(C)]
@@ -66,7 +51,7 @@ impl<'a> Header<'a> {
 impl<'a> JwtHeader<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if !data.is_ascii() {
-            return Err(ParserError::parser_unexpected_type);
+            return Err(ParserError::UnexpectedType);
         }
 
         let mut header_bytes = [0u8; MAX_BASE64_HEADER_LEN];
@@ -74,10 +59,10 @@ impl<'a> JwtHeader<'a> {
         let len = decode_data(data, header_bytes.as_mut())?;
         let header: Header = serde_json_core::from_slice(&header_bytes[..len])
             .map(|(h, _)| h)
-            .map_err(|_| ParserError::parser_invalid_jwt)?;
+            .map_err(|_| ParserError::InvalidJwt)?;
 
         if !header.is_valid() {
-            return Err(ParserError::parser_invalid_jwt);
+            return Err(ParserError::InvalidJwt);
         }
         Ok(Self(data))
     }
@@ -98,18 +83,18 @@ impl<'a> Jwt<'a> {
     fn parse_header_payload(data: &'a [u8]) -> Result<(JwtHeader<'a>, &'a [u8]), ParserError> {
         // Only ascii values are valid for json web token
         if !data.is_ascii() {
-            return Err(ParserError::parser_invalid_jwt);
+            return Err(ParserError::InvalidJwt);
         }
 
         let mut jwt_parts = data.split(|byte| *byte == b'.');
-        let header_data = jwt_parts.next().ok_or(ParserError::parser_invalid_jwt)?;
+        let header_data = jwt_parts.next().ok_or(ParserError::InvalidJwt)?;
 
         let header = JwtHeader::from_bytes(header_data)?;
 
-        let payload = jwt_parts.next().ok_or(ParserError::parser_invalid_jwt)?;
+        let payload = jwt_parts.next().ok_or(ParserError::InvalidJwt)?;
 
         if jwt_parts.next().is_some() {
-            return Err(ParserError::parser_invalid_jwt);
+            return Err(ParserError::InvalidJwt);
         }
 
         Ok((header, payload))
@@ -119,8 +104,9 @@ impl<'a> Jwt<'a> {
         Self::parse_header_payload(data).is_ok()
     }
 
-    pub fn get_hash(&self, output: &mut [u8; 32]) {
-        sha256_hash(self.jwt_data, output.as_mut());
+    pub fn get_hash(&self, output: &mut [u8; SHA256_LEN]) {
+        // wont panic as output is the right len
+        sha256(self.jwt_data, output.as_mut()).unwrap()
     }
 
     pub fn num_items(&self) -> u8 {
@@ -136,21 +122,21 @@ impl<'a> Jwt<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         if display_idx > 0 {
-            return Err(ParserError::parser_display_idx_out_of_range);
+            return Err(ParserError::DisplayIdxOutOfRange);
         }
 
         let mut writer_key = Writer::new(out_key);
 
         writer_key
             .write_str("JWT hash:")
-            .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
-        let mut out_data = [0u8; 32];
+        let mut out_data = [0u8; SHA256_LEN];
         self.get_hash(&mut out_data);
         // hex encode the hash
-        let mut hash_str = [0u8; 64];
+        let mut hash_str = [0u8; SHA256_LEN * 2];
         encode_to_slice(out_data.as_ref(), hash_str.as_mut())
-            .map_err(|_| ParserError::parser_unexpected_error)?;
+            .map_err(|_| ParserError::UnexpectedError)?;
         pageString(out_value, hash_str.as_ref(), page_idx)
     }
 }
@@ -186,9 +172,10 @@ mod test {
 
     impl Header {
         fn with_other(other: Option<String>) -> Self {
-            let mut h = Header::default();
-            h.other = other;
-            h
+            Self {
+                other,
+                ..Default::default()
+            }
         }
     }
 

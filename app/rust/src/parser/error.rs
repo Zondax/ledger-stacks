@@ -1,7 +1,8 @@
 #![allow(non_camel_case_types, non_upper_case_globals, non_snake_case)]
 #![allow(clippy::upper_case_acronyms)]
 
-use nom::error::{ErrorKind, ParseError as NomError};
+use arrayvec::CapacityError;
+use nom::error::ErrorKind;
 
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -11,62 +12,69 @@ use nom::error::{ErrorKind, ParseError as NomError};
 /// purposes
 pub enum ParserError {
     // Generic errors
-    parser_ok = 0,
-    parser_no_data,
-    parser_init_context_empty,
-    parser_display_idx_out_of_range,
-    parser_display_page_out_of_range,
-    parser_unexpected_error,
-    parser_no_memory_for_state,
+    ParserOk = 0,
+    NoData = 1,
+    InitContextEmpty = 2,
+    DisplayIdxOutOfRange = 3,
+    DisplayPageOutOfRange = 4,
+    UnexpectedError = 5,
+    NoMemoryForState = 6,
     // Context related errors
-    parser_context_mismatch,
-    parser_context_unexpected_size,
-    parser_context_invalid_chars,
+    ContextMismatch = 7,
+    ContextUnexpectedSize = 8,
+    ContextInvalidChars = 9,
+    ContextUnknownPrefix = 10,
     // Required fields
+    RequiredNonce = 11,
+    RequiredMethod = 12,
+    ////////////////////////
     // Coin specific
-    parser_post_condition_failed,
-    parser_invalid_contract_name,
-    parser_invalid_asset_name,
-    parser_invalid_clarity_name,
-    parser_invalid_fungible_code,
-    parser_invalid_non_fungible_code,
-    parser_invalid_asset_info,
-    parser_invalid_post_condition,
-    parser_invalid_post_condition_principal,
-    parser_invalid_hash_mode,
-    parser_invalid_signature,
-    parser_invalid_pubkey_encoding,
-    parser_invalid_auth_type,
-    parser_invalid_argument_id,
-    parser_invalid_token_transfer_principal,
-    parser_invalid_transaction_payload,
-    parser_invalid_address_version,
-    parser_stacks_string_too_long,
-    parser_unexpected_type,
-    parser_unexpected_buffer_end,
-    parser_unexpected_value,
-    parser_unexpected_number_items,
-    parser_unexpected_characters,
-    parser_unexpected_field,
-    parser_value_out_of_range,
-    parser_invalid_address,
-    parser_invalid_token_transfer_type,
-    parser_invalid_bytestr_message,
-    parser_invalid_jwt,
+    PostConditionFailed = 13,
+    InvalidContractName = 14,
+    InvalidAssetName = 15,
+    InvalidClarityName = 16,
+    InvalidFungibleCode = 17,
+    InvalidNonFungibleCode = 18,
+    InvalidAssetInfo = 19,
+    InvalidPostCondition = 20,
+    InvalidPostConditionPrincipal = 21,
+    InvalidHashMode = 22,
+    InvalidSignature = 23,
+    InvalidPubkeyEncoding = 24,
+    InvalidAuthType = 25,
+    InvalidArgumentId = 26,
+    InvalidTransactionPayload = 27,
+    InvalidAddressVersion = 28,
+    StacksStringTooLong = 29,
+    UnexpectedType = 30,
+    UnexpectedBufferEnd = 31,
+    UnexpectedValue = 32,
+    UnexpectedNumberItems = 33,
+    UnexpectedCharacters = 34,
+    UnexpectedField = 35,
+    ValueOutOfRange = 36,
+    InvalidAddress = 37,
+    InvalidTokenTransferType = 38,
+    InvalidBytestrMessage = 39,
+    InvalidJwt = 40,
+    InvalidStructuredMsg = 41,
+    CryptoError = 42,
+    InvalidTokenTransferPrincipal = 43,
+    RecursionLimit = 44,
 }
-
 impl From<ErrorKind> for ParserError {
     fn from(err: ErrorKind) -> Self {
         match err {
-            ErrorKind::Eof => ParserError::parser_unexpected_buffer_end,
-            ErrorKind::Permutation => ParserError::parser_unexpected_type,
-            ErrorKind::TooLarge => ParserError::parser_value_out_of_range,
-            _ => ParserError::parser_unexpected_error,
+            ErrorKind::Eof => ParserError::UnexpectedBufferEnd,
+            ErrorKind::Permutation => ParserError::UnexpectedType,
+            ErrorKind::TooLarge => ParserError::ValueOutOfRange,
+            ErrorKind::Tag => ParserError::UnexpectedType,
+            _ => ParserError::UnexpectedError,
         }
     }
 }
 
-impl<I> NomError<I> for ParserError {
+impl<I> nom::error::ParseError<I> for ParserError {
     fn from_error_kind(_input: I, kind: ErrorKind) -> Self {
         Self::from(kind)
     }
@@ -81,5 +89,21 @@ impl<I> NomError<I> for ParserError {
 impl From<ParserError> for nom::Err<ParserError> {
     fn from(error: ParserError) -> Self {
         nom::Err::Error(error)
+    }
+}
+
+impl From<CapacityError> for ParserError {
+    fn from(_error: CapacityError) -> Self {
+        ParserError::UnexpectedBufferEnd
+    }
+}
+
+impl From<nom::Err<Self>> for ParserError {
+    fn from(e: nom::Err<Self>) -> Self {
+        match e {
+            nom::Err::Error(e) => e,
+            nom::Err::Failure(e) => e,
+            nom::Err::Incomplete(_) => Self::UnexpectedBufferEnd,
+        }
     }
 }

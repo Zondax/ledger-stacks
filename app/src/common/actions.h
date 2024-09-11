@@ -53,13 +53,16 @@
 // according to the stacks's rust implementation
 #define POST_SIGNHASH_DATA_LEN CX_SHA256_SIZE + 1
 
+// The previous signer signature length
+#define PREVIOUS_SIGNER_SIG_LEN 65
+
 // The previous signer signature data and post_sig_hash
 // that should be treated as the pre_sig_hash for this signer
 // this includes:
 // 32-byte previous signer post_sig_hash
 // 1-byte pubkey type(compressed/uncompressed)
 // 65-byte previous signer signature(vrs)
-#define PREVIOUS_SIGNER_DATA_LEN CX_SHA256_SIZE + 1 + 65
+#define PREVIOUS_SIGNER_DATA_LEN CX_SHA256_SIZE + 1 + PREVIOUS_SIGNER_SIG_LEN
 
 extern uint8_t action_addr_len;
 
@@ -69,8 +72,13 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen);
 // Helper function that appends the transaction auth_type, fee and  nonce getting the hash of the result
 __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen);
 
-// Helper function to verify the previous signer post_sig_hash in a multisig transaction
-__Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
+// Helper function to compute post_sighash from pre_sighash
+// Updates `hash` in place
+__Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len);
+
+// Helper function to verify full sig_hash chain in a multisig transaction (after initial pre_sig_hash)
+// Updates `hash` in place
+__Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len);
 
 __Z_INLINE void app_sign() {
     uint8_t presig_hash[CX_SHA256_SIZE];
@@ -86,25 +94,42 @@ __Z_INLINE void app_sign() {
     // signer data, in that case we know we have to use that signers's data as our
     // pre_sig_hash. Otherwise, we are the first signer in a multisig transaction
     if (tx_is_multisig() && err == zxerr_ok) {
-        // Get the previous signer data to do the verification and to sign it
-        uint8_t *data = NULL;
-        uint8_t **previous_signer_data = &data;
-        uint16_t len = tx_previous_signer_data(previous_signer_data);
-
-        if (data != NULL && len >= PREVIOUS_SIGNER_DATA_LEN) {
-            // Check postsig_hash and append the authfield, fee and nonce, after that the result is copied to the presig_hash
-            // buffer
-            err = validate_post_sig_hash(presig_hash, CX_SHA256_SIZE, data, len);
-            if(err == zxerr_ok) {
-                err = append_fee_nonce_auth_hash(data, CX_SHA256_SIZE, presig_hash, CX_SHA256_SIZE);
-            }
+        // Validate post_sig_hashes of previous signers
+        uint8_t hash_mode = -1;
+        err = tx_hash_mode(&hash_mode);
+        if (err != zxerr_ok) {
+            zemu_log_stack("Error getting HashMode\n");
+        }
+        else switch (hash_mode) {
+            case 0x00: // P2PKH
+            case 0x02: // P2WPKH
+                // Singlesig
+                // Shouldn't be here!
+                zemu_log_stack("HashMode is not multisig\n");
+                err = zxerr_unknown;
+                break;
+            case 0x01: // P2SH sequential
+            case 0x03: // P2WSH sequential
+                // Sequential multisig
+                // Need to compute sighashes of all previous signers
+                err = compute_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
+                break;
+            case 0x05: // PWSH non-sequential
+            case 0x07: // P2WSH non-sequential
+                // Non-sequential multisig
+                // No need to do anything
+                err = zxerr_ok;
+                break;
+            default:
+                zemu_log_stack("Invalid HashMode\n");
+                err = zxerr_unknown;
+                break;
         }
     }
 
     if (err != zxerr_ok) {
-        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
@@ -114,53 +139,57 @@ __Z_INLINE void app_sign() {
     uint16_t replyLen;
     err = crypto_sign(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 3, presig_hash, CX_SHA256_SIZE, &replyLen);
     if (err != zxerr_ok) {
-        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
-    if(transaction_type == Transaction) {
-        // Calculates the post_sighash
-        memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
+    switch (transaction_type) {
+        case Transaction: {
+            // Calculates the post_sighash
+            memcpy(post_sighash_data, presig_hash, CX_SHA256_SIZE);
 
-        // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
-        post_sighash_data[CX_SHA256_SIZE] = 0x00;
+            // set the signing public key's encoding byte, it is compressed(it is our device pubkey)
+            post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
-        // Now gets the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
-        uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+            // Now get the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
+            uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
-        // Now get the presig_hash
-        sha512_256_ctx ctx;
-        SHA512_256_init(&ctx);
-        SHA512_256_starts(&ctx);
+            // Now get the presig_hash
+            sha512_256_ctx ctx;
+            SHA512_256_init(&ctx);
+            SHA512_256_starts(&ctx);
 
-        // sighash + pubkey encoding
-        SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
-        // the signature's v value
-        SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
+            // sighash + pubkey encoding
+            SHA512_256_update(&ctx, post_sighash_data, POST_SIGNHASH_DATA_LEN);
+            // the signature's v value
+            SHA512_256_update(&ctx, &G_io_apdu_buffer[96], 1);
 
-        // the signature's rs values
-        SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
-        SHA512_256_finish(&ctx, hash_temp);
-        memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+            // the signature's rs values
+            SHA512_256_update(&ctx, &G_io_apdu_buffer[32], 64);
+            SHA512_256_finish(&ctx, hash_temp);
+            memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
+            break;
 
-    } else if (transaction_type == Jwt || transaction_type == Message){
-        // just return as a post_sighash the presig_hash
-        // which is the hash of the message or jwt
-        memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
-    } else {
-        err = zxerr_no_data;
-        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, err);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
-        return;
+        }
+        case Message:
+        case Jwt:
+        case StructuredMsg: {
+            // just return as a post_sighash the presig_hash
+            // which is the hash that is signed allowing for  easy signature verification
+            memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
+            break;
+                            }
+        default: {
+            set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+            io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
+            return;
+        }
     }
 
     if (replyLen == 0) {
-        uint8_t errLen = getErrorMessage((char *) G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2, zxerr_no_data);
-        set_code(G_io_apdu_buffer, errLen, APDU_CODE_SIGN_VERIFY_ERROR);
-        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, errLen + 2);
+        set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
+        io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
@@ -218,24 +247,78 @@ __Z_INLINE void app_reply_error() {
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
 }
 
-__Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
-
-    // get the previous signer post_sig_hash and validate it
-    uint8_t reconstructed_post_sig_hash[CX_SHA512_SIZE];
+__Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
+    uint16_t expected_signer_data_len = 1 + PREVIOUS_SIGNER_SIG_LEN;
+    if ( (hash_len != CX_SHA256_SIZE) || (signer_data_len != expected_signer_data_len)) {
+        return zxerr_no_data;
+    }
 
     sha512_256_ctx ctx;
     SHA512_256_init(&ctx);
     SHA512_256_starts(&ctx);
-    SHA512_256_update(&ctx, current_pre_sig_hash, hash_len);
+    SHA512_256_update(&ctx, hash, CX_SHA256_SIZE);
     // include the previous signer pubkey type(compressed/uncompressed) and its signature(vrs)
-    // those bytes are the last 66-bytes in the previous signer data
-    SHA512_256_update(&ctx, signer_data + CX_SHA256_SIZE, PREVIOUS_SIGNER_DATA_LEN - CX_SHA256_SIZE);
-    SHA512_256_finish(&ctx, reconstructed_post_sig_hash);
+    // those bytes are the 66-bytes in the previous signer data
+    SHA512_256_update(&ctx, signer_data, signer_data_len);
+    SHA512_256_finish(&ctx, hash);
 
-    // now compare
-    for (unsigned int i = 0; i < CX_SHA256_SIZE; ++i) {
-        if ( reconstructed_post_sig_hash[i] != signer_data[i]) {
-            zemu_log_stack("Invalid post_sig_hash\n");
+    return zxerr_ok;
+}
+
+// Validate sighash of all previous signers
+__Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
+    if (hash_len != CX_SHA256_SIZE) {
+        return zxerr_no_data;
+    }
+
+    // 1-byte pubkey type(compressed/uncompressed)
+    // 65-byte previous signer signature(vrs)
+    uint8_t previous_signer_data[1 + PREVIOUS_SIGNER_SIG_LEN];
+    memset(previous_signer_data, 0, sizeof(previous_signer_data));
+
+    uint32_t num_fields = tx_num_multisig_fields();
+    for (uint32_t i = 0; i < num_fields; ++i) {
+        // `TransactionAuthFieldID` part of `MultisigSpendingCondition` auth field
+        uint8_t id = 0xFF;
+        // Pointer to either pubkey or signature part of `MultisigSpendingCondition`
+        uint8_t *data = NULL;
+        zxerr_t err = tx_get_multisig_field(i, &id, &data);
+
+        if (err != zxerr_ok || !data) {
+            continue;
+        }
+
+        switch (id) {
+            case 0x00:
+            case 0x01:
+                // Pubkey, don't need to do anything
+                continue;
+            case 0x02:
+                // Signature with recoverable compressed pubkey
+                previous_signer_data[0] = 0x00;
+                break;
+            case 0x03:
+                // Signature with recoverable uncompressed pubkey
+                previous_signer_data[0] = 0x01;
+                break;
+            default:
+                zemu_log_stack("Invalid TransactionAuthFieldID\n");
+        };
+
+        // Copy previous signer's signature
+        memcpy(&previous_signer_data[1], data, PREVIOUS_SIGNER_SIG_LEN);
+
+        // Compute post_sig_hash from pre_sig_hash and previous signature
+        err = compute_post_sig_hash(hash, CX_SHA256_SIZE, previous_signer_data, sizeof(previous_signer_data));
+        if (err != zxerr_ok) {
+            zemu_log_stack("Failed to compute post_sig_hash\n");
+            return zxerr_no_data;
+        }
+
+        // Compute pre_sig_hash for next signer from post_sig_hash, fee, and nonce
+        err = append_fee_nonce_auth_hash(hash, CX_SHA256_SIZE, hash, CX_SHA256_SIZE);
+        if (err != zxerr_ok) {
+            zemu_log_stack("Failed to compute pre_sig_hash\n");
             return zxerr_no_data;
         }
     }
@@ -243,12 +326,13 @@ __Z_INLINE zxerr_t validate_post_sig_hash(uint8_t *current_pre_sig_hash, uint16_
 }
 
 __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
+    zemu_log_stack("computing presig_hash");
+
     uint8_t tx_auth[INITIAL_SIGHASH_AUTH_LEN];
     MEMZERO(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
     uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
     transaction_type_t tx_typ = tx_get_transaction_type();
-
 
     // Init the hasher
     sha512_256_ctx ctx;
@@ -258,8 +342,8 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     const uint8_t *data = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
     const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
-    // Update the hasher with the first and second block of bytes
-    if( tx_typ == Transaction ) {
+    switch (tx_typ) {
+    case Transaction: {
         // Before hashing the transaction the auth field should be cleared
         // and the sponsor set to signing sentinel.
         uint16_t auth_len = 0;
@@ -278,11 +362,18 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
         SHA512_256_update(&ctx, last_block, last_block_len);
         SHA512_256_finish(&ctx, hash_temp);
         return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-    } else if (tx_typ == Message || tx_typ == Jwt) {
+    }
+    case Message:
+    case Jwt: {
         // we have byteString or JWT messages. The hash is the same for both types
         cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
         return zxerr_ok;
-    } else {
+    }
+    // special case is delegated to the rust side
+    case StructuredMsg: {
+        return tx_structured_msg_hash(hash, CX_SHA256_SIZE);
+    }
+    default:
         return zxerr_no_data;
     }
 }

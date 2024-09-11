@@ -6,36 +6,31 @@ use nom::bytes::complete::take;
 
 // The lenght of \x17Stacks Signed Message:
 const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().len();
+// Truncates an ascii
+// message to around this size, as we need to change special characters
+// like /t or /r with spaces.
+const MAX_ASCII_LEN: usize = 270;
 
 #[repr(C)]
-pub enum Message<'a> {
-    // leave room for another structured data
-    ByteStr(ByteString<'a>),
-}
+pub struct Message<'a>(ByteString<'a>);
 
 impl<'a> Message<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
-        let byte_str = ByteString::from_bytes(data)?;
-        Ok(Message::ByteStr(byte_str))
+        ByteString::from_bytes(data).map(Self)
     }
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        if ByteString::maybe_byte_string(data) {
-            *self = Message::ByteStr(ByteString::from_bytes(data)?);
-            Ok(())
-        } else {
-            Err(ParserError::parser_unexpected_type)
-        }
+        ByteString::from_bytes(data).map(|msg| {
+            self.0 = msg;
+        })
     }
 
     pub fn is_message(data: &'a [u8]) -> bool {
-        ByteString::maybe_byte_string(data)
+        ByteString::is_msg(data)
     }
 
     pub fn num_items(&self) -> u8 {
-        match self {
-            Message::ByteStr(bstr) => bstr.num_items(),
-        }
+        self.0.num_items()
     }
 
     pub fn get_item(
@@ -45,9 +40,7 @@ impl<'a> Message<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        match self {
-            Message::ByteStr(bstr) => bstr.get_item(display_idx, out_key, out_value, page_idx),
-        }
+        self.0.get_item(display_idx, out_key, out_value, page_idx)
     }
 }
 
@@ -56,33 +49,37 @@ impl<'a> Message<'a> {
 pub struct ByteString<'a>(&'a [u8]);
 
 impl<'a> ByteString<'a> {
-    pub fn maybe_byte_string(data: &'a [u8]) -> bool {
+    pub fn is_msg(data: &'a [u8]) -> bool {
         Self::contain_header(data)
     }
 
     // Checks if the input data contain the byte_string heades at the first bytes
     fn contain_header(data: &[u8]) -> bool {
-        let msg_bytes = "\x17Stacks Signed Message:\n".as_bytes();
-        data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == msg_bytes
+        let header = "\x17Stacks Signed Message:\n".as_bytes();
+        data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == header
     }
 
     // returns the message content
     fn get_msg(data: &'a [u8]) -> Result<&'a [u8], ParserError> {
-        if data.is_empty() || !data.is_ascii() {
-            return Err(ParserError::parser_invalid_bytestr_message);
+        if data.is_empty() {
+            return Err(ParserError::UnexpectedBufferEnd);
         }
 
-        let (rem, len) =
-            read_varint(data).map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+        let (rem, len) = read_varint(data).map_err(|_| ParserError::InvalidBytestrMessage)?;
+
         let (_, message_content) = take::<_, _, ParserError>(len as usize)(rem)
-            .map_err(|_| ParserError::parser_invalid_bytestr_message)?;
+            .map_err(|_| ParserError::InvalidBytestrMessage)?;
+
+        if !message_content.is_ascii() {
+            return Err(ParserError::InvalidBytestrMessage);
+        }
 
         Ok(message_content)
     }
 
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if !Self::contain_header(data) {
-            return Err(ParserError::parser_invalid_bytestr_message);
+            return Err(ParserError::InvalidBytestrMessage);
         }
         let message = Self::get_msg(&data[BYTE_STRING_HEADER_LEN..])?;
         Ok(Self(message))
@@ -100,17 +97,49 @@ impl<'a> ByteString<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        if display_idx != 0 {
+            return Err(ParserError::DisplayIdxOutOfRange);
+        }
+
         let mut writer_key = Writer::new(out_key);
 
-        if display_idx == 0 {
-            writer_key
-                .write_str("Sign Message")
-                .map_err(|_| ParserError::parser_unexpected_buffer_end)?;
+        let mut msg = [0; MAX_ASCII_LEN + 3];
+        let suffix = [b'.'; 3];
 
-            pageString(out_value, self.0, page_idx)
+        // look for special characters [\b..=\r]
+        // and replace them with space b' '
+        let msg_iter = self.0.iter().map(|c| {
+            if (*c >= 0x08) && (*c <= b'\r') {
+                b' '
+            } else {
+                *c
+            }
+        });
+
+        let mut copy_len = if self.0.len() > MAX_ASCII_LEN {
+            let m = msg
+                .get_mut(MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len())
+                .ok_or(ParserError::UnexpectedBufferEnd)?;
+            m.copy_from_slice(&suffix[..]);
+            MAX_ASCII_LEN
         } else {
-            Err(ParserError::parser_display_idx_out_of_range)
+            self.0.len()
+        };
+
+        msg.iter_mut()
+            .take(copy_len)
+            .zip(msg_iter)
+            .for_each(|(r, m)| *r = m);
+
+        if copy_len >= MAX_ASCII_LEN {
+            copy_len += suffix.len()
         }
+
+        writer_key
+            .write_str("Sign Message")
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+
+        pageString(out_value, &msg[..copy_len], page_idx)
     }
 }
 

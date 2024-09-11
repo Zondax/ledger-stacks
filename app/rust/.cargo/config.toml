@@ -1,0 +1,13 @@
+[build]
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+rustflags = [
+    "--emit", "asm",
+	"-C", "relocation-model=ropi",
+    "-C", "link-arg=-nostartfiles",
+    "-C", "link-arg=-Tlink.ld",
+    "-C", "inline-threshold=0"
+]
+[unstable]
+build-std=["core"]
+build-std-features=["panic_immediate_abort"]

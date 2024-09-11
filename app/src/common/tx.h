@@ -59,8 +59,17 @@ zxerr_t tx_getItem(int8_t displayIdx,
 // Gets the transaction authorization type
 zxerr_t tx_auth_flag(uint8_t *flag);
 
-// Returns 1 if the transaction is multisig, 0 otherwise, returns -1 in case of error
+// Returns 1 if the transaction is multisig, 0 otherwise
 int8_t tx_is_multisig();
+
+// Returns # of fields in a multisig spending condition, or 0 if not multisig
+uint32_t tx_num_multisig_fields();
+
+// Returns multisig auth field at position `index`
+zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);
+
+// Get transaction's spending condition hash mode field
+zxerr_t tx_hash_mode(uint8_t *hash_mode);
 
 // Gets the origin fee as bytes
 uint8_t tx_fee(uint8_t *fee, uint16_t fee_len);
@@ -79,3 +88,7 @@ uint16_t tx_last_tx_block(uint8_t ** last_tx_block);
 uint16_t tx_previous_signer_data(uint8_t **data);
 
 transaction_type_t tx_get_transaction_type();
+
+zxerr_t tx_structured_msg_hash(uint8_t *out, uint16_t out_len);
+
+uint16_t get_error_message(char *out, uint16_t outLen, parser_error_t error_code);

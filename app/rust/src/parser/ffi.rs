@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 #![allow(clippy::cast_ptr_alignment)]
 
-use crate::parser::{error::ParserError, ParsedObj, Tag};
+use crate::parser::{error::ParserError, spending_condition::TransactionAuthField, ParsedObj, Tag};
 
 // extern c function for formatting to fixed point number
 extern "C" {
@@ -37,7 +37,7 @@ pub unsafe extern "C" fn _parser_init(
     // Lets the caller know how much memory we need for allocating
     // our global state
     if alloc_size.is_null() {
-        return ParserError::parser_no_memory_for_state as u32;
+        return ParserError::NoMemoryForState as u32;
     }
     *alloc_size = core::mem::size_of::<ParsedObj>() as u16;
     parser_init_context(ctx, buffer, bufferSize) as u32
@@ -58,12 +58,12 @@ unsafe fn parser_init_context(
     if bufferSize == 0 || buffer.is_null() {
         (*ctx).buffer = core::ptr::null_mut();
         (*ctx).bufferLen = 0;
-        return ParserError::parser_init_context_empty;
+        return ParserError::InitContextEmpty;
     }
 
     (*ctx).buffer = buffer;
     (*ctx).bufferLen = bufferSize;
-    ParserError::parser_ok
+    ParserError::ParserOk
 }
 
 #[no_mangle]
@@ -75,11 +75,11 @@ pub unsafe extern "C" fn _read(
 
     if let Some(obj) = parsed_obj_from_state(parser_state) {
         match obj.read(data) {
-            Ok(_) => ParserError::parser_ok as u32,
+            Ok(_) => ParserError::ParserOk as u32,
             Err(e) => e as u32,
         }
     } else {
-        ParserError::parser_no_memory_for_state as u32
+        ParserError::NoMemoryForState as u32
     }
 }
 
@@ -90,18 +90,18 @@ pub unsafe extern "C" fn _getNumItems(
     num_items: *mut u8,
 ) -> u32 {
     if tx_t.is_null() || (*tx_t).state.is_null() || num_items.is_null() {
-        return ParserError::parser_no_data as u32;
+        return ParserError::NoData as u32;
     }
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
         match obj.num_items() {
             Ok(n) => {
                 *num_items = n;
-                ParserError::parser_ok as u32
+                ParserError::ParserOk as u32
             }
             Err(e) => e as u32,
         }
     } else {
-        ParserError::parser_no_data as u32
+        ParserError::NoData as u32
     }
 }
 
@@ -122,18 +122,18 @@ pub unsafe extern "C" fn _getItem(
     let key = core::slice::from_raw_parts_mut(outKey as *mut u8, outKeyLen as usize);
     let value = core::slice::from_raw_parts_mut(outValue as *mut u8, outValueLen as usize);
     if tx_t.is_null() || (*tx_t).state.is_null() {
-        return ParserError::parser_context_mismatch as _;
+        return ParserError::ContextMismatch as _;
     }
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
         match obj.get_item(displayIdx, key, value, pageIdx) {
             Ok(page) => {
                 *page_count = page;
-                ParserError::parser_ok as _
+                ParserError::ParserOk as _
             }
             Err(e) => e as _,
         }
     } else {
-        ParserError::parser_context_mismatch as _
+        ParserError::ContextMismatch as _
     }
 }
 
@@ -141,9 +141,9 @@ pub unsafe extern "C" fn _getItem(
 pub unsafe extern "C" fn _auth_flag(tx_t: *const parse_tx_t, auth_flag: *mut u8) -> u32 {
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         *auth_flag = tx.auth_flag() as u8;
-        ParserError::parser_ok as _
+        ParserError::ParserOk as _
     } else {
-        ParserError::parser_context_mismatch as _
+        ParserError::ContextMismatch as _
     }
 }
 
@@ -193,12 +193,12 @@ pub unsafe extern "C" fn _check_pubkey_hash(
 ) -> u32 {
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         if pubKey.is_null() {
-            return ParserError::parser_no_data as _;
+            return ParserError::NoData as _;
         }
         let pk = core::slice::from_raw_parts(pubKey, pubKeyLen as _);
         tx.check_signer_pk_hash(pk) as _
     } else {
-        ParserError::parser_context_mismatch as _
+        ParserError::ContextMismatch as _
     }
 }
 
@@ -241,6 +241,61 @@ pub unsafe extern "C" fn _is_multisig(tx_t: *const parse_tx_t) -> u8 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn _hash_mode(tx_t: *const parse_tx_t, hash_mode: *mut u8) -> u32 {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
+        match tx.hash_mode() {
+            Ok(hm) => {
+                *hash_mode = hm as u8;
+                ParserError::ParserOk as _
+            }
+            Err(e) => e as _,
+        }
+    } else {
+        ParserError::ContextMismatch as _
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _num_multisig_fields(tx_t: *const parse_tx_t) -> u32 {
+    parsed_obj_from_state(tx_t as _)
+        .and_then(|obj| obj.transaction())
+        .and_then(|tx| tx.transaction_auth.num_auth_fields())
+        .unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _get_multisig_field(
+    tx_t: *const parse_tx_t,
+    index: u32,
+    id: *mut u8,
+    data: *mut *const u8,
+) -> ParserError {
+    let auth_field = parsed_obj_from_state(tx_t as _)
+        .and_then(|obj| obj.transaction())
+        .and_then(|tx| tx.transaction_auth.get_auth_field(index))
+        .unwrap_or(Err(ParserError::ContextMismatch));
+
+    match auth_field {
+        Ok(af) => match af {
+            TransactionAuthField::PublicKey(i, pubkey) => {
+                *id = i as u8;
+                *data = pubkey.as_ptr();
+                ParserError::ParserOk as _
+            }
+            TransactionAuthField::Signature(i, sig) => {
+                *id = i as u8;
+                *data = sig.as_ptr();
+                ParserError::ParserOk as _
+            }
+        },
+        Err(e) => {
+            *data = core::ptr::null_mut();
+            e
+        }
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn _transaction_type(tx_t: *const parse_tx_t) -> Tag {
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
         obj.get_type()
@@ -261,4 +316,19 @@ pub unsafe extern "C" fn _previous_signer_data(
         }
     }
     0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _structured_msg_hash(
+    tx_t: *const parse_tx_t,
+    out: *mut u8,
+    out_len: u16,
+) -> u32 {
+    if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.structured_msg()) {
+        let output = core::slice::from_raw_parts_mut(out, out_len as _);
+        if tx.get_hash(output).is_ok() {
+            return ParserError::ParserOk as _;
+        }
+    }
+    ParserError::UnexpectedError as _
 }
