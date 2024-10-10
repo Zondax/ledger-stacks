@@ -219,6 +219,11 @@ pub type TxTuple<'a> = (
 
 impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
     fn from(raw: (&'a [u8], TxTuple<'a>)) -> Self {
+        let mut remainder = None;
+        if !raw.0.is_empty() {
+            remainder = Some(raw.0);
+        }
+
         Self {
             version: (raw.1).0,
             chain_id: (raw.1).1,
@@ -228,7 +233,7 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
             payload: (raw.1).5,
             // At this point the signer is unknown
             signer: SignerId::Invalid,
-            remainder: raw.0,
+            remainder,
         }
     }
 }
@@ -249,23 +254,26 @@ pub struct Transaction<'a> {
     // with them, we can construct the pre_sig_hash for the current signer
     // we would ideally verify it, but we can lend such responsability to the application
     // which has more resources
-    // If this is not a multisig transaction, this field should be an empty array
-    pub remainder: &'a [u8],
+    // If this is not a multisig transaction, this field should be None
+    pub remainder: Option<&'a [u8]>,
 }
 
 impl<'a> Transaction<'a> {
     fn update_remainder(&mut self, data: &'a [u8]) {
-        self.remainder = data;
+        if !data.is_empty() {
+            self.remainder = Some(data);
+        } else {
+            self.remainder = None;
+        }
     }
 
     #[inline(never)]
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        self.update_remainder(data);
-        self.read_header()?;
-        self.read_auth()?;
-        self.read_transaction_modes()?;
-        self.read_post_conditions()?;
-        self.read_payload()?;
+        let rem = self.read_header(data)?;
+        let rem = self.read_auth(rem)?;
+        let rem = self.read_transaction_modes(rem)?;
+        let rem = self.read_post_conditions(rem)?;
+        let rem = self.read_payload(rem)?;
 
         let is_token_transfer = self.payload.is_token_transfer_payload();
         let is_standard_auth = self.transaction_auth.is_standard_auth();
@@ -276,67 +284,69 @@ impl<'a> Transaction<'a> {
 
         // At this point we do not know who the signer is
         self.signer = SignerId::Invalid;
+
+        self.remainder = None;
+
+        // set the remainder if this is mutltisig
+        if self.is_multisig() && !rem.is_empty() {
+            self.update_remainder(rem);
+        }
+
         Ok(())
     }
 
     #[inline(never)]
-    fn read_header(&mut self) -> Result<(), ParserError> {
-        let (next_data, version) = TransactionVersion::from_bytes(self.remainder)
-            .map_err(|_| ParserError::UnexpectedValue)?;
+    fn read_header(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        let (rem, version) =
+            TransactionVersion::from_bytes(data).map_err(|_| ParserError::UnexpectedValue)?;
 
-        let (next_data, chain_id) =
-            be_u32::<_, ParserError>(next_data).map_err(|_| ParserError::UnexpectedValue)?;
+        let (rem, chain_id) =
+            be_u32::<_, ParserError>(rem).map_err(|_| ParserError::UnexpectedValue)?;
 
         self.version = version;
         self.chain_id = chain_id;
         check_canary!();
 
-        self.update_remainder(next_data);
-
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_auth(&mut self) -> Result<(), ParserError> {
-        let (next_data, auth) = TransactionAuth::from_bytes(self.remainder)
-            .map_err(|_| ParserError::InvalidAuthType)?;
+    fn read_auth(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        let (rem, auth) =
+            TransactionAuth::from_bytes(data).map_err(|_| ParserError::InvalidAuthType)?;
         self.transaction_auth = auth;
-        self.update_remainder(next_data);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_transaction_modes(&mut self) -> Result<(), ParserError> {
+    fn read_transaction_modes(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
         // two modes are included here,
         // anchor mode and postcondition mode
-        let (raw, _) = take::<_, _, ParserError>(2usize)(self.remainder)
+        let (rem, _) = take::<_, _, ParserError>(2usize)(data)
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
-        let modes = arrayref::array_ref!(self.remainder, 0, 2);
+        let modes = arrayref::array_ref!(data, 0, 2);
         self.transaction_modes = modes;
-        self.update_remainder(raw);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_post_conditions(&mut self) -> Result<(), ParserError> {
-        let (raw, conditions) = PostConditions::from_bytes(self.remainder)
-            .map_err(|_| ParserError::PostConditionFailed)?;
+    fn read_post_conditions(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        let (rem, conditions) =
+            PostConditions::from_bytes(data).map_err(|_| ParserError::PostConditionFailed)?;
         self.post_conditions = conditions;
-        self.update_remainder(raw);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_payload(&mut self) -> Result<(), ParserError> {
-        let (raw, payload) = TransactionPayload::from_bytes(self.remainder)
+    fn read_payload(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        let (rem, payload) = TransactionPayload::from_bytes(data)
             .map_err(|_| ParserError::InvalidTransactionPayload)?;
         self.payload = payload;
-        self.update_remainder(raw);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, ParserError> {
@@ -532,16 +542,44 @@ impl<'a> Transaction<'a> {
 
     // returns a slice of the last block to be used in the presighash calculation
     pub fn last_transaction_block(&self) -> &[u8] {
-        unsafe {
-            let len =
-                (self.remainder.as_ptr() as usize - self.transaction_modes.as_ptr() as usize) as _;
-            core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+        match self.remainder {
+            Some(remainder) => {
+                let remainder_ptr = remainder.as_ptr() as usize;
+                let tx_modes_ptr = self.transaction_modes.as_ptr() as usize;
+
+                unsafe {
+                    let len = remainder_ptr - tx_modes_ptr;
+                    core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+                }
+            }
+            None => {
+                // If there's no remainder, return everything from transaction_modes to the end of payload
+                let payload = self.payload.raw_payload();
+                unsafe {
+                    let payload_end = payload.as_ptr().add(payload.len());
+                    let len = payload_end as usize - self.transaction_modes.as_ptr() as usize;
+                    core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+                }
+            }
         }
     }
+    // pub fn last_transaction_block(&self) -> Option<&[u8]> {
+    //     self.remainder.map(|remainder| {
+    //         let remainder_ptr = remainder.as_ptr() as usize;
+    //         let tx_modes_ptr = self.transaction_modes.as_ptr() as usize;
+    //
+    //         unsafe {
+    //             let len = remainder_ptr - tx_modes_ptr;
+    //             core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+    //         }
+    //     })
+    // }
 
     pub fn previous_signer_data(&self) -> Option<&[u8]> {
-        if self.is_multisig() && self.remainder.len() >= MULTISIG_PREVIOUS_SIGNER_DATA_LEN {
-            return Some(&self.remainder[..MULTISIG_PREVIOUS_SIGNER_DATA_LEN]);
+        let remainder = self.remainder?;
+
+        if self.is_multisig() && remainder.len() >= MULTISIG_PREVIOUS_SIGNER_DATA_LEN {
+            return Some(&remainder[..MULTISIG_PREVIOUS_SIGNER_DATA_LEN]);
         }
         None
     }

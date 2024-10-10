@@ -404,6 +404,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     fn clear_as_singlesig(&mut self) {
         // TODO: check if it involves shrinking
         // the general transaction buffer
+        // function is not being called anywhere
         todo!();
     }
 }
