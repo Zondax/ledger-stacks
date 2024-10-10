@@ -177,8 +177,11 @@ pub(crate) fn fpstr_to_str(
     }
 
     let fp = in_len - decimals as usize;
-    let left = str.get(0..fp).unwrap();
-    let right = str.get(fp..in_len).unwrap();
+    let left = str.get(0..fp).ok_or(ParserError::UnexpectedBufferEnd)?;
+    let right = str
+        .get(fp..in_len)
+        .ok_or(ParserError::UnexpectedBufferEnd)?;
+
     write!(&mut writer, "{}.{}", left, right)
         .map(|_| writer.offset)
         .map_err(|_| ParserError::UnexpectedBufferEnd)
