@@ -163,7 +163,7 @@ impl<'a> SpendingConditionSigner<'a> {
     pub fn nonce_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let nonce = self.nonce()?;
-        let len = zxformat::u64_to_str(&mut output[..zxformat::MAX_STR_BUFF_LEN], nonce)? as usize;
+        let len = zxformat::u64_to_str(&mut output[..zxformat::MAX_STR_BUFF_LEN], nonce)?.len();
         unsafe {
             output.set_len(len);
         }
@@ -174,7 +174,7 @@ impl<'a> SpendingConditionSigner<'a> {
     pub fn fee_str(&self) -> Result<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>, ParserError> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let fee = self.fee()?;
-        let len = zxformat::u64_to_str(output.as_mut(), fee)? as usize;
+        let len = zxformat::u64_to_str(output.as_mut(), fee)?.len();
         unsafe {
             output.set_len(len);
         }
@@ -404,6 +404,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     fn clear_as_singlesig(&mut self) {
         // TODO: check if it involves shrinking
         // the general transaction buffer
+        // function is not being called anywhere
         todo!();
     }
 }

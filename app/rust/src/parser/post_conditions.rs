@@ -5,186 +5,20 @@ use nom::{
     number::complete::{be_u64, le_u8},
 };
 
+mod fungible;
+mod non_fungible;
+mod post_condition_principal;
+pub use fungible::FungibleConditionCode;
+pub use non_fungible::NonfungibleConditionCode;
+
+pub use post_condition_principal::{PostConditionPrincipal, PostConditionPrincipalId};
+
 use super::error::ParserError;
 
-use super::parser_common::{
-    AssetInfo, ContractName, StacksAddress, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, STX_DECIMALS,
-    TX_DEPTH_LIMIT,
-};
-use crate::parser::value::Value;
+use super::parser_common::{AssetInfo, C32_ENCODED_ADDRS_LENGTH, STX_DECIMALS, TX_DEPTH_LIMIT};
 use crate::zxformat;
-
-#[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
-pub enum PostConditionPrincipalId {
-    Origin = 0x01,
-    Standard = 0x02,
-    Contract = 0x03,
-}
-
-impl TryFrom<u8> for PostConditionPrincipalId {
-    type Error = ParserError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        let id = match value {
-            1 => Self::Origin,
-            2 => Self::Standard,
-            3 => Self::Contract,
-            _ => return Err(ParserError::UnexpectedValue),
-        };
-        Ok(id)
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq)]
-#[cfg_attr(test, derive(Debug))]
-pub enum PostConditionPrincipal<'a> {
-    Origin,
-    Standard(StacksAddress<'a>),
-    Contract(StacksAddress<'a>, ContractName<'a>),
-}
-
-impl<'a> PostConditionPrincipal<'a> {
-    #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let id = le_u8(bytes)?;
-        let principal_id = PostConditionPrincipalId::try_from(id.1)?;
-        match principal_id {
-            PostConditionPrincipalId::Origin => Ok((id.0, PostConditionPrincipal::Origin)),
-            PostConditionPrincipalId::Standard => {
-                let addrs = StacksAddress::from_bytes(id.0)?;
-                Ok((addrs.0, PostConditionPrincipal::Standard(addrs.1)))
-            }
-            PostConditionPrincipalId::Contract => {
-                let addrs = StacksAddress::from_bytes(id.0)?;
-                let contract_name = ContractName::from_bytes(addrs.0)?;
-                Ok((
-                    contract_name.0,
-                    PostConditionPrincipal::Contract(addrs.1, contract_name.1),
-                ))
-            }
-        }
-    }
-
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
-        let (rem, id) = le_u8(bytes)?;
-        let principal_id = PostConditionPrincipalId::try_from(id)?;
-        match principal_id {
-            PostConditionPrincipalId::Origin => Ok((rem, Default::default())),
-            PostConditionPrincipalId::Standard => {
-                // we take 20-byte key hash + 1-byte hash_mode + 1-byte principal_id
-                let (raw, addr) = take(HASH160_LEN + 2usize)(bytes)?;
-                Ok((raw, addr))
-            }
-            PostConditionPrincipalId::Contract => {
-                let (rem, _) = StacksAddress::from_bytes(rem)?;
-                let (_, name) = ContractName::from_bytes(rem)?;
-                // we take 20-byte key hash + 1-byte hash_mode +
-                // contract_name len + 1-byte len + 1-byte principal_id
-                let total_len = HASH160_LEN + name.len() + 3;
-                let (rem, contract_bytes) = take(total_len)(bytes)?;
-                Ok((rem, contract_bytes))
-            }
-        }
-    }
-
-    pub fn is_origin(&self) -> bool {
-        matches!(self, Self::Origin)
-    }
-
-    pub fn is_standard(&self) -> bool {
-        matches!(self, Self::Standard(..))
-    }
-
-    pub fn is_contract(&self) -> bool {
-        matches!(self, Self::Contract(..))
-    }
-
-    pub fn origin_address(
-    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
-        let mut output: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = ArrayVec::new();
-        output.try_extend_from_slice(b"Origin".as_ref()).unwrap();
-        Ok(output)
-    }
-
-    pub fn get_principal_address(
-        &self,
-    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
-        match self {
-            Self::Origin => Self::origin_address(),
-            Self::Standard(ref address) | Self::Contract(ref address, _) => {
-                address.encoded_address()
-            }
-        }
-    }
-
-    pub fn get_contract_name(&'a self) -> Option<&'a [u8]> {
-        match self {
-            Self::Contract(_, name) => Some(name.name()),
-            _ => None,
-        }
-    }
-}
-
-#[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
-#[cfg_attr(test, derive(Debug))]
-pub enum FungibleConditionCode {
-    SentEq = 0x01,
-    SentGt = 0x02,
-    SentGe = 0x03,
-    SentLt = 0x04,
-    SentLe = 0x05,
-}
-
-impl FungibleConditionCode {
-    pub fn from_u8(b: u8) -> Option<FungibleConditionCode> {
-        match b {
-            0x01 => Some(FungibleConditionCode::SentEq),
-            0x02 => Some(FungibleConditionCode::SentGt),
-            0x03 => Some(FungibleConditionCode::SentGe),
-            0x04 => Some(FungibleConditionCode::SentLt),
-            0x05 => Some(FungibleConditionCode::SentLe),
-            _ => None,
-        }
-    }
-
-    pub fn to_str(self) -> &'static str {
-        match self {
-            FungibleConditionCode::SentEq => "SentEq",
-            FungibleConditionCode::SentGt => "SentGt",
-            FungibleConditionCode::SentGe => "SentGe",
-            FungibleConditionCode::SentLt => "SentLt",
-            FungibleConditionCode::SentLe => "SentLe",
-        }
-    }
-}
-
-#[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
-#[cfg_attr(test, derive(Debug))]
-pub enum NonfungibleConditionCode {
-    Sent = 0x10,
-    NotSent = 0x11,
-}
-
-impl NonfungibleConditionCode {
-    pub fn from_u8(b: u8) -> Option<NonfungibleConditionCode> {
-        match b {
-            0x10 => Some(NonfungibleConditionCode::Sent),
-            0x11 => Some(NonfungibleConditionCode::NotSent),
-            _ => None,
-        }
-    }
-
-    pub fn to_str(self) -> &'static str {
-        match self {
-            Self::Sent => "Sent",
-            Self::NotSent => "NotSent",
-        }
-    }
-}
+use crate::{bolos::c_zemu_log_stack, parser::value::Value};
+use lexical_core::Number;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -345,18 +179,18 @@ impl<'a> TransactionPostCondition<'a> {
         let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
 
         let amount = self.tokens_amount()?;
-        let len = zxformat::u64_to_str(output.as_mut(), amount).ok()? as usize;
+        let len = zxformat::u64_to_str(output.as_mut(), amount).ok()?.len();
         unsafe {
             output.set_len(len);
         }
         Some(output)
     }
 
-    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
+    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; u64::FORMATTED_SIZE_DECIMAL]>> {
         let amount = self.amount_stx()?;
-        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
-        let len =
-            zxformat::fpu64_to_str_check_test(output.as_mut(), amount, STX_DECIMALS).ok()? as usize;
+
+        let mut output = ArrayVec::from([0u8; u64::FORMATTED_SIZE_DECIMAL]);
+        let len = zxformat::fpu64_to_str(output.as_mut(), amount, STX_DECIMALS).ok()? as usize;
         unsafe {
             output.set_len(len);
         }
@@ -423,6 +257,7 @@ impl<'a> TransactionPostCondition<'a> {
         page_idx: u8,
     ) -> Result<u8, ParserError> {
         let index = display_idx % self.num_items();
+
         if index == 0 {
             self.write_principal_address(out_key, out_value, page_idx)
         } else {
@@ -443,6 +278,8 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("TransactionPostCondition::get_stx_items\x00");
+
         let mut writer_key = zxformat::Writer::new(out_key);
         match self {
             Self::Stx(..) => match display_idx {
@@ -477,6 +314,8 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("TransactionPostCondition::get_fungible_items\x00");
+
         let mut writer_key = zxformat::Writer::new(out_key);
         match self {
             Self::Fungible(..) => {
@@ -526,6 +365,8 @@ impl<'a> TransactionPostCondition<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("TransactionPostCondition::get_non_fungible_items\x00");
+
         let mut writer_key = zxformat::Writer::new(out_key);
         match self {
             Self::Nonfungible(..) => {
@@ -565,6 +406,8 @@ impl<'a> TransactionPostCondition<'a> {
 
 #[cfg(test)]
 mod test {
+
+    use crate::parser::StacksAddress;
 
     use super::*;
     use std::prelude::v1::*;
