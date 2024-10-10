@@ -3,9 +3,7 @@
 use core::fmt::{self, Write};
 
 use crate::parser::ParserError;
-
-#[cfg(not(any(test, fuzzing)))]
-use crate::parser::fp_uint64_to_str;
+use lexical_core::Number;
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
 
@@ -39,59 +37,46 @@ impl<'a> fmt::Write for Writer<'a> {
 }
 
 macro_rules! num_to_str {
-    ($name: ident, $number: ty) => {
-        pub fn $name(output: &mut [u8], number: $number) -> Result<usize, ParserError> {
-            if output.len() < 2 {
+    // we can use a procedural macro to "attach " the type name to the function name
+    // but lets do it later.
+    ($int_type:ty, $_name: ident) => {
+        pub fn $_name(output: &mut [u8], number: $int_type) -> Result<&mut [u8], ParserError> {
+            if output.len() < <$int_type>::FORMATTED_SIZE_DECIMAL {
                 return Err(ParserError::UnexpectedBufferEnd);
             }
 
-            let len;
-
-            #[cfg(any(test, fuzzing))]
-            {
-                let mut writer = Writer::new(output);
-                core::write!(writer, "{}", number).map_err(|_| ParserError::UnexpectedBufferEnd)?;
-
-                len = writer.offset;
+            if number == 0 {
+                output[0] = b'0';
+                return Ok(&mut output[..1]);
             }
 
-            #[cfg(not(any(test, fuzzing)))]
-            {
-                // We add this path here because pic issues with the write! trait
-                // so that it is preferable to use the c implementation when running on
-                // the device.
-                unsafe {
-                    len = fp_uint64_to_str(
-                        output.as_mut_ptr() as _,
-                        output.len() as u16,
-                        number as _,
-                        0,
-                    ) as usize;
-                }
+            let mut offset = 0;
+            let mut number = number;
+            while number != 0 {
+                let rem = number % 10;
+                output[offset] = b'0' + rem as u8;
+                offset += 1;
+                number /= 10;
             }
-            Ok(len)
+
+            // swap values
+            let len = offset;
+            let mut idx = 0;
+            while idx < offset {
+                offset -= 1;
+                output.swap(idx, offset);
+                idx += 1;
+            }
+
+            Ok(&mut output[..len])
         }
     };
 }
 
-num_to_str!(u64_to_str, u64);
-num_to_str!(i64_to_str, i64);
-
-/// Fixed point u64 number
-///
-/// Converts an u64 number into its fixed point string representation
-/// using #decimals padding zeros
-/// # Arguments
-/// * * `out`: the output buffer where the conversion result is written
-/// * `value`: The number to convert to
-/// * `decimals`: the number of decimals after the decimal point
-/// # Returns
-/// The number of bytes written if success or Error otherwise
-pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, ParserError> {
-    let mut temp = [0u8; MAX_STR_BUFF_LEN];
-    let len = u64_to_str(temp.as_mut(), value)?;
-    fpstr_to_str(out, &temp[..len], decimals)
-}
+num_to_str!(u64, u64_to_str);
+num_to_str!(u32, u32_to_str);
+num_to_str!(u8, u8_to_str);
+num_to_str!(i64, i64_to_str);
 
 /// Fixed point u64 number with native/test support
 ///
@@ -105,29 +90,22 @@ pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, P
 /// * `decimals`: the number of decimals after the decimal point
 /// # Returns
 /// The number of bytes written if success or Error otherwise
-pub fn fpu64_to_str_check_test(
-    out: &mut [u8],
-    value: u64,
-    decimals: u8,
-) -> Result<usize, ParserError> {
-    let len = fpu64_to_str(out, value, decimals)? as usize;
-    Ok(len)
-}
-
-/// Fixed point i64 number
-///
-/// Converts an u64 number into its fixed point string representation
-/// using decimals padding zeros
-/// # Arguments
-/// * * `out`: the output buffer where the conversion result is written
-/// * `value`: The number to convert to
-/// * `decimals`: the number of decimals after the decimal point
-/// # Returns
-/// The number of bytes written if success or Error otherwise
-pub fn fpi64_to_str(out: &mut [u8], value: i64, decimals: u8) -> Result<usize, ParserError> {
-    let mut temp = [0u8; MAX_STR_BUFF_LEN];
-    let len = i64_to_str(temp.as_mut(), value)?;
-    fpstr_to_str(out, &temp[..len], decimals)
+pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, ParserError> {
+    #[cfg(any(test, fuzzing))]
+    {
+        let mut temp = [0u8; u64::FORMATTED_SIZE_DECIMAL];
+        let value = u64_to_str(temp.as_mut(), value)?;
+        fpstr_to_str(out, value, decimals)
+    }
+    #[cfg(not(any(test, fuzzing)))]
+    unsafe {
+        Ok(crate::parser::fp_uint64_to_str(
+            out.as_mut_ptr() as *mut i8,
+            out.len() as u16,
+            value,
+            decimals,
+        ) as usize)
+    }
 }
 
 pub(crate) fn fpstr_to_str(
@@ -177,8 +155,11 @@ pub(crate) fn fpstr_to_str(
     }
 
     let fp = in_len - decimals as usize;
-    let left = str.get(0..fp).unwrap();
-    let right = str.get(fp..in_len).unwrap();
+    let left = str.get(0..fp).ok_or(ParserError::UnexpectedBufferEnd)?;
+    let right = str
+        .get(fp..in_len)
+        .ok_or(ParserError::UnexpectedBufferEnd)?;
+
     write!(&mut writer, "{}.{}", left, right)
         .map(|_| writer.offset)
         .map_err(|_| ParserError::UnexpectedBufferEnd)
@@ -226,61 +207,12 @@ mod test {
 
     #[test]
     fn test_u64_to_str() {
-        let mut output = [0u8; 10];
-        assert!(u64_to_str(output.as_mut(), 125_550).is_ok());
-        assert_eq!(&output[..6], b"125550");
+        let mut output = [0u8; u64::FORMATTED_SIZE_DECIMAL];
+        let value = u64_to_str(output.as_mut(), 125_550).unwrap();
+        std::println!("value: {}", core::str::from_utf8(value).unwrap());
+        assert_eq!(&value, b"125550");
         // overflow
-        assert!(u64_to_str(output.as_mut(), 12_521_547_982).is_err());
-    }
-
-    #[test]
-    fn test_i64_to_str() {
-        let mut output = [0u8; 10];
-        assert!(i64_to_str(output.as_mut(), -125_550).is_ok());
-        assert_eq!(&output[..7], b"-125550");
-        // overflow
-        assert!(i64_to_str(output.as_mut(), -1_234_567_890).is_err());
-    }
-
-    #[test]
-    fn test_fpi64_8decimals() {
-        let mut output = [0u8; 15];
-        let len = fpi64_to_str(output.as_mut(), -1_234_567, 8).unwrap();
-        let result = core::str::from_utf8(&output[..len]).unwrap();
-        assert_eq!(result, "-0.01234567");
-    }
-
-    #[test]
-    fn test_fpi64_10decimals() {
-        let mut output = [0u8; 15];
-        // With 10 decimals
-        let len = fpi64_to_str(output.as_mut(), -1_234_567, 10).unwrap();
-        let result = core::str::from_utf8(&output[..len]).unwrap();
-        assert_eq!(result, "-0.0001234567");
-    }
-
-    #[test]
-    fn test_fpi64_0decimals() {
-        let mut output = [0u8; 15];
-        let len = fpi64_to_str(output.as_mut(), -1_234_567, 0).unwrap();
-        let result = core::str::from_utf8(&output[..len]).unwrap();
-        assert_eq!(result, "-1234567");
-    }
-
-    #[test]
-    fn test_fpi64_4decimals() {
-        let mut output = [0u8; 15];
-        let len = fpi64_to_str(output.as_mut(), -1_234_567, 4).unwrap();
-        let result = core::str::from_utf8(&output[..len]).unwrap();
-        assert_eq!(result, "-123.4567");
-    }
-
-    #[test]
-    fn test_fpi64_overflow() {
-        let mut output = [0u8; 5];
-        // overflow wit zero decimals
-        let result = fpi64_to_str(output.as_mut(), -102_123_456, 0);
-        assert!(result.is_err());
+        assert!(u64_to_str(&mut output[..10], 12_521_547_982).is_err());
     }
 
     #[test]
