@@ -82,13 +82,12 @@ impl<'a> Domain<'a> {
             let id = value.value_id();
 
             if id == ValueId::UInt {
-                // wont panic as this was checked by the parser
-                let chain_id = value.uint().unwrap();
+                let chain_id = value.uint().ok_or(ParserError::UnexpectedValue)?;
                 let num = chain_id.numtoa_str(10, &mut buff).as_bytes();
 
                 pageString(out_value, num, page_idx)
             } else {
-                let string = value.string_ascii().unwrap();
+                let string = value.string_ascii().ok_or(ParserError::UnexpectedValue)?;
 
                 pageString(out_value, string.content(), page_idx)
             }

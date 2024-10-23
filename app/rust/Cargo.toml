@@ -23,6 +23,9 @@ hex = { version = "0.4", default-features = false }
 serde-json-core = { version = "0.4.0", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 nom = { version = "7.1.2", default-features = false }
+lexical-core = { version = "0.7", features = [
+    "libm",
+], default-features = false }
 
 
 [dependencies.arrayvec]
