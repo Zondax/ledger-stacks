@@ -1,51 +1,48 @@
 /*******************************************************************************
-*   (c) 2018, 2019 Zondax GmbH
-*   (c) 2016 Ledger
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-********************************************************************************/
+ *   (c) 2018, 2019 Zondax GmbH
+ *   (c) 2016 Ledger
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ ********************************************************************************/
 
-#include "app_main.h"
-
-#include <string.h>
-#include <os_io_seproxyhal.h>
 #include <os.h>
+#include <os_io_seproxyhal.h>
+#include <string.h>
 
-#include "view.h"
 #include "actions.h"
-#include "tx.h"
 #include "addr.h"
-#include "crypto.h"
+#include "app_main.h"
 #include "coin.h"
-#include "zxmacros.h"
+#include "crypto.h"
+#include "tx.h"
+#include "view.h"
 #include "view_internal.h"
+#include "zxmacros.h"
 
 static bool tx_initialized = false;
 
 __Z_INLINE void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
-
     if ((rx - offset) < sizeof(uint32_t) * path_len) {
-            THROW(APDU_CODE_WRONG_LENGTH);
+        THROW(APDU_CODE_WRONG_LENGTH);
     }
 
     MEMCPY(hdPath, G_io_apdu_buffer + offset, sizeof(uint32_t) * path_len);
     hdPath_len = path_len;
 }
 
-
-
 __Z_INLINE bool process_chunk(uint32_t rx) {
-    const uint8_t payloadType = G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE];
+    uint8_t payloadType = 0;
+    payloadType = G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE];
 
     if (rx < OFFSET_DATA) {
         THROW(APDU_CODE_WRONG_LENGTH);
@@ -55,8 +52,7 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
         THROW(APDU_CODE_INVALIDP1P2);
     }
 
-
-    uint32_t added;
+    uint32_t added = 0;
     switch (payloadType) {
         case 0:
             tx_initialize();
@@ -89,33 +85,29 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
 }
 
 __Z_INLINE void extract_default_path(uint32_t rx, uint32_t offset) {
-
     extractHDPath(rx, offset, HDPATH_LEN_DEFAULT);
 
     // validate
-    bool mainnet = hdPath[0] == HDPATH_0_DEFAULT &&
-                   hdPath[1] == HDPATH_1_DEFAULT;
+    bool mainnet = false;
+    mainnet = hdPath[0] == HDPATH_0_DEFAULT && hdPath[1] == HDPATH_1_DEFAULT;
 
     mainnet |= (hdPath[0] == HDPATH_0_ALTERNATIVE);
 
-    const bool testnet = hdPath[0] == HDPATH_0_TESTNET &&
-                         hdPath[1] == HDPATH_1_TESTNET;
+    bool testnet = false;
+    testnet = hdPath[0] == HDPATH_0_TESTNET && hdPath[1] == HDPATH_1_TESTNET;
 
-    if (!mainnet && !testnet)
+    if (!mainnet && !testnet) {
         THROW(APDU_CODE_DATA_INVALID);
-
+    }
 }
 
 __Z_INLINE void extract_identity_path(uint32_t rx, uint32_t offset) {
-
     extractHDPath(rx, offset, HDPATH_LEN_AUTH);
 
     // validate
-    const bool identity_path = hdPath[0] == HDPATH_0_AUTH &&
-                               hdPath[1] == HDPATH_1_AUTH;
-    if (!identity_path)
-        THROW(APDU_CODE_DATA_INVALID);
-
+    bool identity_path = false;
+    identity_path = hdPath[0] == HDPATH_0_AUTH && hdPath[1] == HDPATH_1_AUTH;
+    if (!identity_path) THROW(APDU_CODE_DATA_INVALID);
 }
 
 __Z_INLINE void handle_getversion(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
@@ -143,12 +135,15 @@ __Z_INLINE void handle_getversion(volatile uint32_t *flags, volatile uint32_t *t
 __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     extract_default_path(rx, OFFSET_DATA);
 
-    uint8_t requireConfirmation = G_io_apdu_buffer[OFFSET_P1];
-    uint8_t network = G_io_apdu_buffer[OFFSET_P2];
+    uint8_t requireConfirmation = 0;
+    uint8_t network = 0;
+    requireConfirmation = G_io_apdu_buffer[OFFSET_P1];
+    network = G_io_apdu_buffer[OFFSET_P2];
 
     // Set the address version
-    if (!set_network_version(network))
+    if (!set_network_version(network)) {
         return THROW(APDU_CODE_DATA_INVALID);
+    }
 
     if (requireConfirmation) {
         app_fill_address(addr_secp256k1);
@@ -194,7 +189,6 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
     *flags |= IO_ASYNCH_REPLY;
 }
 
-
 __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     // check first for the expected path at initialization
     if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
@@ -216,10 +210,8 @@ __Z_INLINE void handleSignJwtSecp256K1(volatile uint32_t *flags, volatile uint32
 void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     uint16_t sw = 0;
 
-    BEGIN_TRY
-    {
-        TRY
-        {
+    BEGIN_TRY {
+        TRY {
             if (G_io_apdu_buffer[OFFSET_CLA] != CLA) {
                 THROW(APDU_CODE_CLA_NOT_SUPPORTED);
             }
@@ -270,27 +262,24 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                     THROW(APDU_CODE_INS_NOT_SUPPORTED);
             }
         }
-        CATCH(EXCEPTION_IO_RESET)
-        {
+        CATCH(EXCEPTION_IO_RESET) {
             THROW(EXCEPTION_IO_RESET);
         }
-        CATCH_OTHER(e)
-        {
-            switch (e & 0xF000) {
+        CATCH_OTHER(err) {
+            switch (err & 0xF000) {
                 case 0x6000:
                 case APDU_CODE_OK:
-                    sw = e;
+                    sw = err;
                     break;
                 default:
-                    sw = 0x6800 | (e & 0x7FF);
+                    sw = 0x6800 | (err & 0x7FF);
                     break;
             }
             G_io_apdu_buffer[*tx] = sw >> 8;
             G_io_apdu_buffer[*tx + 1] = sw;
             *tx += 2;
         }
-        FINALLY
-        {
+        FINALLY {
         }
     }
     END_TRY;
