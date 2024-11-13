@@ -8,7 +8,7 @@ use crate::{
 // The number of contract call arguments we can handle.
 // this can be adjusted, but keep in mind that higher values could
 // hit stack overflows issues.
-pub const MAX_NUM_ARGS: u32 = 10;
+pub const MAX_NUM_ARGS: u32 = 30;
 
 #[repr(C)]
 #[derive(Clone, PartialEq)]

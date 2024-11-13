@@ -25,9 +25,7 @@ impl<'a> Domain<'a> {
         let (rem, value) = Value::from_bytes::<MAX_DEPTH>(data)?;
 
         // Domain is a tuple with 3 elements
-        let tuple = value
-            .tuple()
-            .ok_or(ParserError::InvalidStructuredMsg)?;
+        let tuple = value.tuple().ok_or(ParserError::InvalidStructuredMsg)?;
 
         let mut items = 0;
         for (key, value) in tuple.iter() {
