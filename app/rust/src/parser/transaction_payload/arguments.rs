@@ -1,14 +1,14 @@
 use nom::{bytes::complete::take, number::complete::be_u32};
 
 use crate::{
-    check_canary, is_expert_mode,
+    check_canary,
     parser::{ParserError, Value, TX_DEPTH_LIMIT},
 };
 
 // The number of contract call arguments we can handle.
 // this can be adjusted, but keep in mind that higher values could
 // hit stack overflows issues.
-pub const MAX_NUM_ARGS: u32 = 30;
+// pub const MAX_NUM_ARGS: u32 = 30;
 
 #[repr(C)]
 #[derive(Clone, PartialEq)]
@@ -22,9 +22,13 @@ impl<'a> Arguments<'a> {
 
         let (mut rem, num_args) = be_u32::<_, ParserError>(bytes)?;
 
-        if num_args > MAX_NUM_ARGS && !is_expert_mode() {
-            return Err(ParserError::InvalidTransactionPayload.into());
-        }
+        // Remove this check, this does not affect memory consumption
+        // and allow user to sign streamline contract calls that in practice have
+        // more that 30 arguments, for example swap transactions.
+        // see: https://github.com/Zondax/ledger-stacks/issues/176
+        // if num_args > MAX_NUM_ARGS && !is_expert_mode() {
+        //     return Err(ParserError::InvalidTransactionPayload.into());
+        // }
 
         // Parse all arguments so we can be sure that at runtime when each
         // argument is retrieved it does not crashes
