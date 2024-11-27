@@ -90,5 +90,6 @@ app/output/*.sha256
 app/pkg/*
 
 app/rust/.cargo/.package-cache-mutate
+app/hfuzz_corpus
 
 

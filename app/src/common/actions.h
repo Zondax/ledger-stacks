@@ -1,30 +1,31 @@
 /*******************************************************************************
-*   (c) 2019 Zondax GmbH
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-********************************************************************************/
+ *   (c) 2019 Zondax GmbH
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ ********************************************************************************/
 #pragma once
 
+#include <os_io_seproxyhal.h>
 #include <stdint.h>
-#include "zxmacros.h"
+
+#include "apdu_codes.h"
+#include "coin.h"
 #include "crypto.h"
 #include "cx.h"
-#include "tx.h"
-#include "apdu_codes.h"
-#include <os_io_seproxyhal.h>
-#include "coin.h"
-#include "zxformat.h"
 #include "sha512.h"
+#include "tx.h"
+#include "zxformat.h"
+#include "zxmacros.h"
 
 // The initial tx hash is done in 3 blocks
 // this is the length in bytes of the first block
@@ -67,10 +68,10 @@
 extern uint8_t action_addr_len;
 
 // helper function to get the presig_hash of the transaction being signed
-__Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen);
+__Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen);
 
 // Helper function that appends the transaction auth_type, fee and  nonce getting the hash of the result
-__Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen);
+__Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t *input_hash, uint16_t input_hashLen, uint8_t *hash, uint16_t hashLen);
 
 // Helper function to compute post_sighash from pre_sighash
 // Updates `hash` in place
@@ -81,8 +82,8 @@ __Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8
 __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len);
 
 __Z_INLINE void app_sign() {
-    uint8_t presig_hash[CX_SHA256_SIZE];
-    uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN];
+    uint8_t presig_hash[CX_SHA256_SIZE] = {0};
+    uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN] = {0};
     zxerr_t err = zxerr_ok;
 
     const uint8_t transaction_type = tx_get_transaction_type();
@@ -97,33 +98,32 @@ __Z_INLINE void app_sign() {
         // Validate post_sig_hashes of previous signers
         uint8_t hash_mode = -1;
         err = tx_hash_mode(&hash_mode);
-        if (err != zxerr_ok) {
-            zemu_log_stack("Error getting HashMode\n");
-        }
-        else switch (hash_mode) {
-            case 0x00: // P2PKH
-            case 0x02: // P2WPKH
-                // Singlesig
-                // Shouldn't be here!
-                zemu_log_stack("HashMode is not multisig\n");
-                err = zxerr_unknown;
-                break;
-            case 0x01: // P2SH sequential
-            case 0x03: // P2WSH sequential
-                // Sequential multisig
-                // Need to compute sighashes of all previous signers
-                err = compute_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
-                break;
-            case 0x05: // PWSH non-sequential
-            case 0x07: // P2WSH non-sequential
-                // Non-sequential multisig
-                // No need to do anything
-                err = zxerr_ok;
-                break;
-            default:
-                zemu_log_stack("Invalid HashMode\n");
-                err = zxerr_unknown;
-                break;
+        if (err == zxerr_ok) {
+            switch (hash_mode) {
+                case 0x00:  // P2PKH
+                case 0x02:  // P2WPKH
+                    // Singlesig
+                    // Shouldn't be here!
+                    zemu_log_stack("HashMode is not multisig\n");
+                    err = zxerr_unknown;
+                    break;
+                case 0x01:  // P2SH sequential
+                case 0x03:  // P2WSH sequential
+                    // Sequential multisig
+                    // Need to compute sighashes of all previous signers
+                    err = compute_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
+                    break;
+                case 0x05:  // PWSH non-sequential
+                case 0x07:  // P2WSH non-sequential
+                    // Non-sequential multisig
+                    // No need to do anything
+                    err = zxerr_ok;
+                    break;
+                default:
+                    zemu_log_stack("Invalid HashMode\n");
+                    err = zxerr_unknown;
+                    break;
+            }
         }
     }
 
@@ -136,7 +136,7 @@ __Z_INLINE void app_sign() {
     // Take "ownership" of the memory used by the transaction parser
     tx_reset_state();
 
-    uint16_t replyLen;
+    uint16_t replyLen = 0;
     err = crypto_sign(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 3, presig_hash, CX_SHA256_SIZE, &replyLen);
     if (err != zxerr_ok) {
         set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
@@ -153,7 +153,7 @@ __Z_INLINE void app_sign() {
             post_sighash_data[CX_SHA256_SIZE] = 0x00;
 
             // Now get the post_sighash from the data and write it down to the first 32-byte of the  G_io_apdu_buffer
-            uint8_t hash_temp[SHA512_DIGEST_LENGTH];
+            uint8_t hash_temp[SHA512_DIGEST_LENGTH] = {0};
 
             // Now get the presig_hash
             sha512_256_ctx ctx;
@@ -170,7 +170,6 @@ __Z_INLINE void app_sign() {
             SHA512_256_finish(&ctx, hash_temp);
             memcpy(G_io_apdu_buffer, hash_temp, CX_SHA256_SIZE);
             break;
-
         }
         case Message:
         case Jwt:
@@ -179,7 +178,7 @@ __Z_INLINE void app_sign() {
             // which is the hash that is signed allowing for  easy signature verification
             memcpy(G_io_apdu_buffer, presig_hash, CX_SHA256_SIZE);
             break;
-                            }
+        }
         default: {
             set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
             io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
@@ -236,7 +235,6 @@ __Z_INLINE uint8_t app_fill_auth_pubkey(address_kind_e kind) {
     return action_addr_len;
 }
 
-
 __Z_INLINE void app_reply_address() {
     set_code(G_io_apdu_buffer, action_addr_len, APDU_CODE_OK);
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, action_addr_len + 2);
@@ -249,7 +247,7 @@ __Z_INLINE void app_reply_error() {
 
 __Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8_t *signer_data, uint16_t signer_data_len) {
     uint16_t expected_signer_data_len = 1 + PREVIOUS_SIGNER_SIG_LEN;
-    if ( (hash_len != CX_SHA256_SIZE) || (signer_data_len != expected_signer_data_len)) {
+    if ((hash_len != CX_SHA256_SIZE) || (signer_data_len != expected_signer_data_len)) {
         return zxerr_no_data;
     }
 
@@ -273,7 +271,7 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
 
     // 1-byte pubkey type(compressed/uncompressed)
     // 65-byte previous signer signature(vrs)
-    uint8_t previous_signer_data[1 + PREVIOUS_SIGNER_SIG_LEN];
+    uint8_t previous_signer_data[1 + PREVIOUS_SIGNER_SIG_LEN] = {0};
     memset(previous_signer_data, 0, sizeof(previous_signer_data));
 
     uint32_t num_fields = tx_num_multisig_fields();
@@ -325,7 +323,7 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
     return zxerr_ok;
 }
 
-__Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
+__Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen) {
     zemu_log_stack("computing presig_hash");
 
     uint8_t tx_auth[INITIAL_SIGHASH_AUTH_LEN];
@@ -343,47 +341,46 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t* hash, uint16_t hashLen) {
     const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     switch (tx_typ) {
-    case Transaction: {
-        // Before hashing the transaction the auth field should be cleared
-        // and the sponsor set to signing sentinel.
-        uint16_t auth_len = 0;
-        auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
-        // prepare the last transaction block to be hashed
-        SHA512_256_update(&ctx, data, TRANSACTION_FIRST_BLOCK_LEN);
-        SHA512_256_update(&ctx, tx_auth, auth_len);
-        uint8_t *last_block = NULL;
-        uint8_t **last_block_ptr = &last_block;
+        case Transaction: {
+            // Before hashing the transaction the auth field should be cleared
+            // and the sponsor set to signing sentinel.
+            uint16_t auth_len = 0;
+            auth_len = tx_presig_hash_data(tx_auth, INITIAL_SIGHASH_AUTH_LEN);
+            // prepare the last transaction block to be hashed
+            SHA512_256_update(&ctx, data, TRANSACTION_FIRST_BLOCK_LEN);
+            SHA512_256_update(&ctx, tx_auth, auth_len);
+            uint8_t *last_block = NULL;
+            uint8_t **last_block_ptr = &last_block;
 
-        uint16_t last_block_len = tx_last_tx_block(last_block_ptr);
-        if (last_block == NULL || last_block_len == 0) {
-            return zxerr_no_data;
+            uint16_t last_block_len = tx_last_tx_block(last_block_ptr);
+            if (last_block == NULL || last_block_len == 0) {
+                return zxerr_no_data;
+            }
+
+            SHA512_256_update(&ctx, last_block, last_block_len);
+            SHA512_256_finish(&ctx, hash_temp);
+            return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
         }
-
-        SHA512_256_update(&ctx, last_block, last_block_len);
-        SHA512_256_finish(&ctx, hash_temp);
-        return append_fee_nonce_auth_hash(hash_temp, CX_SHA256_SIZE, hash, hashLen);
-    }
-    case Message:
-    case Jwt: {
-        // we have byteString or JWT messages. The hash is the same for both types
-        cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
-        return zxerr_ok;
-    }
-    // special case is delegated to the rust side
-    case StructuredMsg: {
-        return tx_structured_msg_hash(hash, CX_SHA256_SIZE);
-    }
-    default:
-        return zxerr_no_data;
+        case Message:
+        case Jwt: {
+            // we have byteString or JWT messages. The hash is the same for both types
+            cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
+            return zxerr_ok;
+        }
+        // special case is delegated to the rust side
+        case StructuredMsg: {
+            return tx_structured_msg_hash(hash, CX_SHA256_SIZE);
+        }
+        default:
+            return zxerr_no_data;
     }
 }
 
-__Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t input_hashLen, uint8_t* hash, uint16_t hashLen) {
-    uint8_t presig_data[PRESIG_DATA_LEN];
+__Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t *input_hash, uint16_t input_hashLen, uint8_t *hash, uint16_t hashLen) {
+    uint8_t presig_data[PRESIG_DATA_LEN] = {0};
     // uint8_t hash_temp[SHA512_DIGEST_LENGTH];
 
-    if ( input_hashLen != CX_SHA256_SIZE )
-        return zxerr_no_data;
+    if (input_hashLen != CX_SHA256_SIZE) return zxerr_no_data;
 
     memcpy(presig_data, input_hash, input_hashLen);
 
@@ -391,8 +388,7 @@ __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t inpu
     uint8_t idx = CX_SHA256_SIZE;
 
     // append the tx auth type
-    if (tx_auth_flag(&presig_data[idx++]) != zxerr_ok)
-        return zxerr_no_data;
+    if (tx_auth_flag(&presig_data[idx++]) != zxerr_ok) return zxerr_no_data;
 
     // append the 8-byte transaction fee
     idx += tx_fee(&presig_data[idx], 8);
@@ -400,8 +396,7 @@ __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t inpu
     // append the 8-byte transaction nonce
     idx += tx_nonce(&presig_data[idx], 8);
 
-    if (hashLen < CX_SHA256_SIZE || idx != PRESIG_DATA_LEN)
-        return zxerr_no_data;
+    if (hashLen < CX_SHA256_SIZE || idx != PRESIG_DATA_LEN) return zxerr_no_data;
 
     // Now get the hash
     sha512_256_ctx ctx;
@@ -411,4 +406,3 @@ __Z_INLINE zxerr_t append_fee_nonce_auth_hash(uint8_t* input_hash, uint16_t inpu
     SHA512_256_finish(&ctx, hash);
     return zxerr_ok;
 }
-

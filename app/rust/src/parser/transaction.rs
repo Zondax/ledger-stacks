@@ -1,25 +1,23 @@
 use core::fmt::Write;
 use nom::{
-    branch::permutation,
     bytes::complete::take,
-    combinator::iterator,
     number::complete::{be_u32, le_u8},
+    sequence::tuple,
 };
 
-use arrayvec::ArrayVec;
-
-use crate::parser::{
-    error::ParserError,
-    parser_common::{
-        HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH,
-        NUM_SUPPORTED_POST_CONDITIONS,
+use crate::{
+    bolos::c_zemu_log_stack,
+    parser::{
+        error::ParserError,
+        parser_common::{HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH},
+        transaction_auth::TransactionAuth,
+        transaction_payload::TransactionPayload,
     },
-    post_condition::TransactionPostCondition,
-    transaction_auth::TransactionAuth,
-    transaction_payload::TransactionPayload,
 };
 
 use crate::{check_canary, zxformat};
+
+use super::PostConditions;
 
 // In multisig transactions the remainder should contain:
 // 32-byte previous signer post_sig_hash
@@ -33,33 +31,6 @@ const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 pub enum TransactionAuthFlags {
     Standard = 0x04,
     Sponsored = 0x05,
-}
-
-#[repr(u8)]
-#[derive(Clone, PartialEq, Copy)]
-#[cfg_attr(test, derive(Debug))]
-pub enum TransactionPostConditionMode {
-    Allow = 0x01, // allow any other changes not specified
-    Deny = 0x02,  // deny any other changes not specified
-}
-
-impl TransactionPostConditionMode {
-    #[inline(never)]
-    fn from_u8(v: u8) -> Option<Self> {
-        match v {
-            1 => Some(Self::Allow),
-            2 => Some(Self::Deny),
-            _ => None,
-        }
-    }
-
-    #[inline(never)]
-    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let mode = le_u8(bytes)?;
-        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::UnexpectedError)?;
-        check_canary!();
-        Ok((mode.0, tx_mode))
-    }
 }
 
 #[repr(u8)]
@@ -91,123 +62,6 @@ impl TransactionAnchorMode {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, PartialEq)]
-#[cfg_attr(test, derive(Debug))]
-pub struct PostConditions<'a> {
-    pub(crate) conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]>,
-    num_items: u8,
-    current_idx: u8,
-}
-
-impl<'a> PostConditions<'a> {
-    #[inline(never)]
-    fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (raw, len) = be_u32::<_, ParserError>(bytes)?;
-        if len > NUM_SUPPORTED_POST_CONDITIONS as u32 {
-            return Err(nom::Err::Error(ParserError::ValueOutOfRange));
-        }
-        let mut conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]> = ArrayVec::new();
-        let mut iter = iterator(raw, TransactionPostCondition::read_as_bytes);
-        iter.take(len as _).enumerate().for_each(|i| {
-            conditions.push(i.1);
-        });
-        let res = iter.finish()?;
-        let num_items = Self::get_num_items(conditions.as_ref());
-        check_canary!();
-        Ok((
-            res.0,
-            Self {
-                conditions,
-                num_items,
-                current_idx: 0,
-            },
-        ))
-    }
-
-    fn get_num_items(conditions: &[&[u8]]) -> u8 {
-        conditions
-            .iter()
-            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
-            .map(|condition| (condition.1).num_items())
-            .sum()
-    }
-
-    pub fn get_postconditions(&self) -> &[&[u8]] {
-        self.conditions.as_ref()
-    }
-
-    pub fn num_items(&self) -> u8 {
-        self.num_items
-    }
-
-    #[inline(never)]
-    fn update_postcondition(
-        &mut self,
-        total_items: u8,
-        display_idx: u8,
-    ) -> Result<u8, ParserError> {
-        // map display_idx to our range of items
-        let in_start = total_items - self.num_items;
-        let idx = self.map_idx(display_idx, in_start, total_items);
-
-        let limit = self.get_current_limit();
-
-        // get the current postcondition which is used to
-        // check if it is time to change to the next/previous postconditions in our list
-        // and if that is not the case, we use it to get its items
-        let current_condition = self.current_post_condition()?;
-
-        // before continuing we need to check if the current display_idx
-        // correspond to the current, next or previous postcondition
-        // if so, update it
-        if idx >= (limit + current_condition.num_items()) {
-            self.current_idx += 1;
-            // this should not happen
-            if self.current_idx > self.num_items {
-                return Err(ParserError::UnexpectedError);
-            }
-        } else if idx < limit && idx > 0 {
-            self.current_idx -= 1;
-        }
-        Ok(idx)
-    }
-
-    #[inline(never)]
-    pub fn get_items(
-        &mut self,
-        display_idx: u8,
-        out_key: &mut [u8],
-        out_value: &mut [u8],
-        page_idx: u8,
-        num_items: u8,
-    ) -> Result<u8, ParserError> {
-        let idx = self.update_postcondition(num_items, display_idx)?;
-        let current_postcondition = self.current_post_condition()?;
-        current_postcondition.get_items(idx, out_key, out_value, page_idx)
-    }
-
-    fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
-        let slope = self.num_items / (in_end - in_start);
-        slope * (display_idx - in_start)
-    }
-
-    fn get_current_limit(&self) -> u8 {
-        let current = self.current_idx as usize;
-        self.conditions[..current]
-            .iter()
-            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
-            .map(|condition| (condition.1).num_items())
-            .sum()
-    }
-
-    fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
-        TransactionPostCondition::from_bytes(self.conditions[self.current_idx as usize])
-            .map_err(|_| ParserError::PostConditionFailed)
-            .map(|res| res.1)
-    }
-}
-
 pub type TxTuple<'a> = (
     TransactionVersion, // version number
     u32,                // chainId
@@ -219,6 +73,11 @@ pub type TxTuple<'a> = (
 
 impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
     fn from(raw: (&'a [u8], TxTuple<'a>)) -> Self {
+        let mut remainder = None;
+        if !raw.0.is_empty() {
+            remainder = Some(raw.0);
+        }
+
         Self {
             version: (raw.1).0,
             chain_id: (raw.1).1,
@@ -228,7 +87,7 @@ impl<'a> From<(&'a [u8], TxTuple<'a>)> for Transaction<'a> {
             payload: (raw.1).5,
             // At this point the signer is unknown
             signer: SignerId::Invalid,
-            remainder: raw.0,
+            remainder,
         }
     }
 }
@@ -249,98 +108,110 @@ pub struct Transaction<'a> {
     // with them, we can construct the pre_sig_hash for the current signer
     // we would ideally verify it, but we can lend such responsability to the application
     // which has more resources
-    // If this is not a multisig transaction, this field should be an empty array
-    pub remainder: &'a [u8],
+    // If this is not a multisig transaction, this field should be None
+    pub remainder: Option<&'a [u8]>,
 }
 
 impl<'a> Transaction<'a> {
     fn update_remainder(&mut self, data: &'a [u8]) {
-        self.remainder = data;
+        if !data.is_empty() {
+            self.remainder = Some(data);
+        } else {
+            self.remainder = None;
+        }
     }
 
     #[inline(never)]
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
-        self.update_remainder(data);
-        self.read_header()?;
-        self.read_auth()?;
-        self.read_transaction_modes()?;
-        self.read_post_conditions()?;
-        self.read_payload()?;
+        c_zemu_log_stack("Transaction::read\x00");
+        let rem = self.read_header(data)?;
+        let rem = self.read_auth(rem)?;
+        let rem = self.read_transaction_modes(rem)?;
+        let rem = self.read_post_conditions(rem)?;
+        let rem = self.read_payload(rem)?;
 
         let is_token_transfer = self.payload.is_token_transfer_payload();
         let is_standard_auth = self.transaction_auth.is_standard_auth();
 
         if is_token_transfer && !is_standard_auth {
+            c_zemu_log_stack("Transaction::invalid_token_transfer!\x00");
             return Err(ParserError::InvalidTransactionPayload);
         }
 
         // At this point we do not know who the signer is
         self.signer = SignerId::Invalid;
+
+        self.remainder = None;
+
+        // set the remainder if this is mutltisig
+        if self.is_multisig() && !rem.is_empty() {
+            self.update_remainder(rem);
+        }
+
         Ok(())
     }
 
     #[inline(never)]
-    fn read_header(&mut self) -> Result<(), ParserError> {
-        let (next_data, version) = TransactionVersion::from_bytes(self.remainder)
-            .map_err(|_| ParserError::UnexpectedValue)?;
+    fn read_header(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        c_zemu_log_stack("Transaction::read_header\x00");
+        let (rem, version) =
+            TransactionVersion::from_bytes(data).map_err(|_| ParserError::UnexpectedValue)?;
 
-        let (next_data, chain_id) =
-            be_u32::<_, ParserError>(next_data).map_err(|_| ParserError::UnexpectedValue)?;
+        let (rem, chain_id) =
+            be_u32::<_, ParserError>(rem).map_err(|_| ParserError::UnexpectedValue)?;
 
         self.version = version;
         self.chain_id = chain_id;
         check_canary!();
 
-        self.update_remainder(next_data);
-
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_auth(&mut self) -> Result<(), ParserError> {
-        let (next_data, auth) = TransactionAuth::from_bytes(self.remainder)
-            .map_err(|_| ParserError::InvalidAuthType)?;
+    fn read_auth(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        c_zemu_log_stack("Transaction::read_auth\x00");
+        let (rem, auth) =
+            TransactionAuth::from_bytes(data).map_err(|_| ParserError::InvalidAuthType)?;
         self.transaction_auth = auth;
-        self.update_remainder(next_data);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_transaction_modes(&mut self) -> Result<(), ParserError> {
+    fn read_transaction_modes(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        c_zemu_log_stack("Transaction::read_transaction_modes\x00");
         // two modes are included here,
         // anchor mode and postcondition mode
-        let (raw, _) = take::<_, _, ParserError>(2usize)(self.remainder)
+        let (rem, _) = take::<_, _, ParserError>(2usize)(data)
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
-        let modes = arrayref::array_ref!(self.remainder, 0, 2);
+        let modes = arrayref::array_ref!(data, 0, 2);
         self.transaction_modes = modes;
-        self.update_remainder(raw);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_post_conditions(&mut self) -> Result<(), ParserError> {
-        let (raw, conditions) = PostConditions::from_bytes(self.remainder)
-            .map_err(|_| ParserError::PostConditionFailed)?;
+    fn read_post_conditions(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        c_zemu_log_stack("Transaction::read_post_conditions\x00");
+        let (rem, conditions) =
+            PostConditions::from_bytes(data).map_err(|_| ParserError::PostConditionFailed)?;
         self.post_conditions = conditions;
-        self.update_remainder(raw);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     #[inline(never)]
-    fn read_payload(&mut self) -> Result<(), ParserError> {
-        let (raw, payload) = TransactionPayload::from_bytes(self.remainder)
+    fn read_payload(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        c_zemu_log_stack("Transaction::read_payload\x00");
+        let (rem, payload) = TransactionPayload::from_bytes(data)
             .map_err(|_| ParserError::InvalidTransactionPayload)?;
         self.payload = payload;
-        self.update_remainder(raw);
         check_canary!();
-        Ok(())
+        Ok(rem)
     }
 
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, ParserError> {
-        match permutation((
+        match tuple((
             TransactionVersion::from_bytes,
             be_u32,
             TransactionAuth::from_bytes,
@@ -368,9 +239,11 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn num_items(&self) -> Result<u8, ParserError> {
+        let num_items_post_conditions = self.post_conditions.num_items();
+
         // nonce + origin + fee-rate + payload + post-conditions
         3u8.checked_add(self.payload.num_items())
-            .and_then(|res| res.checked_add(self.post_conditions.num_items))
+            .and_then(|res| res.checked_add(num_items_post_conditions))
             .ok_or(ParserError::ValueOutOfRange)
     }
 
@@ -381,6 +254,7 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("Transaction::get_origin_items\x00");
         let mut writer_key = zxformat::Writer::new(out_key);
 
         #[cfg(test)]
@@ -434,8 +308,9 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("Transaction::get_other_items\x00");
         let num_items = self.num_items()?;
-        let post_conditions_items = self.post_conditions.num_items;
+        let post_conditions_items = self.post_conditions.num_items();
 
         if display_idx >= (num_items - post_conditions_items) {
             if post_conditions_items == 0 {
@@ -461,6 +336,7 @@ impl<'a> Transaction<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("Transaction::get_item\x00");
         if display_idx >= self.num_items()? {
             return Err(ParserError::DisplayIdxOutOfRange);
         }
@@ -527,21 +403,50 @@ impl<'a> Transaction<'a> {
         if self.signer != SignerId::Invalid {
             return ParserError::ParserOk;
         }
+        c_zemu_log_stack("Invalid transaction signer\x00");
         ParserError::InvalidAuthType
     }
 
     // returns a slice of the last block to be used in the presighash calculation
     pub fn last_transaction_block(&self) -> &[u8] {
-        unsafe {
-            let len =
-                (self.remainder.as_ptr() as usize - self.transaction_modes.as_ptr() as usize) as _;
-            core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+        match self.remainder {
+            Some(remainder) => {
+                let remainder_ptr = remainder.as_ptr() as usize;
+                let tx_modes_ptr = self.transaction_modes.as_ptr() as usize;
+
+                unsafe {
+                    let len = remainder_ptr - tx_modes_ptr;
+                    core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+                }
+            }
+            None => {
+                // If there's no remainder, return everything from transaction_modes to the end of payload
+                let payload = self.payload.raw_payload();
+                unsafe {
+                    let payload_end = payload.as_ptr().add(payload.len());
+                    let len = payload_end as usize - self.transaction_modes.as_ptr() as usize;
+                    core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+                }
+            }
         }
     }
+    // pub fn last_transaction_block(&self) -> Option<&[u8]> {
+    //     self.remainder.map(|remainder| {
+    //         let remainder_ptr = remainder.as_ptr() as usize;
+    //         let tx_modes_ptr = self.transaction_modes.as_ptr() as usize;
+    //
+    //         unsafe {
+    //             let len = remainder_ptr - tx_modes_ptr;
+    //             core::slice::from_raw_parts(self.transaction_modes.as_ptr(), len)
+    //         }
+    //     })
+    // }
 
     pub fn previous_signer_data(&self) -> Option<&[u8]> {
-        if self.is_multisig() && self.remainder.len() >= MULTISIG_PREVIOUS_SIGNER_DATA_LEN {
-            return Some(&self.remainder[..MULTISIG_PREVIOUS_SIGNER_DATA_LEN]);
+        let remainder = self.remainder?;
+
+        if self.is_multisig() && remainder.len() >= MULTISIG_PREVIOUS_SIGNER_DATA_LEN {
+            return Some(&remainder[..MULTISIG_PREVIOUS_SIGNER_DATA_LEN]);
         }
         None
     }

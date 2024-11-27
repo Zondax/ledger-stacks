@@ -225,9 +225,12 @@ pub unsafe extern "C" fn _last_block_ptr(
 ) -> u16 {
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         let block = tx.last_transaction_block();
+
         *block_ptr = block.as_ptr();
         return block.len() as _;
     }
+
+    *block_ptr = core::ptr::null_mut();
     0
 }
 

@@ -1,5 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
 
+use crate::bolos::c_zemu_log_stack;
+
 use super::{error::ParserError, transaction::Transaction, Message};
 use super::{Jwt, StructuredMsg};
 
@@ -56,6 +58,7 @@ impl<'a> ParsedObj<'a> {
     }
 
     pub fn read(&mut self, data: &'a [u8]) -> Result<(), ParserError> {
+        c_zemu_log_stack("ParsedObj::read\x00");
         if data.is_empty() {
             return Err(ParserError::NoData);
         }
@@ -65,15 +68,19 @@ impl<'a> ParsedObj<'a> {
 
         unsafe {
             if Message::is_message(data) {
+                c_zemu_log_stack("Tag::Msg\x00");
                 self.tag = Tag::Message;
                 self.obj.read_msg(data)
             } else if Jwt::is_jwt(data) {
+                c_zemu_log_stack("Tag::Jwt\x00");
                 self.tag = Tag::Jwt;
                 self.obj.read_jwt(data)
             } else if StructuredMsg::is_msg(data) {
+                c_zemu_log_stack("Tag::StructuredMsg\x00");
                 self.tag = Tag::StructuredMsg;
                 self.obj.read_structured_msg(data)
             } else {
+                c_zemu_log_stack("Tag::Transaction\x00");
                 self.tag = Tag::Transaction;
                 self.obj.read_tx(data)
             }
@@ -99,6 +106,7 @@ impl<'a> ParsedObj<'a> {
         value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("ParsedObj::get_item\x00");
         unsafe {
             match self.tag {
                 Tag::Transaction => {
@@ -256,6 +264,38 @@ impl<'a> Obj<'a> {
 
     pub unsafe fn jwt(&mut self) -> &mut Jwt<'a> {
         &mut self.jwt
+    }
+}
+
+#[cfg(test)]
+impl<'a> core::fmt::Debug for ParsedObj<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut debug_struct = f.debug_struct("ParsedObj");
+        debug_struct.field("tag", &self.tag);
+
+        // Safety: We're matching on the tag to ensure we access the correct
+        // union variant. The union is guaranteed to be initialized with the
+        // correct variant and that variant won't change during the lifetime
+        // of the object.
+        match self.tag {
+            Tag::Transaction => unsafe {
+                debug_struct.field("obj", &self.obj.tx);
+            },
+            Tag::Message => unsafe {
+                debug_struct.field("obj", &self.obj.msg);
+            },
+            Tag::Jwt => unsafe {
+                debug_struct.field("obj", &self.obj.jwt);
+            },
+            Tag::StructuredMsg => unsafe {
+                debug_struct.field("obj", &self.obj.structured_msg);
+            },
+            Tag::Invalid => {
+                debug_struct.field("obj", &"<invalid>");
+            }
+        }
+
+        debug_struct.finish()
     }
 }
 
@@ -792,5 +832,18 @@ mod test {
         let mut msg = ParsedObj::from_bytes(&bytes).unwrap();
         msg.read(&bytes).unwrap();
         ParsedObj::validate(&mut msg).unwrap();
+    }
+
+    #[test]
+    fn test_swap_tx() {
+        let input = "000000000104009ef3889fd070159edcd8ef88a0ec87cea1592c83000000000000000000000000000f42400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000060002169ef3889fd070159edcd8ef88a0ec87cea1592c830100000000000027100003167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f72650300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000102169ef3889fd070159edcd8ef88a0ec87cea1592c83168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e030000000000000000010316402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0f616d6d2d7661756c742d76322d303116402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c657804616c65780300000000011c908a02162ec1a2dc2904ebc8b408598116c75e42c51afa2617726f757465722d76656c61722d616c65782d762d312d320d737761702d68656c7065722d6100000007010000000000000000000000000000271001000000000000000000000000011c908a040c00000002016106167c5f674a8fd08efa61dd9b11121e046dd2c892730477737478016206168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e06167c5f674a8fd08efa61dd9b11121e046dd2c8927312756e6976322d73686172652d6665652d746f0c0000000201610616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0b746f6b656e2d776c6f6e6701620616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c65780c0000000101610100000000000000000000000005f5e100";
+        let bytes = hex::decode(input).unwrap();
+        let mut msg = ParsedObj::from_bytes(&bytes).unwrap();
+
+        msg.read(&bytes).unwrap();
+
+        ParsedObj::validate(&mut msg).unwrap();
+
+        std::println!("tx: {:?}", msg);
     }
 }

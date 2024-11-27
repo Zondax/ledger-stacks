@@ -12,6 +12,7 @@ const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().
 const MAX_ASCII_LEN: usize = 270;
 
 #[repr(C)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Message<'a>(ByteString<'a>);
 
 impl<'a> Message<'a> {
@@ -45,8 +46,19 @@ impl<'a> Message<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct ByteString<'a>(&'a [u8]);
+
+#[cfg(test)]
+impl<'a> core::fmt::Debug for ByteString<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "ByteString(\"")?;
+        for byte in self.0 {
+            write!(f, "{:02x}", byte)?;
+        }
+        write!(f, "\")")
+    }
+}
 
 impl<'a> ByteString<'a> {
     pub fn is_msg(data: &'a [u8]) -> bool {
