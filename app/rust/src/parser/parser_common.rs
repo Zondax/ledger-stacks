@@ -20,11 +20,12 @@ pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
 pub const PUBKEY_LEN: usize = 33;
-pub const TOKEN_TRANSFER_MEMO_LEN: usize = 34;
+pub const MEMO_LEN: usize = 34;
+pub const AMOUNT_LEN: usize = 8;
 
 // A recursion limit use to control ram usage when parsing
 // contract-call arguments that comes in a transaction
-pub const TX_DEPTH_LIMIT: u8 = 3;
+pub const TX_DEPTH_LIMIT: u8 = 8;
 
 // Use to limit recursion when parsing nested clarity values that comes as part of a structured
 // message. the limit is higher than the one use when parsing contract-args in transactions

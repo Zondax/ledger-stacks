@@ -35,6 +35,13 @@ cargo hfuzz run-debug transaction hfuzz_workspace/*/*.fuzz
 
 ```
 
-This will deploy a gdb console with a backtrace with the first crash
+To opt to use _gdb_ instead of `lldb`, you can configure it before running the debugger with:
+
+```bash
+export HFUZZ_DEBUGGER="rust-gdb"
+
+```
+
+This will deploy a **gdb** console with a backtrace with the first crash
 
 _note_: There could be more than one _.fuzz_ file.
