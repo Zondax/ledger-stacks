@@ -17,6 +17,10 @@ void _zemu_log_stack(char *buffer) {
     zemu_log_stack(buffer);
 }
 
+void _num_log(uint32_t num, char *buffer) {
+    ZEMU_LOGF(50, "%s: %d\n", buffer, num);
+}
+
 // If out length is less than CX_SHA256_SIZE
 // this function will throw an exception
 void hash_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {

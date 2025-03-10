@@ -82,11 +82,13 @@ __Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8
 __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len);
 
 __Z_INLINE void app_sign() {
+    zemu_log("app_sign\n");
     uint8_t presig_hash[CX_SHA256_SIZE] = {0};
     uint8_t post_sighash_data[POST_SIGNHASH_DATA_LEN] = {0};
     zxerr_t err = zxerr_ok;
 
     const uint8_t transaction_type = tx_get_transaction_type();
+    ZEMU_LOGF(50, "TransactionType: %d\n", transaction_type);
 
     // Get the current transaction presig_hash
     err = get_presig_hash(presig_hash, CX_SHA256_SIZE);
@@ -98,6 +100,7 @@ __Z_INLINE void app_sign() {
         // Validate post_sig_hashes of previous signers
         uint8_t hash_mode = -1;
         err = tx_hash_mode(&hash_mode);
+        ZEMU_LOGF(50, "tx_hash_mode: %d\n", hash_mode);
         if (err == zxerr_ok) {
             switch (hash_mode) {
                 case 0x00:  // P2PKH
@@ -111,6 +114,7 @@ __Z_INLINE void app_sign() {
                 case 0x03:  // P2WSH sequential
                     // Sequential multisig
                     // Need to compute sighashes of all previous signers
+                    zemu_log("calling sigh_hash_chain\n");
                     err = compute_sig_hash_chain(presig_hash, CX_SHA256_SIZE);
                     break;
                 case 0x05:  // PWSH non-sequential
@@ -128,6 +132,7 @@ __Z_INLINE void app_sign() {
     }
 
     if (err != zxerr_ok) {
+        zemu_log("ERR!!!! app_sin\n");
         set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
         io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
@@ -265,7 +270,9 @@ __Z_INLINE zxerr_t compute_post_sig_hash(uint8_t *hash, uint16_t hash_len, uint8
 
 // Validate sighash of all previous signers
 __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
+    zemu_log_stack("computing sig_hash_chain");
     if (hash_len != CX_SHA256_SIZE) {
+        zemu_log("wrong hash_len\n");
         return zxerr_no_data;
     }
 
@@ -275,12 +282,14 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
     memset(previous_signer_data, 0, sizeof(previous_signer_data));
 
     uint32_t num_fields = tx_num_multisig_fields();
+    ZEMU_LOGF(50, "num_multisig_fields: %d\n", num_fields);
     for (uint32_t i = 0; i < num_fields; ++i) {
         // `TransactionAuthFieldID` part of `MultisigSpendingCondition` auth field
         uint8_t id = 0xFF;
         // Pointer to either pubkey or signature part of `MultisigSpendingCondition`
         uint8_t *data = NULL;
         zxerr_t err = tx_get_multisig_field(i, &id, &data);
+        zemu_log("multisig_hash_loop\n");
 
         if (err != zxerr_ok || !data) {
             continue;

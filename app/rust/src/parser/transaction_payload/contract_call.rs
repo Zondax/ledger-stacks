@@ -4,10 +4,12 @@ use nom::{bytes::complete::take, sequence::tuple};
 use numtoa::NumToA;
 
 use crate::{
+    bolos::c_zemu_log_stack,
     check_canary,
     parser::{
         c32, transaction_payload::arguments::Arguments, ApduPanic, ClarityName, ContractName,
-        ParserError, PrincipalData, StacksAddress, ValueId, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+        FromBytes, ParserError, PrincipalData, StacksAddress, ValueId, C32_ENCODED_ADDRS_LENGTH,
+        HASH160_LEN,
     },
     zxformat,
 };
@@ -18,29 +20,56 @@ pub const MAX_STRING_ASCII_TO_SHOW: usize = 60;
 pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
 /// A transaction that calls into a smart contract
 #[repr(C)]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub struct TransactionContractCall<'a>(&'a [u8]);
 
-impl<'a> TransactionContractCall<'a> {
+impl<'b> FromBytes<'b> for TransactionContractCall<'b> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let (rem, _) = StacksAddress::from_bytes(bytes)?;
-        // get contract name and function name.
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        crate::bolos::c_zemu_log_stack("TransactionContractCall::from_bytes_into\x00");
+
+        if input.is_empty() {
+            return Err(nom::Err::Error(ParserError::UnexpectedBufferEnd));
+        }
+
+        // Parse the components as in the original from_bytes method
+        let (rem, _) = StacksAddress::from_bytes(input)?;
+
+        // Parse contract name, function name, and arguments
         let (rem, _) = tuple((
             ContractName::from_bytes,
             ClarityName::from_bytes,
             Arguments::from_bytes,
         ))(rem)?;
 
-        let len = bytes.len() - rem.len();
-        let (rem, data) = take(len)(bytes)?;
+        // Calculate the length of the contract call data
+        let len = input.len() - rem.len();
+
+        // Take the bytes for this contract call
+        let (rem, data) = take(len)(input)?;
 
         check_canary!();
 
-        Ok((rem, Self(data)))
-    }
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
 
+        // Initialize the TransactionContractCall field with the input bytes
+        unsafe {
+            addr_of_mut!((*out_ptr).0).write(data);
+        }
+
+        // Return the remaining bytes
+        Ok(rem)
+    }
+}
+
+impl<'a> TransactionContractCall<'a> {
     pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
         let at = HASH160_LEN + 1;
         ContractName::from_bytes(&self.0[at..])

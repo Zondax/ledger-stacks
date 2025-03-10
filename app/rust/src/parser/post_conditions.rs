@@ -13,7 +13,7 @@ pub use non_fungible::NonfungibleConditionCode;
 
 pub use post_condition_principal::{PostConditionPrincipal, PostConditionPrincipalId};
 
-use super::error::ParserError;
+use super::{error::ParserError, FromBytes};
 
 use super::parser_common::{AssetInfo, C32_ENCODED_ADDRS_LENGTH, STX_DECIMALS, TX_DEPTH_LIMIT};
 use crate::zxformat;
@@ -42,6 +42,33 @@ impl TryFrom<u8> for PostConditionType {
         Ok(t)
     }
 }
+// Also implement FromBytes for PostConditionType
+impl<'b> FromBytes<'b> for PostConditionType {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        // Extract the type byte
+        let (rem, type_byte) = le_u8(input)?;
+
+        // Convert to enum
+        let cond_type = Self::try_from(type_byte)?;
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the PostConditionType
+        unsafe {
+            addr_of_mut!((*out_ptr)).write(cond_type);
+        }
+
+        // Return the remaining bytes
+        Ok(rem)
+    }
+}
 
 /// Post-condition on a transaction
 #[repr(C)]
@@ -53,9 +80,83 @@ pub enum TransactionPostCondition<'a> {
     Nonfungible(&'a [u8]),
 }
 
+impl<'b> FromBytes<'b> for TransactionPostCondition<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        c_zemu_log_stack("TransactionPostCondition::from_bytes_into\x00");
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        if input.is_empty() {
+            return Err(nom::Err::Error(ParserError::UnexpectedBufferEnd));
+        }
+
+        // Extract condition type
+        let (raw, cond_type) = le_u8(input)?;
+
+        // Parse principal
+        let (principal_rem, principal) =
+            PostConditionPrincipal::read_as_bytes(raw).map_err(|e| e)?;
+        let principal_len = raw.len() - principal_rem.len();
+
+        // Process based on condition type
+        match PostConditionType::try_from(cond_type)? {
+            PostConditionType::Stx => {
+                let len = principal_len + 1 + 8; // principal + code + amount
+                let (rem, inner) = take(len)(raw)?;
+
+                // Initialize as Stx variant
+                unsafe {
+                    addr_of_mut!((*out_ptr)).write(Self::Stx(inner));
+                }
+
+                Ok(rem)
+            }
+            PostConditionType::FungibleToken => {
+                let (asset_rem, asset) = AssetInfo::read_as_bytes(principal_rem).map_err(|e| e)?;
+                let asset_len = principal_rem.len() - asset_rem.len();
+
+                let len = principal_len + asset_len + 1 + 8; // principal + asset + code + amount
+                let (rem, inner) = take(len)(raw)?;
+
+                // Initialize as Fungible variant
+                unsafe {
+                    addr_of_mut!((*out_ptr)).write(Self::Fungible(inner));
+                }
+
+                Ok(rem)
+            }
+            PostConditionType::NonFungibleToken => {
+                let (asset_rem, _) = AssetInfo::read_as_bytes(principal_rem).map_err(|e| e)?;
+
+                // Calculate value length for the non-fungible asset value
+                let value_len = Value::value_len::<TX_DEPTH_LIMIT>(asset_rem)?;
+
+                let asset_len = principal_rem.len() - asset_rem.len();
+
+                let len = principal_len + asset_len + value_len + 1; // principal + asset + value + code
+                let (rem, inner) = take(len)(raw)?;
+
+                // Initialize as Nonfungible variant
+                unsafe {
+                    addr_of_mut!((*out_ptr)).write(Self::Nonfungible(inner));
+                }
+
+                Ok(rem)
+            }
+        }
+    }
+}
+
 impl<'a> TransactionPostCondition<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, cond_type) = le_u8(bytes)?;
         let principal = PostConditionPrincipal::read_as_bytes(raw)?;
         let principal_len = raw.len() - principal.0.len();
@@ -82,7 +183,7 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], &'a [u8], ParserError> {
         let rem = bytes;
         let (rem, cond_type) = le_u8(rem)?;
         let (mut rem, _) = PostConditionPrincipal::read_as_bytes(rem)?;

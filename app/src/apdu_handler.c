@@ -167,6 +167,7 @@ __Z_INLINE void handleGetAuthPubKey(__Z_UNUSED volatile uint32_t *flags, volatil
 }
 
 __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    zemu_log("SignSecp256K1\n");
     // process the rest of the chunk as usual
     if (!process_chunk(rx)) {
         THROW(APDU_CODE_OK);
@@ -199,6 +200,7 @@ __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t 
 }
 
 __Z_INLINE void handleSignJwtSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    zemu_log("handleSignJwtSecp256K1\n");
     // check first for the expected path at initialization
     if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == 0) {
         extract_identity_path(rx, OFFSET_DATA);

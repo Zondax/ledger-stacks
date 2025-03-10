@@ -3,11 +3,22 @@ pub const SHA256_LEN: usize = 32;
 
 extern "C" {
     fn _zemu_log_stack(buffer: *const u8);
+    fn _num_log(num: u32, char: *const u8);
 }
 
 #[cfg(not(any(test, fuzzing)))]
 pub fn c_zemu_log_stack<S: AsRef<[u8]>>(s: S) {
     unsafe { _zemu_log_stack(s.as_ref().as_ptr()) }
+}
+
+#[cfg(not(any(test, fuzzing)))]
+pub fn zlog_num(s: &str, num: u32) {
+    unsafe { _num_log(num, s.as_bytes().as_ptr()) }
+}
+
+#[cfg(any(test, fuzzing))]
+pub fn zlog_num(s: &str, num: u32) {
+    std::println!("{:?} {:?}", s, num);
 }
 
 #[cfg(any(test, fuzzing))]

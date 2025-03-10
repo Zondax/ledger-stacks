@@ -14,6 +14,8 @@ use crate::parser::parser_common::{
 };
 use crate::{check_canary, zxformat};
 
+use super::FromBytes;
+
 // this includes:
 // 16-byte origin fee and nonce
 // 66-byte origin signature
@@ -99,10 +101,41 @@ impl From<TransactionAuthFieldID> for TransactionPublicKeyEncoding {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub struct SpendingConditionSigner<'a> {
     pub data: &'a [u8; SPENDING_CONDITION_SIGNER_LEN],
+}
+
+// Also implement FromBytes for SpendingConditionSigner
+impl<'b> FromBytes<'b> for SpendingConditionSigner<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        if input.is_empty() {
+            return Err(nom::Err::Error(ParserError::UnexpectedBufferEnd));
+        }
+
+        // Take the SPENDING_CONDITION_SIGNER_LEN bytes
+        let (rem, _) = take(SPENDING_CONDITION_SIGNER_LEN)(input)?;
+
+        let data = arrayref::array_ref!(input, 0, SPENDING_CONDITION_SIGNER_LEN);
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the SpendingConditionSigner
+        unsafe {
+            addr_of_mut!((*out_ptr).data).write(data);
+        }
+
+        // Return the remaining bytes
+        Ok(rem)
+    }
 }
 
 impl<'a> SpendingConditionSigner<'a> {
@@ -183,7 +216,7 @@ impl<'a> SpendingConditionSigner<'a> {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub struct SinglesigSpendingCondition<'a>(&'a [u8; SINGLE_SPENDING_CONDITION_LEN]);
 
@@ -201,7 +234,7 @@ pub enum TransactionAuthField<'a> {
 /// a transaction's execution against a Stacks address.
 /// public_keys + signatures_required determines the Principal.
 /// nonce is the "check number" for the Principal.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub struct MultisigSpendingCondition<'a> {
     /// Keep auth_fields in raw format
@@ -211,7 +244,7 @@ pub struct MultisigSpendingCondition<'a> {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub enum SpendingConditionSignature<'a> {
     Singlesig(SinglesigSpendingCondition<'a>),
@@ -235,11 +268,68 @@ impl<'a> SpendingConditionSignature<'a> {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub struct TransactionSpendingCondition<'a> {
     pub signer: SpendingConditionSigner<'a>,
     signature: SpendingConditionSignature<'a>,
+}
+
+impl<'b> FromBytes<'b> for TransactionSpendingCondition<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        if input.is_empty() {
+            return Err(ParserError::UnexpectedBufferEnd.into());
+        }
+
+        // Get references to the fields
+        let out_ptr = out.as_mut_ptr();
+        let signer_uninit = unsafe { &mut *addr_of_mut!((*out_ptr).signer).cast() };
+
+        // Parse the SpendingConditionSigner
+        let rem = SpendingConditionSigner::from_bytes_into(input, signer_uninit)?;
+        let signer = unsafe { signer_uninit.assume_init_ref() };
+
+        // Get the hash mode to determine which signature type to parse
+        let hash_mode = signer.hash_mode()?;
+
+        match hash_mode {
+            HashMode::P2PKH | HashMode::P2WPKH => {
+                // Parse SinglesigSpendingCondition
+                let (rem, sig) = SinglesigSpendingCondition::from_bytes(rem)?;
+
+                // Validate the key encoding for the hash mode
+                if !sig.key_encoding()?.is_valid_hash_mode(hash_mode) {
+                    return Err(nom::Err::Error(ParserError::InvalidPubkeyEncoding));
+                }
+
+                // Store the signature in the signature field
+                unsafe {
+                    addr_of_mut!((*out_ptr).signature)
+                        .write(SpendingConditionSignature::Singlesig(sig));
+                }
+
+                Ok(rem)
+            }
+            HashMode::P2WSH | HashMode::P2SH | HashMode::P2WSHNS | HashMode::P2SHNS => {
+                // Parse MultisigSpendingCondition
+                let (rem, multisig) = MultisigSpendingCondition::from_bytes(rem)?;
+
+                // Store the signature in the signature field
+                unsafe {
+                    addr_of_mut!((*out_ptr).signature)
+                        .write(SpendingConditionSignature::Multisig(multisig));
+                }
+
+                Ok(rem)
+            }
+        }
+    }
 }
 
 impl<'a> SinglesigSpendingCondition<'a> {

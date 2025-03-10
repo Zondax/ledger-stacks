@@ -9,13 +9,14 @@ use nom::{
 use crate::{
     check_canary,
     parser::{
-        c32, ApduPanic, ParserError, PrincipalData, AMOUNT_LEN, C32_ENCODED_ADDRS_LENGTH, MEMO_LEN,
+        c32, ApduPanic, FromBytes, ParserError, PrincipalData, AMOUNT_LEN,
+        C32_ENCODED_ADDRS_LENGTH, MEMO_LEN,
     },
     zxformat,
 };
 
 #[repr(u8)]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub enum TokenTranferPrincipal {
     Standard = 0x05,
@@ -33,9 +34,54 @@ impl TokenTranferPrincipal {
 }
 
 #[repr(C)]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub struct StxTokenTransfer<'a>(&'a [u8]);
+
+impl<'b> FromBytes<'b> for StxTokenTransfer<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        if input.is_empty() {
+            return Err(ParserError::UnexpectedBufferEnd.into());
+        }
+
+        // Extract the principal type
+        let (rem, principal_byte) = le_u8(input)?;
+
+        // Convert to enum
+        let principal_type =
+            TokenTranferPrincipal::from_u8(principal_byte).map_err(|e| nom::Err::Error(e))?;
+
+        // Parse the appropriate principal data
+        let (raw, _) = match principal_type {
+            TokenTranferPrincipal::Standard => PrincipalData::standard_from_bytes(rem)?,
+            TokenTranferPrincipal::Contract => PrincipalData::contract_principal_from_bytes(rem)?,
+        };
+
+        // Calculate the length of the entire token transfer data
+        // This includes the principal data plus MEMO_LEN (34) and AMOUNT_LEN (8)
+        let len = input.len() - raw.len() + MEMO_LEN + AMOUNT_LEN;
+
+        // Take the bytes for this token transfer
+        let (rem, data) = take(len)(input)?;
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the StxTokenTransfer field with the input bytes
+        unsafe {
+            addr_of_mut!((*out_ptr).0).write(data);
+        }
+
+        // Return the remaining bytes
+        Ok(rem)
+    }
+}
 
 impl<'a> StxTokenTransfer<'a> {
     #[inline(never)]

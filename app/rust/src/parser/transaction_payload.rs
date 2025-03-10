@@ -13,8 +13,8 @@ use self::{
     versioned_contract::VersionedSmartContract,
 };
 
-use super::{ContractName, C32_ENCODED_ADDRS_LENGTH};
-use crate::parser::error::ParserError;
+use super::{ContractName, FromBytes, C32_ENCODED_ADDRS_LENGTH};
+use crate::{bolos::c_zemu_log_stack, parser::error::ParserError};
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -38,8 +38,21 @@ impl TransactionPayloadId {
     }
 }
 
+// Define tuple structs for each variant
 #[repr(C)]
-#[derive(Clone, PartialEq)]
+struct TokenTransferVariant<'a>(TransactionPayloadId, StxTokenTransfer<'a>);
+
+#[repr(C)]
+struct SmartContractVariant<'a>(TransactionPayloadId, TransactionSmartContract<'a>);
+
+#[repr(C)]
+struct ContractCallVariant<'a>(TransactionPayloadId, TransactionContractCall<'a>);
+
+#[repr(C)]
+struct VersionedSmartContractVariant<'a>(TransactionPayloadId, VersionedSmartContract<'a>);
+
+#[repr(C)]
+#[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
@@ -48,31 +61,102 @@ pub enum TransactionPayload<'a> {
     VersionedSmartContract(VersionedSmartContract<'a>),
 }
 
-impl<'a> TransactionPayload<'a> {
+impl<'b> FromBytes<'b> for TransactionPayload<'b> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let id = le_u8(bytes)?;
-        let res = match TransactionPayloadId::from_u8(id.1)? {
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+        c_zemu_log_stack(b"TransactionPayload::from_bytes_into\x00");
+
+        if input.is_empty() {
+            return Err(nom::Err::Error(ParserError::UnexpectedBufferEnd));
+        }
+
+        // Extract the payload type ID
+        let (rem, payload_id_byte) = le_u8(input)?;
+
+        // Convert to enum
+        let payload_id = TransactionPayloadId::from_u8(payload_id_byte)?;
+        #[cfg(test)]
+        std::println!("Payload ID: {:?}", payload_id);
+
+        // Process based on payload type
+        match payload_id {
             TransactionPayloadId::TokenTransfer => {
-                let token = StxTokenTransfer::from_bytes(id.0)?;
-                (token.0, Self::TokenTransfer(token.1))
+                // Cast output pointer to TokenTransferVariant
+                let out_ptr = out.as_mut_ptr() as *mut TokenTransferVariant;
+
+                // Get a reference to the uninitialized StxTokenTransfer field
+                let token_uninit = unsafe { &mut *addr_of_mut!((*out_ptr).1).cast() };
+
+                // Parse the StxTokenTransfer
+                let rem = StxTokenTransfer::from_bytes_into(rem, token_uninit)?;
+
+                // Set the tag (payload ID)
+                unsafe {
+                    addr_of_mut!((*out_ptr).0).write(TransactionPayloadId::TokenTransfer);
+                }
+
+                Ok(rem)
             }
             TransactionPayloadId::SmartContract => {
-                let contract = TransactionSmartContract::from_bytes(id.0)?;
-                (contract.0, Self::SmartContract(contract.1))
+                // Cast output pointer to SmartContractVariant
+                let out_ptr = out.as_mut_ptr() as *mut SmartContractVariant;
+
+                // Get a reference to the uninitialized TransactionSmartContract field
+                let contract_uninit = unsafe { &mut *addr_of_mut!((*out_ptr).1).cast() };
+
+                // Parse the TransactionSmartContract
+                let rem = TransactionSmartContract::from_bytes_into(rem, contract_uninit)?;
+
+                // Set the tag (payload ID)
+                unsafe {
+                    addr_of_mut!((*out_ptr).0).write(TransactionPayloadId::SmartContract);
+                }
+
+                Ok(rem)
             }
             TransactionPayloadId::ContractCall => {
-                let call = TransactionContractCall::from_bytes(id.0)?;
-                (call.0, Self::ContractCall(call.1))
+                // Cast output pointer to ContractCallVariant
+                let out_ptr = out.as_mut_ptr() as *mut ContractCallVariant;
+
+                // Get a reference to the uninitialized TransactionContractCall field
+                let call_uninit = unsafe { &mut *addr_of_mut!((*out_ptr).1).cast() };
+
+                // Parse the TransactionContractCall
+                let rem = TransactionContractCall::from_bytes_into(rem, call_uninit)?;
+
+                // Set the tag (payload ID)
+                unsafe {
+                    addr_of_mut!((*out_ptr).0).write(TransactionPayloadId::ContractCall);
+                }
+
+                Ok(rem)
             }
             TransactionPayloadId::VersionedSmartContract => {
-                let call = VersionedSmartContract::from_bytes(id.0)?;
-                (call.0, Self::VersionedSmartContract(call.1))
-            }
-        };
-        Ok(res)
-    }
+                // Cast output pointer to VersionedSmartContractVariant
+                let out_ptr = out.as_mut_ptr() as *mut VersionedSmartContractVariant;
 
+                // Get a reference to the uninitialized VersionedSmartContract field
+                let versioned_uninit = unsafe { &mut *addr_of_mut!((*out_ptr).1).cast() };
+
+                // Parse the VersionedSmartContract
+                let rem = VersionedSmartContract::from_bytes_into(rem, versioned_uninit)?;
+
+                // Set the tag (payload ID)
+                unsafe {
+                    addr_of_mut!((*out_ptr).0).write(TransactionPayloadId::VersionedSmartContract);
+                }
+
+                Ok(rem)
+            }
+        }
+    }
+}
+
+impl<'a> TransactionPayload<'a> {
     pub fn is_token_transfer_payload(&self) -> bool {
         matches!(self, &Self::TokenTransfer(_))
     }

@@ -1,5 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 use super::error::ParserError;
+use super::FromBytes;
 use crate::zxformat::{pageString, Writer};
 
 use crate::bolos::{sha256, SHA256_LEN};
@@ -22,9 +23,32 @@ fn decode_data(input: &[u8], output: &mut [u8]) -> Result<usize, ParserError> {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Jwt<'a> {
     jwt_data: &'a [u8],
+}
+
+impl<'b> FromBytes<'b> for Jwt<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        data: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        Self::parse_header_payload(data)?;
+
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the jwt_data field
+        unsafe {
+            addr_of_mut!((*out_ptr).jwt_data).write(data);
+        }
+
+        // Return empty slice as we've consumed everything we need
+        Ok(&data[0..0])
+    }
 }
 
 #[repr(C)]
@@ -38,7 +62,49 @@ pub struct Header<'a> {
     alg: &'a str,
 }
 
-impl<'a> Header<'a> {
+// We would also need to implement FromBytes for JwtHeader if needed
+impl<'b> FromBytes<'b> for JwtHeader<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        if !input.is_ascii() {
+            return Err(nom::Err::Error(ParserError::UnexpectedType));
+        }
+
+        let mut header_bytes = [0u8; MAX_BASE64_HEADER_LEN];
+
+        let len = match decode_data(input, header_bytes.as_mut()) {
+            Ok(len) => len,
+            Err(e) => return Err(nom::Err::Error(e)),
+        };
+
+        let header: Header = match serde_json_core::from_slice(&header_bytes[..len]) {
+            Ok((h, _)) => h,
+            Err(_) => return Err(nom::Err::Error(ParserError::InvalidJwt)),
+        };
+
+        if !header.is_valid() {
+            return Err(nom::Err::Error(ParserError::InvalidJwt));
+        }
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the underlying slice
+        unsafe {
+            addr_of_mut!((*out_ptr).0).write(input);
+        }
+
+        // Return empty slice as we've consumed everything we need
+        Ok(&[])
+    }
+}
+
+impl Header<'_> {
     fn is_valid(&self) -> bool {
         // "JWT"
         let typ = [b'J', b'W', b'T'];
@@ -80,7 +146,7 @@ impl<'a> Jwt<'a> {
         Ok(())
     }
 
-    fn parse_header_payload(data: &'a [u8]) -> Result<(JwtHeader<'a>, &'a [u8]), ParserError> {
+    fn parse_header_payload(data: &'a [u8]) -> Result<(&'a [u8], JwtHeader<'a>), ParserError> {
         // Only ascii values are valid for json web token
         if !data.is_ascii() {
             return Err(ParserError::InvalidJwt);
@@ -97,7 +163,7 @@ impl<'a> Jwt<'a> {
             return Err(ParserError::InvalidJwt);
         }
 
-        Ok((header, payload))
+        Ok((payload, header))
     }
 
     pub fn is_jwt(data: &'a [u8]) -> bool {

@@ -15,9 +15,6 @@ pub const STX_DECIMALS: u8 = 6;
 
 pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 
-// The amount of post_conditions we can
-// handle
-pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
 pub const SIGNATURE_LEN: usize = 65;
 pub const PUBKEY_LEN: usize = 33;
 pub const MEMO_LEN: usize = 34;

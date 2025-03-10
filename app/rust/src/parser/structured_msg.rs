@@ -8,7 +8,7 @@ use core::fmt::Write;
 
 use nom::bytes::complete::tag;
 
-use super::{error::ParserError, Tuple, Value, ValueId, MAX_DEPTH};
+use super::{error::ParserError, FromBytes, Tuple, Value, ValueId, MAX_DEPTH};
 use crate::bolos::{sha256, SHA256_LEN};
 use hex::encode_to_slice;
 
@@ -16,6 +16,51 @@ use hex::encode_to_slice;
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Domain<'a>(Value<'a>);
+
+// If needed, also implement FromBytes for Domain
+impl<'b> FromBytes<'b> for Domain<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        // Parse the Value first
+        let (rem, value) = Value::from_bytes::<MAX_DEPTH>(input)?;
+
+        // Domain is a tuple with 3 elements
+        let tuple = value.tuple().ok_or(ParserError::UnexpectedValue)?;
+
+        // Validate the tuple structure
+        let mut items = 0;
+        for (key, field) in tuple.iter() {
+            let value_id = field.value_id();
+            match (key.name(), value_id) {
+                (b"name", ValueId::StringAscii) => {}
+                (b"version", ValueId::StringAscii) => {}
+                (b"chain-id", ValueId::UInt) => {}
+                _ => return Err(nom::Err::Error(ParserError::InvalidStructuredMsg)),
+            }
+            items += 1;
+        }
+
+        if items != tuple.num_elements() || items != Self::LEN {
+            return Err(nom::Err::Error(ParserError::InvalidStructuredMsg));
+        }
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the Domain field with the parsed Value
+        unsafe {
+            addr_of_mut!((*out_ptr).0).write(value);
+        }
+
+        // Return the remaining bytes
+        Ok(rem)
+    }
+}
 
 impl<'a> Domain<'a> {
     // number of fields in the Domain clarity tuple
@@ -101,6 +146,34 @@ impl<'a> Domain<'a> {
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 pub struct StructuredMsg<'a>(&'a [u8]);
+
+impl<'b> FromBytes<'b> for StructuredMsg<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        c_zemu_log_stack("StructuredMsg::from_bytes_into\x00");
+
+        // Verify the structure and format of the message
+        if let Err(e) = Self::verify(input) {
+            return Err(nom::Err::Error(e));
+        }
+
+        // Get a pointer to the uninitialized memory
+        let out_ptr = out.as_mut_ptr();
+
+        // Initialize the StructuredMsg field with the input data
+        unsafe {
+            addr_of_mut!((*out_ptr).0).write(input);
+        }
+
+        // Return an empty slice as we've consumed all the input data we need
+        Ok(&input[0..0])
+    }
+}
 
 impl<'a> StructuredMsg<'a> {
     const PREFIX_LEN: usize = 6;
@@ -232,6 +305,8 @@ impl<'a> StructuredMsg<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("StructuredMsg::get_item\x00");
+        crate::bolos::zlog_num("display_idx: \n", display_idx as u32);
         match display_idx {
             0..=2 => {
                 let mut domain = self.domain();
@@ -253,6 +328,7 @@ impl<'a> StructuredMsg<'a> {
 
                 encode_to_slice(&hash[..], &mut hex[..])
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                c_zemu_log_stack("hash written to screen \n");
 
                 pageString(out_value, &hex[..], page_idx)
             }

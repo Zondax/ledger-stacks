@@ -30,7 +30,7 @@ parser_tx_t parser_state;
 // This buffer will store parser_state.
 // Its size corresponds to ParsedObj (Rust struct)
 // Maximum required size: 212 bytes
-#define PARSER_BUFFER_SIZE 256
+#define PARSER_BUFFER_SIZE 220
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE];
 
 parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {

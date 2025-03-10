@@ -1,5 +1,5 @@
 #![allow(clippy::missing_safety_doc)]
-use super::{error::ParserError, read_varint};
+use super::{error::ParserError, read_varint, FromBytes};
 use crate::zxformat::{pageString, Writer};
 use core::fmt::Write;
 use nom::bytes::complete::take;
@@ -14,6 +14,30 @@ const MAX_ASCII_LEN: usize = 270;
 #[repr(C)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Message<'a>(ByteString<'a>);
+
+impl<'b> FromBytes<'b> for Message<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        if !ByteString::is_msg(input) {
+            return Err(nom::Err::Error(ParserError::InvalidBytestrMessage));
+        }
+
+        // Get a reference to the ByteString field within Message
+        let out_ptr = out.as_mut_ptr();
+        let byte_string_uninit = unsafe { &mut *addr_of_mut!((*out_ptr).0).cast() };
+
+        let rem = ByteString::from_bytes_into(input, byte_string_uninit)?;
+
+        // Return the remaining bytes, which in this case is empty
+        // since we consumed the entire message
+        Ok(rem)
+    }
+}
 
 impl<'a> Message<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
@@ -49,6 +73,37 @@ impl<'a> Message<'a> {
 #[derive(Copy, Clone, PartialEq)]
 pub struct ByteString<'a>(&'a [u8]);
 
+// Implementation for ByteString to support Message
+impl<'b> FromBytes<'b> for ByteString<'b> {
+    #[inline(never)]
+    fn from_bytes_into(
+        input: &'b [u8],
+        out: &mut core::mem::MaybeUninit<Self>,
+    ) -> Result<&'b [u8], nom::Err<ParserError>> {
+        use core::ptr::addr_of_mut;
+
+        if input.is_empty() {
+            return Err(ParserError::UnexpectedBufferEnd.into());
+        }
+
+        let rem = Self::parse_header(input)?;
+
+        let (rem, len) = read_varint(rem).map_err(|_| ParserError::InvalidBytestrMessage)?;
+
+        let (rem, message_content) = take::<_, _, ParserError>(len as usize)(rem)
+            .map_err(|_| ParserError::InvalidBytestrMessage)?;
+
+        if !message_content.is_ascii() {
+            return Err(ParserError::InvalidBytestrMessage.into());
+        }
+
+        let out_ptr = out.as_mut_ptr();
+        unsafe { addr_of_mut!((*out_ptr).0).write(message_content) };
+
+        Ok(rem)
+    }
+}
+
 #[cfg(test)]
 impl<'a> core::fmt::Debug for ByteString<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -69,6 +124,13 @@ impl<'a> ByteString<'a> {
     fn contain_header(data: &[u8]) -> bool {
         let header = "\x17Stacks Signed Message:\n".as_bytes();
         data.len() > BYTE_STRING_HEADER_LEN && &data[..BYTE_STRING_HEADER_LEN] == header
+    }
+
+    fn parse_header(data: &'a [u8]) -> Result<&'a [u8], ParserError> {
+        if !Self::contain_header(data) {
+            return Err(ParserError::InvalidBytestrMessage);
+        }
+        Ok(&data[BYTE_STRING_HEADER_LEN..])
     }
 
     // returns the message content
