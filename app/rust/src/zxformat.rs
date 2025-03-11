@@ -3,9 +3,12 @@
 use core::fmt::{self, Write};
 
 use crate::parser::ParserError;
+use arrayvec::ArrayVec;
 use lexical_core::Number;
+use numtoa::NumToA;
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
+pub const MAX_U128_FORMATTED_SIZE_DECIMAL: usize = 50;
 
 pub struct Writer<'a> {
     buf: &'a mut [u8],
@@ -163,6 +166,86 @@ pub(crate) fn fpstr_to_str(
     write!(&mut writer, "{}.{}", left, right)
         .map(|_| writer.offset)
         .map_err(|_| ParserError::UnexpectedBufferEnd)
+}
+
+/// Format a u128 amount with the specified number of decimal places
+/// Returns the formatted amount as an ArrayVec
+pub fn format_u128_decimals(
+    amount: u128,
+    decimals: u8,
+) -> Option<ArrayVec<[u8; MAX_U128_FORMATTED_SIZE_DECIMAL]>> {
+    // Increased buffer size for u128
+    // Convert the number to a string first
+    let mut buff = [0u8; 40]; // Large enough for u128 values
+    let amount_str = amount.numtoa_str(10, &mut buff);
+    let amount_len = amount_str.len();
+
+    // Prepare the output buffer
+    let mut output = ArrayVec::from([0u8; 50]);
+
+    // Handle cases based on the length of the number vs decimals
+    if decimals == 0 {
+        // No decimal places, just copy the string
+        output.try_extend_from_slice(amount_str.as_bytes()).ok()?;
+        return Some(output);
+    }
+
+    if amount_len <= decimals as usize {
+        // Need to pad with leading zeros: 0.0001234
+        output.push(b'0');
+        output.push(b'.');
+
+        // Add leading zeros
+        for _ in 0..(decimals as usize - amount_len) {
+            output.push(b'0');
+        }
+
+        // Add significant digits
+        output.try_extend_from_slice(amount_str.as_bytes()).ok()?;
+    } else {
+        // Insert decimal point: 123.456
+        let integer_part = &amount_str[0..(amount_len - decimals as usize)];
+        let fraction_part = &amount_str[(amount_len - decimals as usize)..];
+
+        // Add integer part
+        output.try_extend_from_slice(integer_part.as_bytes()).ok()?;
+
+        // Add decimal point and fraction
+        output.push(b'.');
+        output
+            .try_extend_from_slice(fraction_part.as_bytes())
+            .ok()?;
+    }
+
+    // Trim trailing zeros in the fraction part
+    let original_len = output.len();
+    let mut trim_count = 0;
+
+    // Only trim if we have a decimal point
+    if output.contains(&b'.') {
+        // Count trailing zeros
+        for i in (0..output.len()).rev() {
+            if output[i] == b'0' {
+                trim_count += 1;
+            } else {
+                break;
+            }
+        }
+
+        // If all decimals are zeros (e.g., 123.000), keep just the integer part
+        if trim_count == decimals as usize && output[original_len - trim_count - 1] == b'.' {
+            trim_count += 1; // Also remove the decimal point
+        }
+    }
+
+    // Apply the trimming
+    if trim_count > 0 {
+        unsafe {
+            output.set_len(original_len - trim_count);
+        }
+    }
+
+    Some(output)
 }
 
 #[inline(never)]
