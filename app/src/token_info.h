@@ -14,13 +14,17 @@
  *  limitations under the License.
  ********************************************************************************/
 #pragma once
+#include "coin.h"
+#include "parser_txdef.h"
 
-#if defined(APP_STANDARD)
-#include "coin_standard.h"
-#else
-#error "APP MODE IS NOT SUPPORTED"
+#ifdef __cplusplus
+extern "C" {
 #endif
 
-#define SK_LEN_25519              64u
-#define CONTRACT_ADDR_STR_MAX_LEN 100
-#define TOKEN_SYMBOL_MAX_LEN      20
+const token_info_t *get_token(const char *contract_address, const char *contract_name);
+// uint8_t token_registry_size(void);
+// uint16_t get_token_i(size_t index, uint8_t *out, uint16_t out_len);
+
+#ifdef __cplusplus
+}
+#endif
