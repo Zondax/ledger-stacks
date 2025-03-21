@@ -17,6 +17,7 @@
 
 #include "crypto.h"
 #include "parser_common.h"
+#include "zxmacros.h"
 
 // Static definition of all tokens
 static const token_info_t TOKEN_REGISTRY[] = {
@@ -89,7 +90,7 @@ bool token_principal_matches(const token_info_t *token, const char *addr) {
 
     // If we reached the end of token_addr before finding a dot,
     // or reached the dot in token_addr, and addr is also at its end, then it's a match
-    return (*token_addr == '.' || *token_addr == '\0') && *addr == '\0';
+    return (*token_addr == '.' || *token_addr == '\0') && *addr2 == '\0';
 }
 
 // Compare a token's contract name with an input contract name
