@@ -21,7 +21,7 @@ impl<'a> Writer<'a> {
     }
 }
 
-impl<'a> fmt::Write for Writer<'a> {
+impl fmt::Write for Writer<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let bytes = s.as_bytes();
         let remainder = &mut self.buf[self.offset..];
@@ -170,6 +170,7 @@ pub(crate) fn fpstr_to_str(
 
 /// Format a u128 amount with the specified number of decimal places
 /// Returns the formatted amount as an ArrayVec
+#[inline(never)]
 pub fn format_u128_decimals(
     amount: u128,
     decimals: u8,
@@ -181,12 +182,18 @@ pub fn format_u128_decimals(
     let amount_len = amount_str.len();
 
     // Prepare the output buffer
-    let mut output = ArrayVec::from([0u8; 50]);
+    let mut output = ArrayVec::<[u8; MAX_U128_FORMATTED_SIZE_DECIMAL]>::new();
 
     // Handle cases based on the length of the number vs decimals
     if decimals == 0 {
-        // No decimal places, just copy the string
-        output.try_extend_from_slice(amount_str.as_bytes()).ok()?;
+        // Manually copy bytes one by one to avoid try_extend_from_slice
+        for i in 0..amount_len {
+            if i >= MAX_U128_FORMATTED_SIZE_DECIMAL {
+                break;
+            }
+            output.push(amount_str.as_bytes()[i]);
+        }
+
         return Some(output);
     }
 
@@ -196,52 +203,50 @@ pub fn format_u128_decimals(
         output.push(b'.');
 
         // Add leading zeros
-        for _ in 0..(decimals as usize - amount_len) {
+        let padding = decimals as usize - amount_len;
+        for _ in 0..padding {
             output.push(b'0');
         }
 
-        // Add significant digits
-        output.try_extend_from_slice(amount_str.as_bytes()).ok()?;
+        // Manually copy the digits
+        for i in 0..amount_len {
+            output.push(amount_str.as_bytes()[i]);
+        }
     } else {
         // Insert decimal point: 123.456
-        let integer_part = &amount_str[0..(amount_len - decimals as usize)];
-        let fraction_part = &amount_str[(amount_len - decimals as usize)..];
+        let int_part_len = amount_len - decimals as usize;
 
-        // Add integer part
-        output.try_extend_from_slice(integer_part.as_bytes()).ok()?;
+        // Copy integer part
+        for i in 0..int_part_len {
+            output.push(amount_str.as_bytes()[i]);
+        }
 
-        // Add decimal point and fraction
+        // Add decimal point
         output.push(b'.');
-        output
-            .try_extend_from_slice(fraction_part.as_bytes())
-            .ok()?;
+
+        // Copy fractional part
+        for i in int_part_len..amount_len {
+            output.push(amount_str.as_bytes()[i]);
+        }
     }
 
     // Trim trailing zeros in the fraction part
-    let original_len = output.len();
-    let mut trim_count = 0;
-
-    // Only trim if we have a decimal point
     if output.contains(&b'.') {
-        // Count trailing zeros
-        for i in (0..output.len()).rev() {
-            if output[i] == b'0' {
-                trim_count += 1;
-            } else {
-                break;
-            }
+        let mut new_len = output.len();
+
+        // Count trailing zeros from the end
+        while new_len > 0 && output[new_len - 1] == b'0' {
+            new_len -= 1;
         }
 
-        // If all decimals are zeros (e.g., 123.000), keep just the integer part
-        if trim_count == decimals as usize && output[original_len - trim_count - 1] == b'.' {
-            trim_count += 1; // Also remove the decimal point
+        // If all we have left is the decimal point, remove it too
+        if new_len > 0 && output[new_len - 1] == b'.' {
+            new_len -= 1;
         }
-    }
 
-    // Apply the trimming
-    if trim_count > 0 {
+        // Set the new length
         unsafe {
-            output.set_len(original_len - trim_count);
+            output.set_len(new_len);
         }
     }
 
