@@ -7,7 +7,9 @@ mod versioned_contract;
 use nom::number::complete::le_u8;
 
 use self::{
-    contract_call::{TransactionContractCall, CONTRACT_CALL_BASE_ITEMS},
+    contract_call::{
+        TransactionContractCall, TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS,
+    },
     smart_contract::TransactionSmartContract,
     token_transfer::StxTokenTransfer,
     versioned_contract::VersionedSmartContract,
@@ -44,7 +46,7 @@ impl TransactionPayloadId {
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),
-    ContractCall(TransactionContractCall<'a>),
+    ContractCall(TransactionContractCallWrapper<'a>),
     VersionedSmartContract(VersionedSmartContract<'a>),
 }
 
@@ -62,7 +64,7 @@ impl<'a> TransactionPayload<'a> {
                 (contract.0, Self::SmartContract(contract.1))
             }
             TransactionPayloadId::ContractCall => {
-                let call = TransactionContractCall::from_bytes(id.0)?;
+                let call = TransactionContractCallWrapper::from_bytes(id.0)?;
                 (call.0, Self::ContractCall(call.1))
             }
             TransactionPayloadId::VersionedSmartContract => {

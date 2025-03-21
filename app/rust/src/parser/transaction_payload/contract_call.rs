@@ -9,8 +9,8 @@ use crate::{
         c32,
         ffi::token_info::{get_token_info, TokenInfo, TOKEN_SYMBOL_MAX_LEN},
         transaction_payload::arguments::Arguments,
-        ApduPanic, ClarityName, ContractName, ParserError, PrincipalData, StacksAddress, ValueId,
-        C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+        ApduPanic, ClarityName, ContractName, ParserError, PrincipalData, StacksAddress, Value,
+        ValueId, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
     },
     zxformat::{self, format_u128_decimals, MAX_U128_FORMATTED_SIZE_DECIMAL},
 };
@@ -26,7 +26,90 @@ const CONTRACT_NAME_STACKING: &str = "pox";
 const FN_NAME_STACKING1: &str = "stack-stx";
 const FN_NAME_STACKING2: &str = "delegate-stx";
 
+#[repr(C)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
+enum ContractType {
+    SIP10,
+    Other,
+}
+
 /// A transaction that calls into a smart contract
+#[repr(C)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct TransactionContractCallWrapper<'a> {
+    contract_type: ContractType,
+    tx: TransactionContractCall<'a>,
+}
+
+impl<'a> TransactionContractCallWrapper<'a> {
+    #[inline(never)]
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
+        let (rem, tx) = TransactionContractCall::from_bytes(bytes)?;
+
+        // Check if this is a SIP-10 transfer function with token info
+        let is_sip10_transfer = tx.is_transfer_function() && tx.sip10_token_info().is_some();
+        let contract_type = if is_sip10_transfer {
+            ContractType::SIP10
+        } else {
+            ContractType::Other
+        };
+        check_canary!();
+        Ok((rem, Self { contract_type, tx }))
+    }
+
+    pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
+        self.tx.contract_name()
+    }
+
+    pub fn contract_address(
+        &self,
+    ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
+        self.tx.contract_address()
+    }
+
+    pub fn function_name(&self) -> Result<&[u8], ParserError> {
+        self.tx.function_name()
+    }
+
+    pub fn num_args(&self) -> Result<u32, ParserError> {
+        self.tx.num_args()
+    }
+
+    pub fn num_items(&self) -> Result<u8, ParserError> {
+        self.tx.num_items()
+    }
+
+    pub fn get_contract_call_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        // display_idx was already normalized
+        if display_idx < CONTRACT_CALL_BASE_ITEMS {
+            return self
+                .tx
+                .get_base_items(display_idx, out_key, out_value, page_idx);
+        };
+        let display_idx = display_idx - CONTRACT_CALL_BASE_ITEMS;
+
+        if self.contract_type == ContractType::SIP10 {
+            self.tx
+                .render_sip10_transfer_args(display_idx, out_key, out_value, page_idx)
+        } else {
+            self.tx
+                .render_contract_call_args(display_idx, out_key, out_value, page_idx)
+        }
+    }
+
+    pub fn raw_data(&self) -> &'a [u8] {
+        self.tx.raw_data()
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
@@ -137,10 +220,7 @@ impl<'a> TransactionContractCall<'a> {
         out_value: &mut [u8],
         page_idx: u8,
     ) -> Result<u8, ParserError> {
-        if display_idx < CONTRACT_CALL_BASE_ITEMS {
-            return Err(ParserError::DisplayIdxOutOfRange);
-        }
-        let arg_num = display_idx - CONTRACT_CALL_BASE_ITEMS;
+        let arg_num = display_idx;
 
         let args = self.function_args()?;
 
@@ -371,6 +451,7 @@ impl<'a> TransactionContractCall<'a> {
             }
             2 => {
                 // Recipient principal
+                // Sender principal
                 let recipient_value = args.argument_at(2)?;
                 let payload = recipient_value.payload();
 
@@ -410,18 +491,114 @@ impl<'a> TransactionContractCall<'a> {
             3 => {
                 // Memo (optional)
                 let memo_value = args.argument_at(3)?;
-
-                match memo_value.value_id() {
-                    ValueId::OptionalNone => {
-                        zxformat::pageString(out_value, "None".as_bytes(), page_idx)
-                    }
-                    ValueId::OptionalSome => {
-                        zxformat::pageString(out_value, "Has memo".as_bytes(), page_idx)
-                    }
-                    _ => Err(ParserError::UnexpectedError),
-                }
+                self.render_memo_value(&memo_value, out_value, page_idx)
             }
             _ => Err(ParserError::DisplayIdxOutOfRange),
+        }
+    }
+
+    /// Renders the content of a memo field (which is an Optional type)
+    /// If it's None, renders "None"
+    /// If it's Some, unwraps and renders the inner value
+    fn render_memo_value(
+        &self,
+        memo_value: &Value<'_>,
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        match memo_value.value_id() {
+            ValueId::OptionalNone => {
+                // Simply render "None"
+                zxformat::pageString(out_value, "None".as_bytes(), page_idx)
+            }
+            ValueId::OptionalSome => {
+                // Extract the inner value, skipping the first byte which is the value ID
+                let inner_bytes = memo_value.payload();
+                if inner_bytes.is_empty() {
+                    return Err(ParserError::UnexpectedBufferEnd);
+                }
+
+                // Create a new Value from the inner bytes
+                let inner_value = Value(inner_bytes);
+
+                // Now render based on the type of the inner value
+                match inner_value.value_id() {
+                    ValueId::UInt => {
+                        let value = inner_value.uint().ok_or(ParserError::UnexpectedError)?;
+                        let mut buff = [0u8; 39];
+                        zxformat::pageString(
+                            out_value,
+                            value.numtoa_str(10, &mut buff).as_bytes(),
+                            page_idx,
+                        )
+                    }
+                    ValueId::Int => {
+                        let value = inner_value.int().ok_or(ParserError::UnexpectedError)?;
+                        let mut buff = [0u8; 39];
+                        zxformat::pageString(
+                            out_value,
+                            value.numtoa_str(10, &mut buff).as_bytes(),
+                            page_idx,
+                        )
+                    }
+                    ValueId::BoolTrue => {
+                        zxformat::pageString(out_value, "true".as_bytes(), page_idx)
+                    }
+                    ValueId::BoolFalse => {
+                        zxformat::pageString(out_value, "false".as_bytes(), page_idx)
+                    }
+                    ValueId::StandardPrincipal => {
+                        let payload = inner_value.payload();
+                        let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
+                        let address = principal.encoded_address()?;
+                        zxformat::pageString(out_value, &address[0..address.len()], page_idx)
+                    }
+                    ValueId::ContractPrincipal => {
+                        let payload = inner_value.payload();
+                        // holds principal_encoded address + '.' + contract_name
+                        let mut data =
+                            [0; C32_ENCODED_ADDRS_LENGTH + ClarityName::MAX_LEN as usize + 1];
+                        let (_, principal) = PrincipalData::contract_principal_from_bytes(payload)?;
+                        let address = principal.encoded_address()?;
+                        let contract_name = principal.contract_name().apdu_unwrap();
+
+                        data.get_mut(..address.len())
+                            .apdu_unwrap()
+                            .copy_from_slice(&address[0..address.len()]);
+
+                        data[address.len()] = b'.';
+                        let len = address.len() + 1;
+
+                        data.get_mut(len..len + contract_name.len())
+                            .apdu_unwrap()
+                            .copy_from_slice(contract_name.name());
+
+                        zxformat::pageString(
+                            out_value,
+                            &data[0..len + contract_name.len()],
+                            page_idx,
+                        )
+                    }
+                    ValueId::StringAscii => {
+                        // 4 bytes encode the length of the string
+                        let payload = inner_value.payload();
+                        let len = if payload.len() - 4 > MAX_STRING_ASCII_TO_SHOW {
+                            MAX_STRING_ASCII_TO_SHOW
+                        } else {
+                            payload.len()
+                        };
+                        zxformat::pageString(
+                            out_value,
+                            &payload[4..len], // omit the first 4-bytes as they are the string length
+                            page_idx,
+                        )
+                    }
+                    // For other types, just show a generic message
+                    _ => zxformat::pageString(out_value, "Complex memo value".as_bytes(), page_idx),
+                }
+            }
+            // If it's not an Optional type at all
+            _ => Err(ParserError::UnexpectedError),
         }
     }
 
@@ -476,45 +653,6 @@ impl<'a> TransactionContractCall<'a> {
             _ => Err(ParserError::DisplayIdxOutOfRange),
         }
     }
-
-    pub fn get_contract_call_items(
-        &self,
-        display_idx: u8,
-        out_key: &mut [u8],
-        out_value: &mut [u8],
-        page_idx: u8,
-    ) -> Result<u8, ParserError> {
-        // Check if this is a SIP-10 transfer function with token info
-        let is_sip10_transfer = self.is_transfer_function() && self.sip10_token_info().is_some();
-
-        // display_idx was already normalized
-        if display_idx < CONTRACT_CALL_BASE_ITEMS {
-            self.get_base_items(display_idx, out_key, out_value, page_idx)
-        } else if is_sip10_transfer {
-            self.render_sip10_transfer_args(
-                display_idx - CONTRACT_CALL_BASE_ITEMS,
-                out_key,
-                out_value,
-                page_idx,
-            )
-        } else {
-            self.render_contract_call_args(display_idx, out_key, out_value, page_idx)
-        }
-    }
-    // pub fn get_contract_call_items(
-    //     &self,
-    //     display_idx: u8,
-    //     out_key: &mut [u8],
-    //     out_value: &mut [u8],
-    //     page_idx: u8,
-    // ) -> Result<u8, ParserError> {
-    //     // display_idx was already normalize
-    //     if display_idx < CONTRACT_CALL_BASE_ITEMS {
-    //         self.get_base_items(display_idx, out_key, out_value, page_idx)
-    //     } else {
-    //         self.render_contract_call_args(display_idx, out_key, out_value, page_idx)
-    //     }
-    // }
 
     pub fn raw_data(&self) -> &'a [u8] {
         self.0
