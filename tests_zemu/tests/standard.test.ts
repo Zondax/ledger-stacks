@@ -1092,7 +1092,7 @@ describe('Standard', function () {
         contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'transfer',
-        functionArgs: [uintCV(20000), sender, recipient, someCV(stringUtf8CV('tx_memo'))],
+        functionArgs: [uintCV(20000), sender, recipient, someCV(stringAsciiCV('tx_memo'))],
         network: network,
         fee: fee,
         nonce: nonce,
