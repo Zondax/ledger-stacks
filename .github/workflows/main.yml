@@ -287,7 +287,8 @@ jobs:
             liblzma-dev
 
       - name: Install honggfuzz
-        run: cargo install honggfuzz
+        # must be the same version as the library
+        run: cargo install honggfuzz --version "0.5.57"
 
       - name: Generate corpus
         run: |

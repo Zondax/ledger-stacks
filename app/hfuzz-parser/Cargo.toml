@@ -6,7 +6,7 @@ publish = false
 version = "0.0.1"
 
 [dependencies]
-honggfuzz = "0.5"
+honggfuzz = "0.5.57"
 rslib = { path = "../rust/native", features = ["fuzzing"] }
 
 [[bin]]
