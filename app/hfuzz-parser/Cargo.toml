@@ -7,7 +7,7 @@ version = "0.0.1"
 
 [dependencies]
 honggfuzz = "0.5"
-rslib = { path = "../rust/native/" }
+rslib = { path = "../rust/native", features = ["fuzzing"] }
 
 [[bin]]
 name = "transaction"
