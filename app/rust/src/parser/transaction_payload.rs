@@ -7,9 +7,7 @@ mod versioned_contract;
 use nom::number::complete::le_u8;
 
 use self::{
-    contract_call::{
-        TransactionContractCall, TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS,
-    },
+    contract_call::{TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS},
     smart_contract::TransactionSmartContract,
     token_transfer::StxTokenTransfer,
     versioned_contract::VersionedSmartContract,

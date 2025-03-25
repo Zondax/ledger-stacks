@@ -55,8 +55,6 @@ static const token_info_t TOKEN_REGISTRY[] = {
     {.contract_address = "SP1AY6K3PQV5MRT6R4S671NWW2FRVPKM0BR162CT6.leo-token", .token_symbol = "LEO", .decimals = 6},
     {.contract_address = "SP2C1WREHGM75C7TGFAEJPFKTFTEGZKF6DFT6E2GE.kangaroo", .token_symbol = "ROO", .decimals = 6}};
 
-static const size_t NUM_TOKENS = sizeof(TOKEN_REGISTRY) / sizeof(token_info_t);
-
 #define TOKEN_REGISTRY_SIZE (sizeof(TOKEN_REGISTRY) / sizeof(TOKEN_REGISTRY[0]))
 
 bool token_principal_matches(const token_info_t *token, const char *addr);

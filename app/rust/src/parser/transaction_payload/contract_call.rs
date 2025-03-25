@@ -500,6 +500,7 @@ impl<'a> TransactionContractCall<'a> {
     /// Renders the content of a memo field (which is an Optional type)
     /// If it's None, renders "None"
     /// If it's Some, unwraps and renders the inner value
+    /// If the inner value is a complex type, renders a generic message
     fn render_memo_value(
         &self,
         memo_value: &Value<'_>,
