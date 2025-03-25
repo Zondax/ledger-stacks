@@ -50,7 +50,7 @@ pub enum TransactionPayload<'a> {
 
 impl<'a> TransactionPayload<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let id = le_u8(bytes)?;
         let res = match TransactionPayloadId::from_u8(id.1)? {
             TransactionPayloadId::TokenTransfer => {

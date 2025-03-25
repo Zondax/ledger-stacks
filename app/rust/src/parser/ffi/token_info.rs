@@ -49,6 +49,7 @@ fn c_strlen(buf: &[u8]) -> usize {
 /// 1. The returned pointer is checked for null
 /// 2. The C data is expected to have 'static lifetime (it comes from a global static variable in C)
 /// 3. The slices in the returned `TokenInfo` point to this static data
+#[cfg(not(any(test, feature = "fuzzing")))]
 pub fn get_token_info<T, U>(contract_address: T, contract_name: U) -> Option<TokenInfo<'static>>
 where
     T: AsRef<[u8]>,
@@ -94,4 +95,13 @@ where
             decimals: c_token_info.decimals,
         })
     }
+}
+
+#[cfg(any(test, feature = "fuzzing"))]
+pub fn get_token_info<T, U>(_contract_address: T, _contract_name: U) -> Option<TokenInfo<'static>>
+where
+    T: AsRef<[u8]>,
+    U: AsRef<[u8]>,
+{
+    None
 }

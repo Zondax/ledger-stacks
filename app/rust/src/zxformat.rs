@@ -94,13 +94,13 @@ num_to_str!(i64, i64_to_str);
 /// # Returns
 /// The number of bytes written if success or Error otherwise
 pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, ParserError> {
-    #[cfg(any(test, fuzzing))]
+    #[cfg(any(test, feature = "fuzzing"))]
     {
         let mut temp = [0u8; u64::FORMATTED_SIZE_DECIMAL];
         let value = u64_to_str(temp.as_mut(), value)?;
         fpstr_to_str(out, value, decimals)
     }
-    #[cfg(not(any(test, fuzzing)))]
+    #[cfg(not(any(test, feature = "fuzzing")))]
     unsafe {
         Ok(crate::parser::fp_uint64_to_str(
             out.as_mut_ptr() as *mut i8,
