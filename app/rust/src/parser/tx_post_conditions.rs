@@ -46,7 +46,7 @@ pub struct PostConditions<'a> {
 
 impl<'a> PostConditions<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, len) = be_u32::<_, ParserError>(bytes)?;
         let conditions_len = len as usize;
 

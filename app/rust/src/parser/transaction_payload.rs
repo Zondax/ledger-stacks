@@ -7,7 +7,7 @@ mod versioned_contract;
 use nom::number::complete::le_u8;
 
 use self::{
-    contract_call::{TransactionContractCall, CONTRACT_CALL_BASE_ITEMS},
+    contract_call::{TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS},
     smart_contract::TransactionSmartContract,
     token_transfer::StxTokenTransfer,
     versioned_contract::VersionedSmartContract,
@@ -44,13 +44,13 @@ impl TransactionPayloadId {
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),
-    ContractCall(TransactionContractCall<'a>),
+    ContractCall(TransactionContractCallWrapper<'a>),
     VersionedSmartContract(VersionedSmartContract<'a>),
 }
 
 impl<'a> TransactionPayload<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let id = le_u8(bytes)?;
         let res = match TransactionPayloadId::from_u8(id.1)? {
             TransactionPayloadId::TokenTransfer => {
@@ -62,7 +62,7 @@ impl<'a> TransactionPayload<'a> {
                 (contract.0, Self::SmartContract(contract.1))
             }
             TransactionPayloadId::ContractCall => {
-                let call = TransactionContractCall::from_bytes(id.0)?;
+                let call = TransactionContractCallWrapper::from_bytes(id.0)?;
                 (call.0, Self::ContractCall(call.1))
             }
             TransactionPayloadId::VersionedSmartContract => {

@@ -30,6 +30,12 @@ typedef struct {
     uint16_t len;
 } parser_tx_t;
 
+typedef struct {
+    char contract_address[CONTRACT_ADDR_STR_MAX_LEN];
+    char token_symbol[TOKEN_SYMBOL_MAX_LEN];
+    uint8_t decimals;
+} token_info_t;
+
 #ifdef __cplusplus
 }
 #endif

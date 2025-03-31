@@ -21,7 +21,7 @@ pub struct TransactionSmartContract<'a>(&'a [u8]);
 
 impl<'a> TransactionSmartContract<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), ParserError> {
         check_canary!();
 
         // len prefixed contract name

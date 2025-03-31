@@ -1,4 +1,4 @@
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, feature = "fuzzing")))]
 use crate::parser::utils::ApduPanic;
 use crate::parser::{
     error::ParserError,
@@ -6,15 +6,15 @@ use crate::parser::{
 };
 use arrayvec::ArrayVec;
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, feature = "fuzzing")))]
 use crate::bolos::sha256;
 
 use crate::bolos::SHA256_LEN;
 
-#[cfg(any(test, fuzzing))]
+#[cfg(any(test, feature = "fuzzing"))]
 use sha2::Digest;
 
-#[cfg(any(test, fuzzing))]
+#[cfg(any(test, feature = "fuzzing"))]
 use sha2::Sha256;
 
 pub const C32_ADDRESS_VERSION_MAINNET_SINGLESIG: u8 = 22;
@@ -54,7 +54,7 @@ pub extern "C" fn rs_c32_address(
     0
 }
 
-#[cfg(any(test, fuzzing))]
+#[cfg(any(test, feature = "fuzzing"))]
 fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     let digest = Sha256::digest(&data[..21]);
     data.copy_from_slice(digest.as_slice());
@@ -62,7 +62,7 @@ fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     data[20..24].copy_from_slice(&sha2_2.as_slice()[..4]);
 }
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, feature = "fuzzing")))]
 fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
     let mut output = [0u8; SHA256_LEN];
     // safe to unwrap as we are passing the right len

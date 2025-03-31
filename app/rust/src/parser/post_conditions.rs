@@ -55,7 +55,7 @@ pub enum TransactionPostCondition<'a> {
 
 impl<'a> TransactionPostCondition<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, cond_type) = le_u8(bytes)?;
         let principal = PostConditionPrincipal::read_as_bytes(raw)?;
         let principal_len = raw.len() - principal.0.len();
@@ -82,7 +82,7 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], &'a [u8], ParserError> {
         let rem = bytes;
         let (rem, cond_type) = le_u8(rem)?;
         let (mut rem, _) = PostConditionPrincipal::read_as_bytes(rem)?;

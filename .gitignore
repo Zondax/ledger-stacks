@@ -92,4 +92,4 @@ app/pkg/*
 app/rust/.cargo/.package-cache-mutate
 app/hfuzz_corpus
 
-
+app/rust/.cargo/.global-cache

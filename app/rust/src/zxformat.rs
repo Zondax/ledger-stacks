@@ -3,9 +3,12 @@
 use core::fmt::{self, Write};
 
 use crate::parser::ParserError;
+use arrayvec::ArrayVec;
 use lexical_core::Number;
+use numtoa::NumToA;
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
+pub const MAX_U128_FORMATTED_SIZE_DECIMAL: usize = 50;
 
 pub struct Writer<'a> {
     buf: &'a mut [u8],
@@ -18,7 +21,7 @@ impl<'a> Writer<'a> {
     }
 }
 
-impl<'a> fmt::Write for Writer<'a> {
+impl fmt::Write for Writer<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let bytes = s.as_bytes();
         let remainder = &mut self.buf[self.offset..];
@@ -91,13 +94,13 @@ num_to_str!(i64, i64_to_str);
 /// # Returns
 /// The number of bytes written if success or Error otherwise
 pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, ParserError> {
-    #[cfg(any(test, fuzzing))]
+    #[cfg(any(test, feature = "fuzzing"))]
     {
         let mut temp = [0u8; u64::FORMATTED_SIZE_DECIMAL];
         let value = u64_to_str(temp.as_mut(), value)?;
         fpstr_to_str(out, value, decimals)
     }
-    #[cfg(not(any(test, fuzzing)))]
+    #[cfg(not(any(test, feature = "fuzzing")))]
     unsafe {
         Ok(crate::parser::fp_uint64_to_str(
             out.as_mut_ptr() as *mut i8,
@@ -163,6 +166,91 @@ pub(crate) fn fpstr_to_str(
     write!(&mut writer, "{}.{}", left, right)
         .map(|_| writer.offset)
         .map_err(|_| ParserError::UnexpectedBufferEnd)
+}
+
+/// Format a u128 amount with the specified number of decimal places
+/// Returns the formatted amount as an ArrayVec
+#[inline(never)]
+pub fn format_u128_decimals(
+    amount: u128,
+    decimals: u8,
+) -> Option<ArrayVec<[u8; MAX_U128_FORMATTED_SIZE_DECIMAL]>> {
+    // Increased buffer size for u128
+    // Convert the number to a string first
+    let mut buff = [0u8; 40]; // Large enough for u128 values
+    let amount_str = amount.numtoa_str(10, &mut buff);
+    let amount_len = amount_str.len();
+
+    // Prepare the output buffer
+    let mut output = ArrayVec::<[u8; MAX_U128_FORMATTED_SIZE_DECIMAL]>::new();
+
+    // Handle cases based on the length of the number vs decimals
+    if decimals == 0 {
+        // Manually copy bytes one by one to avoid try_extend_from_slice
+        for i in 0..amount_len {
+            if i >= MAX_U128_FORMATTED_SIZE_DECIMAL {
+                break;
+            }
+            output.push(amount_str.as_bytes()[i]);
+        }
+
+        return Some(output);
+    }
+
+    if amount_len <= decimals as usize {
+        // Need to pad with leading zeros: 0.0001234
+        output.push(b'0');
+        output.push(b'.');
+
+        // Add leading zeros
+        let padding = decimals as usize - amount_len;
+        for _ in 0..padding {
+            output.push(b'0');
+        }
+
+        // Manually copy the digits
+        for i in 0..amount_len {
+            output.push(amount_str.as_bytes()[i]);
+        }
+    } else {
+        // Insert decimal point: 123.456
+        let int_part_len = amount_len - decimals as usize;
+
+        // Copy integer part
+        for i in 0..int_part_len {
+            output.push(amount_str.as_bytes()[i]);
+        }
+
+        // Add decimal point
+        output.push(b'.');
+
+        // Copy fractional part
+        for i in int_part_len..amount_len {
+            output.push(amount_str.as_bytes()[i]);
+        }
+    }
+
+    // Trim trailing zeros in the fraction part
+    if output.contains(&b'.') {
+        let mut new_len = output.len();
+
+        // Count trailing zeros from the end
+        while new_len > 0 && output[new_len - 1] == b'0' {
+            new_len -= 1;
+        }
+
+        // If all we have left is the decimal point, remove it too
+        if new_len > 0 && output[new_len - 1] == b'.' {
+            new_len -= 1;
+        }
+
+        // Set the new length
+        unsafe {
+            output.set_len(new_len);
+        }
+    }
+
+    Some(output)
 }
 
 #[inline(never)]

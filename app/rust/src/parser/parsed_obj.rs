@@ -188,7 +188,7 @@ impl<'a> ParsedObj<'a> {
         }
     }
 
-    #[cfg(any(test, fuzzing))]
+    #[cfg(any(test, feature = "fuzzing"))]
     pub fn validate(tx: &mut Self) -> Result<(), ParserError> {
         use std::*;
         let mut key = [0u8; 100];
@@ -268,7 +268,7 @@ impl<'a> Obj<'a> {
 }
 
 #[cfg(test)]
-impl<'a> core::fmt::Debug for ParsedObj<'a> {
+impl core::fmt::Debug for ParsedObj<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut debug_struct = f.debug_struct("ParsedObj");
         debug_struct.field("tag", &self.tag);

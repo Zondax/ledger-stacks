@@ -22,7 +22,7 @@ pub struct VersionedSmartContract<'a>(&'a [u8]);
 
 impl<'a> VersionedSmartContract<'a> {
     #[inline(never)]
-    pub fn from_bytes(input: &'a [u8]) -> Result<(&[u8], Self), ParserError> {
+    pub fn from_bytes(input: &'a [u8]) -> Result<(&'a [u8], Self), ParserError> {
         check_canary!();
 
         // clarity version

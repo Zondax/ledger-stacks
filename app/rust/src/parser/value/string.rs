@@ -65,7 +65,9 @@ impl<'a> StringAscii<'a> {
     }
 
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], StringAscii<'a>), nom::Err<ParserError>> {
+    pub fn from_bytes(
+        bytes: &'a [u8],
+    ) -> Result<(&'a [u8], StringAscii<'a>), nom::Err<ParserError>> {
         let (rem, id) = ValueId::from_bytes(bytes)?;
 
         if !matches!(id, ValueId::StringAscii) {
@@ -97,7 +99,7 @@ impl<'a> StringUtf8<'a> {
     }
 
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (rem, id) = ValueId::from_bytes(bytes)?;
 
         if !matches!(id, ValueId::StringUtf8) {

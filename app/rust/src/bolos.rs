@@ -1,16 +1,17 @@
 //! Rust interfaces to Ledger SDK APIs.
 pub const SHA256_LEN: usize = 32;
 
+#[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
     fn _zemu_log_stack(buffer: *const u8);
 }
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, feature = "fuzzing")))]
 pub fn c_zemu_log_stack<S: AsRef<[u8]>>(s: S) {
     unsafe { _zemu_log_stack(s.as_ref().as_ptr()) }
 }
 
-#[cfg(any(test, fuzzing))]
+#[cfg(any(test, feature = "fuzzing"))]
 pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {
     std::println!("{:?}", std::str::from_utf8(_s.as_ref()).unwrap());
 }
@@ -23,7 +24,7 @@ extern "C" {
 #[derive(Debug)]
 pub struct OutputTooSmall;
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, feature = "fuzzing")))]
 pub fn sha256(data: &[u8], output: &mut [u8]) -> Result<(), OutputTooSmall> {
     if output.len() < SHA256_LEN {
         return Err(OutputTooSmall);
@@ -36,7 +37,7 @@ pub fn sha256(data: &[u8], output: &mut [u8]) -> Result<(), OutputTooSmall> {
     Ok(())
 }
 
-#[cfg(any(test, fuzzing))]
+#[cfg(any(test, feature = "fuzzing"))]
 pub fn sha256(data: &[u8], out: &mut [u8]) -> Result<(), OutputTooSmall> {
     use sha2::Digest;
     use sha2::Sha256;

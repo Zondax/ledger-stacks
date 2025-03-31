@@ -107,7 +107,7 @@ pub struct SpendingConditionSigner<'a> {
 
 impl<'a> SpendingConditionSigner<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, _) = take(SPENDING_CONDITION_SIGNER_LEN)(bytes)?;
         let data = arrayref::array_ref!(bytes, 0, SPENDING_CONDITION_SIGNER_LEN);
         Ok((raw, Self { data }))
@@ -218,7 +218,7 @@ pub enum SpendingConditionSignature<'a> {
     Multisig(MultisigSpendingCondition<'a>),
 }
 
-impl<'a> SpendingConditionSignature<'a> {
+impl SpendingConditionSignature<'_> {
     fn clear_signature(&mut self) {
         match self {
             Self::Singlesig(ref mut singlesig) => singlesig.clear_signature(),
@@ -244,7 +244,7 @@ pub struct TransactionSpendingCondition<'a> {
 
 impl<'a> SinglesigSpendingCondition<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         // we take 65-byte signature + 1-byte signature public-key encoding type
         let len = SIGNATURE_LEN + 1;
         let (raw, _) = take(len)(bytes)?;
@@ -279,7 +279,7 @@ impl<'a> SinglesigSpendingCondition<'a> {
 
 impl<'a> TransactionAuthField<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (bytes, id) = be_u8(bytes)?;
         let id = TransactionAuthFieldID::try_from(id)?;
 
@@ -312,7 +312,7 @@ pub enum Index {
 
 impl<'a> MultisigSpendingCondition<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         // Advance to the end of auth fields
         let (end, _) = Self::field_from_bytes(bytes, Index::FromLast(0))?;
 
@@ -333,7 +333,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     }
 
     #[inline(always)]
-    fn num_fields_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], u32, ParserError> {
+    fn num_fields_from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], u32, ParserError> {
         be_u32(bytes)
     }
 
@@ -342,7 +342,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     fn field_from_bytes(
         bytes: &'a [u8],
         index: Index,
-    ) -> nom::IResult<&[u8], TransactionAuthField, ParserError> {
+    ) -> nom::IResult<&'a [u8], TransactionAuthField<'a>, ParserError> {
         // First, read number of auth fields
         let (mut bytes, num_fields) = Self::num_fields_from_bytes(bytes)?;
 
@@ -411,7 +411,7 @@ impl<'a> MultisigSpendingCondition<'a> {
 
 impl<'a> TransactionSpendingCondition<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, signer) = SpendingConditionSigner::from_bytes(bytes)?;
         let hash_mode = signer.hash_mode()?;
         let (leftover, signature) = match hash_mode {
