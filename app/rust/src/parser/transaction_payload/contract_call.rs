@@ -19,6 +19,10 @@ pub const MAX_STRING_ASCII_TO_SHOW: usize = 60;
 // The items in contract_call transactions are
 // contract_address, contract_name and function_name
 pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
+// 1 for space, 1 for '(', 1 for ')'
+// for example for ammount formatting:
+// 123 (STX)
+const EXTRA_CHARS_FOR_FORMAT: usize = 3;
 
 const ADDR_STACKING1: &str = "SP000000000000000000002Q6VF78";
 const ADDR_STACKING2: &str = "ST000000000000000000002AMW42H";
@@ -377,11 +381,11 @@ impl<'a> TransactionContractCall<'a> {
 
                 // Create a buffer for the formatted display
                 let mut display_buffer =
-                    [0u8; MAX_U128_FORMATTED_SIZE_DECIMAL + TOKEN_SYMBOL_MAX_LEN + 3];
+                    [0u8; MAX_U128_FORMATTED_SIZE_DECIMAL + TOKEN_SYMBOL_MAX_LEN + EXTRA_CHARS_FOR_FORMAT];
                 let mut pos = 0;
 
                 // Copy the formatted amount
-                if formatted_amount.len() > display_buffer.len() - 3 - token_info.token_symbol.len()
+                if formatted_amount.len() > display_buffer.len() - EXTRA_CHARS_FOR_FORMAT - token_info.token_symbol.len()
                 {
                     return Err(ParserError::UnexpectedBufferEnd);
                 }
@@ -423,6 +427,7 @@ impl<'a> TransactionContractCall<'a> {
                         zxformat::pageString(out_value, &address[..address.len()], page_idx)
                     }
                     ValueId::ContractPrincipal => {
+                        // holds principal_encoded address + '.' + contract_name + null terminator
                         let mut data =
                             [0; C32_ENCODED_ADDRS_LENGTH + ClarityName::MAX_LEN as usize + 1];
                         let (_, principal) = PrincipalData::contract_principal_from_bytes(payload)?;
