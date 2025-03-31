@@ -65,7 +65,7 @@ impl ValueId {
 impl<'a> Value<'a> {
     pub fn from_bytes<const MAX_DEPTH: u8>(
         bytes: &'a [u8],
-    ) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    ) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         c_zemu_log_stack("Value::from_bytes\x00");
         check_canary!();
 

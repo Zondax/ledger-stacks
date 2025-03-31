@@ -16,7 +16,7 @@ mod tx_post_conditions;
 mod utils;
 mod value;
 pub use error::ParserError;
-pub use ffi::{_getItem, _getNumItems, _parser_init, _read, fp_uint64_to_str};
+pub use ffi::{_getItem, _getNumItems, _read, context::_parser_init, fp_uint64_to_str};
 pub use jwt::Jwt;
 pub use message::{ByteString, Message};
 pub use parsed_obj::{ParsedObj, Tag};

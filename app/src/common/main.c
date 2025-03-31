@@ -31,8 +31,7 @@ __attribute__((section(".boot"))) int main(void) {
             app_init();
             app_main();
         }
-        CATCH_OTHER(e) {
-        }
+        CATCH_OTHER(e) { (void)e; }
         FINALLY {
         }
     }
