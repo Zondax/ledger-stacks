@@ -1,24 +1,26 @@
 /*******************************************************************************
-*   (c) 2019 Zondax GmbH
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-********************************************************************************/
+ *   (c) 2019 Zondax GmbH
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ ********************************************************************************/
+
+#include "parser.h"
 
 #include <stdio.h>
 #include <zxmacros.h>
-#include "parser_txdef.h"
-#include "parser.h"
+
 #include "coin.h"
+#include "parser_txdef.h"
 #include "rslib.h"
 
 static zxerr_t parser_allocate();
@@ -40,8 +42,8 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
         return parser_context_unexpected_size;
     }
 
-    if(parser_allocate() != zxerr_ok) {
-        return parser_init_context_empty ;
+    if (parser_allocate() != zxerr_ok) {
+        return parser_init_context_empty;
     }
 
     parser_error_t err = _read(ctx, &parser_state);
@@ -49,17 +51,16 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
 }
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
-
-    uint8_t pubKeyHash[CX_RIPEMD160_SIZE];
+    uint8_t pubKeyHash[CX_RIPEMD160_SIZE] = {0};
 
     crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
 
     // Checks if the data being processed is a transaction and if so, verify this device is allowed to sign this transaction
-    if ( parser_get_transaction_type() == Transaction ) {
-        if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok)
-        return parser_invalid_auth_type;
+    if (parser_get_transaction_type() == Transaction) {
+        if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok) {
+            return parser_invalid_auth_type;
+        }
     }
-
 
     uint8_t numItems = 0;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems));
@@ -79,18 +80,15 @@ parser_error_t parser_getNumItems(const parser_context_t *ctx, uint8_t *num_item
     return _getNumItems(ctx, &parser_state, num_items);
 }
 
-parser_error_t parser_getItem(const parser_context_t *ctx,
-                              uint16_t displayIdx,
-                              char *outKey, uint16_t outKeyLen,
-                              char *outVal, uint16_t outValLen,
-                              uint8_t pageIdx, uint8_t *pageCount) {
+parser_error_t parser_getItem(const parser_context_t *ctx, uint16_t displayIdx, char *outKey, uint16_t outKeyLen,
+                              char *outVal, uint16_t outValLen, uint8_t pageIdx, uint8_t *pageCount) {
     MEMZERO(outKey, outKeyLen);
     MEMZERO(outVal, outValLen);
     snprintf(outKey, outKeyLen, "?");
     snprintf(outVal, outValLen, "?");
     *pageCount = 0;
 
-    uint8_t numItems;
+    uint8_t numItems = 0;
     CHECK_PARSER_ERR(parser_getNumItems(ctx, &numItems))
     CHECK_APP_CANARY()
 
@@ -142,7 +140,7 @@ uint16_t parser_previous_signer_data(uint8_t **data) {
     return _previous_signer_data(&parser_state, data);
 }
 
-zxerr_t parser_structured_msg_hash(uint8_t *out, uint16_t out_len){
+zxerr_t parser_structured_msg_hash(uint8_t *out, uint16_t out_len) {
     if (_structured_msg_hash(&parser_state, out, out_len) != parser_ok) {
         return zxerr_buffer_too_small;
     }
@@ -153,10 +151,10 @@ zxerr_t parser_allocate() {
     if (parser_state.len % 4 != 0) {
         parser_state.len += parser_state.len % 4;
     }
-    if(parser_state.len > PARSER_BUFFER_SIZE) {
+    if (parser_state.len > PARSER_BUFFER_SIZE) {
         return zxerr_buffer_too_small;
     }
-    if(parser_state.state != NULL) {
+    if (parser_state.state != NULL) {
         return zxerr_unknown;
     }
 
@@ -166,7 +164,7 @@ zxerr_t parser_allocate() {
 }
 
 zxerr_t parser_deallocate() {
-    if(parser_state.state == NULL) {
+    if (parser_state.state == NULL) {
         return zxerr_unknown;
     }
     parser_state.len = 0;
@@ -178,7 +176,7 @@ void parser_resetState() {
     parser_deallocate();
 }
 
-transaction_type_t parser_get_transaction_type(){
+transaction_type_t parser_get_transaction_type() {
     return _transaction_type(&parser_state);
 }
 

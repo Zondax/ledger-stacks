@@ -6,11 +6,17 @@ edition = "2018"
 readme = "README.md"
 resolver = "2"
 
-
 [lib]
 name = "rslib"
 crate-type = ["rlib"]
 path = "../src/lib.rs"
+
+[features]
+clippy = []
+fuzzing = [
+    "no-std-compat/std",
+    "sha2",              # Add sha2 as a dependency when fuzzing is enabled
+]
 
 [dependencies]
 no-std-compat = { version = "0.4.1" }
@@ -21,7 +27,9 @@ hex = { version = "0.4", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-json-core = { version = "0.4.0", features = ["std"] }
 nom = { version = "7.1.2", default-features = false }
-
+lexical-core = { version = "0.7", features = ["libm"] }
+# Make sha2 an optional dependency, enabled by the fuzzing feature
+sha2 = { version = "0.9.1", optional = true }
 
 [dependencies.arrayvec]
 version = "0.5.1"
@@ -37,13 +45,13 @@ serde = { version = "1.0", features = ["derive"] }
 sha2 = { version = "0.9.1" }
 base64 = { version = "0.13.0" }
 
-
-[target.'cfg(fuzzing)'.dependencies]
-sha2 = { version = "0.9.1" }
-no-std-compat = { version = "0.4.1", features = ["std"] }
+# Additional dependencies for fuzzing
+[target.'cfg(feature = "fuzzing")'.dependencies]
 hex = { version = "0.4" }
+serde-json-core = { version = "0.4.0", features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 base64 = { version = "0.13.0" }
+lexical-core = { version = "0.7", features = ["libm"] }
 
 [profile.release]
 lto = false

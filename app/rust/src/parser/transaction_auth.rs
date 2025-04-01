@@ -34,7 +34,7 @@ pub enum TransactionAuth<'a> {
 
 impl<'a> TransactionAuth<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let auth_type = le_u8(bytes)?;
         let auth = match auth_type.1 {
             0x04 => Self::standard_from_bytes(auth_type.0)?,
@@ -45,14 +45,14 @@ impl<'a> TransactionAuth<'a> {
     }
 
     #[inline(never)]
-    fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    fn standard_from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let standard = TransactionSpendingCondition::from_bytes(bytes)?;
         check_canary!();
         Ok((standard.0, Self::Standard(standard.1)))
     }
 
     #[inline(never)]
-    fn sponsored_from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    fn sponsored_from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let standard = TransactionSpendingCondition::from_bytes(bytes)?;
         let sponsored = TransactionSpendingCondition::from_bytes(standard.0)?;
         check_canary!();

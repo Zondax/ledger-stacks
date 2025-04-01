@@ -1,8 +1,8 @@
 use core::fmt::Write;
 use nom::{
-    branch::permutation,
     bytes::complete::take,
     number::complete::{be_u32, le_u8},
+    sequence::tuple,
 };
 
 use crate::{
@@ -211,7 +211,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, ParserError> {
-        match permutation((
+        match tuple((
             TransactionVersion::from_bytes,
             be_u32,
             TransactionAuth::from_bytes,

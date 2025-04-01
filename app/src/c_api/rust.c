@@ -1,9 +1,9 @@
 #include <inttypes.h>
-#include <zxmacros.h>
 #include <zxformat.h>
-#include "os.h"
-#include "cx.h"
+#include <zxmacros.h>
 
+#include "cx.h"
+#include "os.h"
 
 uint16_t fp_uint64_to_str(char *out, uint16_t outLen, const uint64_t value, uint8_t decimals) {
     return fpuint64_to_str(out, outLen, value, decimals);

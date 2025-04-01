@@ -55,7 +55,7 @@ pub enum TransactionPostCondition<'a> {
 
 impl<'a> TransactionPostCondition<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, cond_type) = le_u8(bytes)?;
         let principal = PostConditionPrincipal::read_as_bytes(raw)?;
         let principal_len = raw.len() - principal.0.len();
@@ -82,27 +82,32 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
-        let cond_type = le_u8(bytes)?;
-        let (raw, _) = PostConditionPrincipal::read_as_bytes(cond_type.0)?;
-        let mut len = bytes.len() - raw.len();
-        len += match PostConditionType::try_from(cond_type.1)? {
+    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], &'a [u8], ParserError> {
+        let rem = bytes;
+        let (rem, cond_type) = le_u8(rem)?;
+        let (mut rem, _) = PostConditionPrincipal::read_as_bytes(rem)?;
+
+        match PostConditionType::try_from(cond_type)? {
             PostConditionType::Stx => {
                 // We take 9-bytes which comprises the 8-byte amount + 1-byte fungible code
-                9usize
+                let (raw, _) = take(9usize)(rem)?;
+                rem = raw;
             }
             PostConditionType::FungibleToken => {
-                let (_, asset) = AssetInfo::read_as_bytes(raw)?;
+                let (raw, _) = AssetInfo::read_as_bytes(rem)?;
                 // We take 9-bytes which containf the 8-byte amount + 1-byte fungible code
-                asset.len() + 9
+                let (raw, _) = take(9usize)(raw)?;
+                rem = raw;
             }
             PostConditionType::NonFungibleToken => {
-                let (asset_raw, asset) = AssetInfo::read_as_bytes(raw)?;
-                let value_len = Value::value_len::<TX_DEPTH_LIMIT>(asset_raw)?;
-                asset.len() + value_len + 1
+                let (asset_raw, _) = AssetInfo::read_as_bytes(rem)?;
+                let (raw, _) = Value::from_bytes::<TX_DEPTH_LIMIT>(asset_raw)?;
+                let (raw, _) = take(1usize)(raw)?;
+                rem = raw;
             }
         };
         crate::check_canary!();
+        let len = bytes.len() - rem.len();
         take(len)(bytes)
     }
 

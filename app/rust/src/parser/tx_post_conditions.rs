@@ -1,8 +1,5 @@
 use arrayvec::ArrayVec;
-use nom::{
-    combinator::iterator,
-    number::complete::{be_u32, le_u8},
-};
+use nom::number::complete::{be_u32, le_u8};
 
 use crate::{bolos::c_zemu_log_stack, check_canary, parser::TransactionPostCondition};
 
@@ -49,30 +46,75 @@ pub struct PostConditions<'a> {
 
 impl<'a> PostConditions<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, len) = be_u32::<_, ParserError>(bytes)?;
+        let conditions_len = len as usize;
 
-        if len > NUM_SUPPORTED_POST_CONDITIONS as u32 {
+        // Validate length
+        if conditions_len > NUM_SUPPORTED_POST_CONDITIONS {
             return Err(nom::Err::Error(ParserError::ValueOutOfRange));
         }
+
         let mut conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]> = ArrayVec::new();
-        let mut iter = iterator(raw, TransactionPostCondition::read_as_bytes);
-        iter.take(len as _).enumerate().for_each(|i| {
-            conditions.push(i.1);
-        });
-        let res = iter.finish()?;
-        let num_items = Self::get_num_items(&conditions[..len as usize]);
+        let mut current_input = raw;
+
+        // Safely iterate exactly len times
+        for _ in 0..conditions_len {
+            match TransactionPostCondition::read_as_bytes(current_input) {
+                Ok((remaining, item)) => {
+                    current_input = remaining;
+                    // Safe push with error handling
+                    if conditions.try_push(item).is_err() {
+                        return Err(nom::Err::Error(ParserError::ValueOutOfRange));
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        if conditions.len() != conditions_len {
+            return Err(nom::Err::Error(ParserError::ValueOutOfRange));
+        }
+
+        let num_items = Self::get_num_items(&conditions);
         check_canary!();
+
+        let num_conditions = conditions.len();
+
         Ok((
-            res.0,
+            current_input,
             Self {
                 conditions,
                 num_items,
                 current_idx: 0,
-                num_conditions: len as usize,
+                num_conditions,
             },
         ))
     }
+    // pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    //     let (raw, len) = be_u32::<_, ParserError>(bytes)?;
+    //
+    //     if len > NUM_SUPPORTED_POST_CONDITIONS as u32 {
+    //         return Err(nom::Err::Error(ParserError::ValueOutOfRange));
+    //     }
+    //     let mut conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]> = ArrayVec::new();
+    //     let mut iter = iterator(raw, TransactionPostCondition::read_as_bytes);
+    //     iter.take(len as _).enumerate().for_each(|i| {
+    //         conditions.push(i.1);
+    //     });
+    //     let res = iter.finish()?;
+    //     let num_items = Self::get_num_items(&conditions[..len as usize]);
+    //     check_canary!();
+    //     Ok((
+    //         res.0,
+    //         Self {
+    //             conditions,
+    //             num_items,
+    //             current_idx: 0,
+    //             num_conditions: len as usize,
+    //         },
+    //     ))
+    // }
 
     pub fn get_num_items(conditions: &[&[u8]]) -> u8 {
         conditions
