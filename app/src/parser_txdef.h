@@ -30,10 +30,19 @@ typedef struct {
     uint16_t len;
 } parser_tx_t;
 
+typedef enum {
+    POST_CONDITION_CODE_EQUAL = 1,
+    POST_CONDITION_CODE_GREATER_EQUAL = 2,
+    POST_CONDITION_CODE_LESS_EQUAL = 3,
+    POST_CONDITION_CODE_GREATER = 4,
+    POST_CONDITION_CODE_LESS = 5,
+} post_condition_code_t;
+
 typedef struct {
     char contract_address[CONTRACT_ADDR_STR_MAX_LEN];
     char token_symbol[TOKEN_SYMBOL_MAX_LEN];
     uint8_t decimals;
+    post_condition_code_t post_condition_code;
 } token_info_t;
 
 #ifdef __cplusplus

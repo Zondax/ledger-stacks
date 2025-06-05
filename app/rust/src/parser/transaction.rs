@@ -238,8 +238,30 @@ impl<'a> Transaction<'a> {
         self.payload.recipient_address()
     }
 
+    /// Checks if postconditions rendering should be skipped for SIP-10 token transfers
+    /// when the expected postcondition matches the current one
+    fn is_skip_postconditions_rendering(&self) -> Result<bool, ParserError> {
+        if let TransactionPayload::ContractCall(contract_call) = &self.payload {
+            if let Some(token_info) = contract_call.sip10_token_info() {
+                if let Some(current_code) = self.post_conditions.current_post_condition()?.fungible_condition_code() {
+                    if let Some(condition) = token_info.post_condition_code {
+                        if condition == current_code {
+                            c_zemu_log_stack("Hiding post conditions\x00");
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
     pub fn num_items(&self) -> Result<u8, ParserError> {
-        let num_items_post_conditions = self.post_conditions.num_items();
+        let mut num_items_post_conditions = self.post_conditions.num_items();
+
+        if self.is_skip_postconditions_rendering()? {
+            num_items_post_conditions = 0;
+        }
 
         // nonce + origin + fee-rate + payload + post-conditions
         3u8.checked_add(self.payload.num_items())
@@ -310,7 +332,11 @@ impl<'a> Transaction<'a> {
     ) -> Result<u8, ParserError> {
         c_zemu_log_stack("Transaction::get_other_items\x00");
         let num_items = self.num_items()?;
-        let post_conditions_items = self.post_conditions.num_items();
+        let mut post_conditions_items = self.post_conditions.num_items();
+
+        if self.is_skip_postconditions_rendering()? {
+            post_conditions_items = 0;
+        }
 
         if display_idx >= (num_items - post_conditions_items) {
             if post_conditions_items == 0 {

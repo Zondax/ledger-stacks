@@ -1,4 +1,5 @@
 use core::ffi::CStr;
+use crate::parser::post_conditions::FungibleConditionCode;
 
 pub const CONTRACT_ADDR_STR_MAX_LEN: usize = 100;
 pub const TOKEN_SYMBOL_MAX_LEN: usize = 20;
@@ -12,12 +13,14 @@ pub struct CTokenInfo {
     // containing padded with null bytes
     pub token_symbol: [u8; TOKEN_SYMBOL_MAX_LEN],
     pub decimals: u8,
+    pub post_condition_code: u8,
 }
 
 pub struct TokenInfo<'a> {
     pub contract_address: &'a [u8],
     pub token_symbol: &'a [u8],
     pub decimals: u8,
+    pub post_condition_code: Option<FungibleConditionCode>,
 }
 
 extern "C" {
@@ -89,10 +92,13 @@ where
         let token_symbol =
             CStr::from_ptr(c_token_info.token_symbol.as_ptr() as *const i8).to_bytes();
 
+        let post_condition_code = FungibleConditionCode::from_u8(c_token_info.post_condition_code);
+
         Some(TokenInfo {
             contract_address,
             token_symbol,
             decimals: c_token_info.decimals,
+            post_condition_code: post_condition_code,
         })
     }
 }
