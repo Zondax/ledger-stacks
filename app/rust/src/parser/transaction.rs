@@ -241,6 +241,10 @@ impl<'a> Transaction<'a> {
     /// Checks if postconditions rendering should be skipped for SIP-10 token transfers
     /// when the expected postcondition matches the current one
     fn is_skip_postconditions_rendering(&self) -> Result<bool, ParserError> {
+        // Check if there are any postconditions to process
+        if self.post_conditions.num_items() == 0 {
+            return Ok(false);
+        }
         if let TransactionPayload::ContractCall(contract_call) = &self.payload {
             if let Some(token_info) = contract_call.sip10_token_info() {
                 if let Some(current_code) = self.post_conditions.current_post_condition()?.fungible_condition_code() {
