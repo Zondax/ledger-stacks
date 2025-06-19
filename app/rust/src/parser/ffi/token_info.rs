@@ -88,9 +88,9 @@ where
         let c_token_info = &*c_token_info_ptr;
         // Use CStr to safely handle the null-terminated C strings
         let contract_address =
-            CStr::from_ptr(c_token_info.contract_address.as_ptr() as *const i8).to_bytes();
+            CStr::from_ptr(c_token_info.contract_address.as_ptr() as *const core::ffi::c_char).to_bytes();
         let token_symbol =
-            CStr::from_ptr(c_token_info.token_symbol.as_ptr() as *const i8).to_bytes();
+            CStr::from_ptr(c_token_info.token_symbol.as_ptr() as *const core::ffi::c_char).to_bytes();
 
         let post_condition_code = FungibleConditionCode::from_u8(c_token_info.post_condition_code);
 

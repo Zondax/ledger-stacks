@@ -8,7 +8,6 @@
 #![no_builtins]
 #![macro_use]
 #![allow(dead_code)]
-#![deny(unused_crate_dependencies)]
 
 extern crate no_std_compat as std;
 

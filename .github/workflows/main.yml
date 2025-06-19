@@ -62,32 +62,63 @@ jobs:
           cd ./app/rust
           cargo fmt
 
+  setup_rust:
+      runs-on: ubuntu-latest
+      outputs:
+        cargo_home: ${{ steps.set_paths.outputs.cargo_home }}
+        rustup_home: ${{ steps.set_paths.outputs.rustup_home }}
+      steps:
+        - id: set_paths
+          run: |
+            echo "cargo_home=$GITHUB_WORKSPACE/app/rust/.cargo" >> $GITHUB_OUTPUT
+            echo "rustup_home=$GITHUB_WORKSPACE/app/rust/.rustup" >> $GITHUB_OUTPUT
+
   build_ledger:
-    needs: configure
+    needs: [configure, setup_rust]
     runs-on: ubuntu-latest
     container:
       image: zondax/ledger-app-builder:latest
-      options: --user ${{ needs.configure.outputs.uid_gid }}
+      options: --user root
       env:
         BOLOS_SDK: /opt/nanos-secure-sdk
+        HOME: /root
+        CARGO_HOME: ${{ needs.setup_rust.outputs.cargo_home }}
+        RUSTUP_HOME: ${{ needs.setup_rust.outputs.rustup_home }}  
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${{ needs.setup_rust.outputs.cargo_home }}/bin
     outputs:
       size: ${{steps.build.outputs.size}}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
+      - name: Setup Rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: thumbv6m-none-eabi
+          override: true
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ needs.setup_rust.outputs.cargo_home }}
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+      - name: Install rust-src component
+        run: rustup component add rust-src --toolchain stable-x86_64-unknown-linux-gnu
       - name: Build Standard app
         id: build
         shell: bash -l {0}
         run: |
-          make PRODUCTION_BUILD=1
+          PRODUCTION_BUILD=1 make
           echo "size=$(python3 deps/ledger-zxlib/scripts/getSize.py s)" >> $GITHUB_OUTPUT
 
   size_nano_s:
     needs: build_ledger
     runs-on: ubuntu-latest
-    continue-on-error: true
     env:
       NANOS_LIMIT_SIZE: 136
     steps:
@@ -128,21 +159,41 @@ jobs:
           path: tests_zemu/snapshots-tmp/
 
   build_package_nanos:
-    needs: [configure, build_ledger, test_zemu, rust_tests]
+    needs: [configure, build_ledger, setup_rust, test_zemu, rust_tests]
     runs-on: ubuntu-latest
     container:
       image: zondax/ledger-app-builder:latest
-      options: --user ${{ needs.configure.outputs.uid_gid }}
+      options: --user root
       env:
         BOLOS_SDK: /opt/nanos-secure-sdk
+        HOME: /root
+        CARGO_HOME: ${{ needs.setup_rust.outputs.cargo_home }}
+        RUSTUP_HOME: ${{ needs.setup_rust.outputs.rustup_home }}  
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${{ needs.setup_rust.outputs.cargo_home }}/bin
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
       - name: Install deps
         run: pip install ledgerblue --break-system-packages
-
+      - name: Setup Rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: thumbv6m-none-eabi
+          override: true
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ needs.setup_rust.outputs.cargo_home }}
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+      - name: Install rust-src component
+        run: rustup component add rust-src --toolchain stable-x86_64-unknown-linux-gnu
       - name: Build NanoS
         shell: bash -l {0}
         run: |
@@ -164,21 +215,41 @@ jobs:
           prerelease: false
 
   build_package_nanosp:
-    needs: [configure, build_ledger, test_zemu, rust_tests]
+    needs: [configure, build_ledger, setup_rust, test_zemu, rust_tests]
     runs-on: ubuntu-latest
     container:
       image: zondax/ledger-app-builder:latest
-      options: --user ${{ needs.configure.outputs.uid_gid }}
+      options: --user root
       env:
         BOLOS_SDK: /opt/nanosplus-secure-sdk
+        HOME: /root
+        CARGO_HOME: ${{ needs.setup_rust.outputs.cargo_home }}
+        RUSTUP_HOME: ${{ needs.setup_rust.outputs.rustup_home }}  
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${{ needs.setup_rust.outputs.cargo_home }}/bin
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
       - name: Install deps
         run: pip install ledgerblue --break-system-packages
-
+      - name: Setup Rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: thumbv6m-none-eabi
+          override: true
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ needs.setup_rust.outputs.cargo_home }}
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+      - name: Install rust-src component
+        run: rustup component add rust-src --toolchain stable-x86_64-unknown-linux-gnu
       - name: Build NanoSP
         shell: bash -l {0}
         run: |
@@ -200,13 +271,17 @@ jobs:
           prerelease: false
 
   build_package_stax:
-    needs: [configure, build_ledger, test_zemu, rust_tests]
+    needs: [configure, build_ledger, setup_rust, test_zemu, rust_tests]
     runs-on: ubuntu-latest
     container:
       image: zondax/ledger-app-builder:latest
-      options: --user ${{ needs.configure.outputs.uid_gid }}
+      options: --user root
       env:
         BOLOS_SDK: /opt/stax-secure-sdk
+        HOME: /root
+        CARGO_HOME: ${{ needs.setup_rust.outputs.cargo_home }}
+        RUSTUP_HOME: ${{ needs.setup_rust.outputs.rustup_home }}  
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${{ needs.setup_rust.outputs.cargo_home }}/bin
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -214,6 +289,23 @@ jobs:
           submodules: true
       - name: Install deps
         run: pip install ledgerblue --break-system-packages
+      - name: Setup Rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: thumbv6m-none-eabi
+          override: true
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ needs.setup_rust.outputs.cargo_home }}
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+      - name: Install rust-src component
+        run: rustup component add rust-src --toolchain stable-x86_64-unknown-linux-gnu
 
       - name: Build Stax
         shell: bash -l {0}
@@ -235,13 +327,17 @@ jobs:
           prerelease: false
 
   build_package_flex:
-    needs: [configure, build_ledger, test_zemu, rust_tests]
+    needs: [configure, build_ledger, setup_rust, test_zemu, rust_tests]
     runs-on: ubuntu-latest
     container:
       image: zondax/ledger-app-builder:latest
-      options: --user ${{ needs.configure.outputs.uid_gid }}
+      options: --user root
       env:
         BOLOS_SDK: /opt/flex-secure-sdk
+        HOME: /root
+        CARGO_HOME: ${{ needs.setup_rust.outputs.cargo_home }}
+        RUSTUP_HOME: ${{ needs.setup_rust.outputs.rustup_home }}  
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${{ needs.setup_rust.outputs.cargo_home }}/bin
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -249,6 +345,23 @@ jobs:
           submodules: true
       - name: Install deps
         run: pip install ledgerblue --break-system-packages
+      - name: Setup Rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: thumbv6m-none-eabi
+          override: true
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ needs.setup_rust.outputs.cargo_home }}
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+      - name: Install rust-src component
+        run: rustup component add rust-src --toolchain stable-x86_64-unknown-linux-gnu
 
       - name: Build Flex
         shell: bash -l {0}
