@@ -126,6 +126,20 @@ jobs:
           echo "LNS app size: ${{needs.build_ledger.outputs.size}} KiB"
           [ ${{needs.build_ledger.outputs.size}} -le $NANOS_LIMIT_SIZE ]
 
+  cpp_tests:
+    needs: [configure, setup_rust]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install deps
+        run: |
+          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 10
+          make deps
+      - run: make cpp_test
+
   test_zemu:
     runs-on: ubuntu-latest
     steps:

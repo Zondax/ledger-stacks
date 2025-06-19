@@ -160,6 +160,7 @@ target_include_directories(app_lib PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/app/src/common
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/ledger-zxlib/app/common
         ${CMAKE_CURRENT_SOURCE_DIR}/picohash
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 ##############################################################
@@ -175,6 +176,7 @@ target_include_directories(unittests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/app/src/common
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/ledger-zxlib/app/common
         ${CMAKE_CURRENT_SOURCE_DIR}/picohash
+        ${CMAKE_CURRENT_SOURCE_DIR}
         )
 
 target_link_libraries(unittests PRIVATE
