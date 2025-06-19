@@ -241,22 +241,36 @@ impl<'a> Transaction<'a> {
     /// Checks if postconditions rendering should be skipped for SIP-10 token transfers
     /// when the expected postcondition matches the current one
     fn is_skip_postconditions_rendering(&self) -> Result<bool, ParserError> {
-        // Check if there are any postconditions to process
         if self.post_conditions.num_items() == 0 {
             return Ok(false);
         }
-        if let TransactionPayload::ContractCall(contract_call) = &self.payload {
-            if let Some(token_info) = contract_call.sip10_token_info() {
-                if let Some(current_code) = self.post_conditions.current_post_condition()?.fungible_condition_code() {
-                    if let Some(condition) = token_info.post_condition_code {
-                        if condition == current_code {
-                            c_zemu_log_stack("Hiding post conditions\x00");
-                            return Ok(true);
-                        }
-                    }
-                }
-            }
+
+        let contract_call = match &self.payload {
+            TransactionPayload::ContractCall(call) => call,
+            _ => return Ok(false),
+        };
+
+        let token_info = match contract_call.sip10_token_info() {
+            Some(info) => info,
+            None => return Ok(false),
+        };
+
+        let expected_condition = match token_info.post_condition_code {
+            Some(code) => code,
+            None => return Ok(false),
+        };
+
+        let current_condition = match self.post_conditions.current_post_condition()?.fungible_condition_code() {
+            Some(code) => code,
+            None => return Ok(false),
+        };
+
+        // Skip rendering if expected condition is the current one
+        if expected_condition == current_condition {
+            c_zemu_log_stack("Hiding post conditions\x00");
+            return Ok(true);
         }
+
         Ok(false)
     }
 
