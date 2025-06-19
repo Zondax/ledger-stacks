@@ -29,7 +29,7 @@ extern "C" {
 
 #define PUBKEY_SHA_LEN 28
 #define CX_SHA256_SIZE 32
-#define HRP "sov"
+#define HRP            "sov"
 
 zxerr_t crypto_sha256_init();
 zxerr_t crypto_sha256_update(const uint8_t *input, uint16_t inputLen);

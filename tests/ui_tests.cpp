@@ -122,5 +122,9 @@ INSTANTIATE_TEST_SUITE_P
     (JsonTestCasesCurrentTxVer, JsonTestsA, ::testing::ValuesIn(GetJsonTestCases("testcases.json")),
      JsonTestsA::PrintToStringParamName());
 
-TEST_P(JsonTestsA, CheckUIOutput_CurrentTX_Expert) { check_testcase(GetParam(), true); }
-TEST_P(JsonTestsA, CheckUIOutput_CurrentTX) { check_testcase(GetParam(), false); }
+TEST_P(JsonTestsA, CheckUIOutput_CurrentTX_Expert) {
+    check_testcase(GetParam(), true);
+}
+TEST_P(JsonTestsA, CheckUIOutput_CurrentTX) {
+    check_testcase(GetParam(), false);
+}

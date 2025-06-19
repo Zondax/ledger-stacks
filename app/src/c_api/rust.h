@@ -14,4 +14,4 @@ void hash_sha256(uint8_t *in, uint32_t in_len, uint8_t *out);
 
 #ifdef __cplusplus
 }
-#endif 
+#endif

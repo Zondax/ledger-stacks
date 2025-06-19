@@ -1,9 +1,10 @@
+#include "rust.h"  // Include our own header
+
 #include <inttypes.h>
 #include <zxformat.h>
 #include <zxmacros.h>
 
 #include "crypto_helper.h"
-#include "rust.h"  // Include our own header
 
 #if defined(LEDGER_SPECIFIC)
 #include "cx.h"

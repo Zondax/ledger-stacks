@@ -47,7 +47,6 @@ storage_t N_appdata_impl __attribute__((aligned(64)));
 #define N_appdata (*(storage_t *)PIC(&N_appdata_impl))
 #endif
 
-
 static parser_context_t ctx_parsed_tx;
 
 void tx_initialize() {

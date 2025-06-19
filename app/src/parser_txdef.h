@@ -25,11 +25,11 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
-#define POST_CONDITION_CODE_EQUAL 1
-#define POST_CONDITION_CODE_GREATER 2
+#define POST_CONDITION_CODE_EQUAL         1
+#define POST_CONDITION_CODE_GREATER       2
 #define POST_CONDITION_CODE_GREATER_EQUAL 3
-#define POST_CONDITION_CODE_LESS 4
-#define POST_CONDITION_CODE_LESS_EQUAL 5
+#define POST_CONDITION_CODE_LESS          4
+#define POST_CONDITION_CODE_LESS_EQUAL    5
 
 typedef struct {
     uint8_t *state;
