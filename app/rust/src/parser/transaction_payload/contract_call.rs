@@ -63,6 +63,10 @@ impl<'a> TransactionContractCallWrapper<'a> {
         Ok((rem, Self { contract_type, tx }))
     }
 
+    pub fn sip10_token_info(&self) -> Option<TokenInfo<'static>> {
+        self.tx.sip10_token_info()
+    }
+
     pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
         self.tx.contract_name()
     }

@@ -4,7 +4,4 @@ ColumnLimit: 125
 DerivePointerAlignment: false
 PointerAlignment: Right
 AllowShortFunctionsOnASingleLine: None
-AlignConsecutiveMacros:
-  Enabled: true
-  AcrossEmptyLines: true
-  AcrossComments: false
+AlignConsecutiveMacros: true

@@ -16,7 +16,9 @@
 #pragma once
 
 #include "coin.h"
+#if defined(LEDGER_SPECIFIC)
 #include "os.h"
+#endif
 #include "parser_common.h"
 #include "zxerror.h"
 

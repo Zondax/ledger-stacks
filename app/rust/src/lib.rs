@@ -1,8 +1,13 @@
-#![no_std]
+// Only enable no_std for non-test, non-fuzzing, non-clippy, non-cpp_test builds
+#![cfg_attr(all(
+    not(test),
+    not(feature = "fuzzing"),
+    not(feature = "clippy"),
+    not(feature = "cpp_test")
+), no_std)]
 #![no_builtins]
 #![macro_use]
 #![allow(dead_code)]
-#![deny(unused_crate_dependencies)]
 
 extern crate no_std_compat as std;
 
@@ -16,7 +21,7 @@ fn debug(_msg: &str) {}
 #[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy")))]
 use core::panic::PanicInfo;
 
-#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy")))]
+#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}

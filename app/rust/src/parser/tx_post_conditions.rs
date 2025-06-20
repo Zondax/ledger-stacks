@@ -194,7 +194,7 @@ impl<'a> PostConditions<'a> {
             .sum()
     }
 
-    fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
+    pub fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
         let raw_current = self
             .conditions
             .get(self.current_idx as usize)

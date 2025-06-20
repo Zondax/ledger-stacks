@@ -11,3 +11,13 @@ rustflags = [
 [unstable]
 build-std=["core"]
 build-std-features=["panic_immediate_abort"]
+
+[target.'cfg(target_os = "linux")']
+rustflags = [
+    "-C",
+    "link-arg=-Wl,--gc-sections",
+    "-C",
+    "link-arg=-Wl,--as-needed",
+    "-C",
+    "llvm-args=--inline-threshold=0",
+]

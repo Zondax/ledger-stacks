@@ -1,5 +1,5 @@
 /*******************************************************************************
- *  (c) 2020 Zondax GmbH
+ *   (c) 2018 - 2025 Zondax AG
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,35 +13,29 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  ********************************************************************************/
-#pragma once
 
-#include <coin.h>
-#include <zxtypes.h>
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stddef.h>
-#include <stdint.h>
+#include <sigutils.h>
+#include <stdbool.h>
 
-#define POST_CONDITION_CODE_EQUAL         1
-#define POST_CONDITION_CODE_GREATER       2
-#define POST_CONDITION_CODE_GREATER_EQUAL 3
-#define POST_CONDITION_CODE_LESS          4
-#define POST_CONDITION_CODE_LESS_EQUAL    5
+#include "coin.h"
+#include "zxerror.h"
+#include "zxmacros.h"
 
-typedef struct {
-    uint8_t *state;
-    uint16_t len;
-} parser_tx_t;
+#define PUBKEY_SHA_LEN 28
+#define CX_SHA256_SIZE 32
+#define HRP            "sov"
 
-typedef struct {
-    char contract_address[CONTRACT_ADDR_STR_MAX_LEN];
-    char token_symbol[TOKEN_SYMBOL_MAX_LEN];
-    uint8_t decimals;
-    uint8_t post_condition_code;
-} token_info_t;
+zxerr_t crypto_sha256_init();
+zxerr_t crypto_sha256_update(const uint8_t *input, uint16_t inputLen);
+zxerr_t crypto_sha256_final(uint8_t *output);
+zxerr_t crypto_sha256_one_shot(uint8_t *output, uint16_t outputLen, const uint8_t *input, uint16_t inputLen);
+zxerr_t crypto_computeAddress(uint8_t *address, uint16_t addressLen, const uint8_t *pubkey);
 
 #ifdef __cplusplus
 }
