@@ -24,12 +24,11 @@
     "@zondax/zemu": "0.50.2"
   },
   "devDependencies": {
-    "@ledgerhq/hw-transport-node-hid": "^6.29.2",
+    "@ledgerhq/hw-transport": "^6.30.6",
     "@matteoh2o1999/github-actions-jest-reporter": "^2.0.0",
     "@stacks/network": "^2.0.1",
     "@stacks/transactions": "^2.0.1",
     "@types/jest": "^29.4.0",
-    "@types/ledgerhq__hw-transport": "^4.21.8",
     "@types/secp256k1": "^4.0.6",
     "@typescript-eslint/eslint-plugin": "^7.17.0",
     "@typescript-eslint/parser": "^7.17.0",
