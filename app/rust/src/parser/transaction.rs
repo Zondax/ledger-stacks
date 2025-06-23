@@ -299,10 +299,10 @@ impl<'a> Transaction<'a> {
         c_zemu_log_stack("Transaction::get_origin_items\x00");
         let mut writer_key = zxformat::Writer::new(out_key);
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "cpp_test"))]
         let origin = self.transaction_auth.origin();
 
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "cpp_test")))]
         let origin = match self.signer {
             SignerId::Origin => self.transaction_auth.origin(),
             SignerId::Sponsor => self
