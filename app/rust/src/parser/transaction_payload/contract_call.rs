@@ -8,7 +8,7 @@ use crate::{
     parser::{
         c32,
         ffi::token_info::{get_token_info, TokenInfo, TOKEN_SYMBOL_MAX_LEN},
-        transaction_payload::arguments::Arguments,
+        transaction_payload::{arguments::Arguments, contract_call},
         ApduPanic, ClarityName, ContractName, ParserError, PrincipalData, StacksAddress, Value,
         ValueId, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
     },
@@ -85,8 +85,8 @@ impl<'a> TransactionContractCallWrapper<'a> {
         self.tx.num_args()
     }
 
-    pub fn num_items(&self) -> Result<u8, ParserError> {
-        self.tx.num_items()
+    pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
+        self.tx.num_items(hide_sip10_details)
     }
 
     pub fn get_contract_call_items(
@@ -95,13 +95,21 @@ impl<'a> TransactionContractCallWrapper<'a> {
         out_key: &mut [u8],
         out_value: &mut [u8],
         page_idx: u8,
+        hide_sip10_details: bool,
     ) -> Result<u8, ParserError> {
         // display_idx was already normalized
+        if hide_sip10_details && self.contract_type == ContractType::SIP10 {
+            return self
+                .tx
+                .render_sip10_transfer_args(display_idx, out_key, out_value, page_idx);
+        }
+
         if display_idx < CONTRACT_CALL_BASE_ITEMS {
             return self
                 .tx
                 .get_base_items(display_idx, out_key, out_value, page_idx);
         };
+
         let display_idx = display_idx - CONTRACT_CALL_BASE_ITEMS;
 
         if self.contract_type == ContractType::SIP10 {
@@ -612,13 +620,17 @@ impl<'a> TransactionContractCall<'a> {
         }
     }
 
-    pub fn num_items(&self) -> Result<u8, ParserError> {
+    pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
         // contract-address, contract-name, function-name
         // + the number of arguments
         let num_args = self.num_args()? as u8;
-        num_args
-            .checked_add(CONTRACT_CALL_BASE_ITEMS)
-            .ok_or(ParserError::ValueOutOfRange)
+        if hide_sip10_details {
+            Ok(num_args)
+        } else {
+            num_args
+                .checked_add(CONTRACT_CALL_BASE_ITEMS)
+                .ok_or(ParserError::ValueOutOfRange)
+        }
     }
 
     fn get_base_items(

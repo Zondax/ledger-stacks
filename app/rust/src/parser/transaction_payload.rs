@@ -138,11 +138,13 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn num_items(&self) -> u8 {
+    pub fn num_items(&self, hide_sip10_details: bool) -> u8 {
         match self {
             Self::TokenTransfer(_) => 3,
             Self::SmartContract(_) | Self::VersionedSmartContract(_) => 1,
-            Self::ContractCall(ref call) => call.num_items().unwrap_or(CONTRACT_CALL_BASE_ITEMS),
+            Self::ContractCall(ref call) => {
+                call.num_items(hide_sip10_details).unwrap_or(CONTRACT_CALL_BASE_ITEMS)
+            }
         }
     }
 
@@ -153,8 +155,9 @@ impl<'a> TransactionPayload<'a> {
         out_value: &mut [u8],
         page_idx: u8,
         total_items: u8,
+        hide_sip10_details: bool,
     ) -> Result<u8, ParserError> {
-        let idx = self.num_items() - (total_items - display_idx);
+        let idx = self.num_items(hide_sip10_details) - (total_items - display_idx);
         match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
@@ -163,7 +166,7 @@ impl<'a> TransactionPayload<'a> {
                 contract.get_contract_items(idx, out_key, out_value, page_idx)
             }
             Self::ContractCall(ref call) => {
-                call.get_contract_call_items(idx, out_key, out_value, page_idx)
+                call.get_contract_call_items(idx, out_key, out_value, page_idx, hide_sip10_details)
             }
             Self::VersionedSmartContract(ref deploy) => {
                 deploy.get_contract_items(idx, out_key, out_value, page_idx)
