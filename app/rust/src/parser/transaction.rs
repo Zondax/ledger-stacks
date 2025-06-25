@@ -238,9 +238,9 @@ impl<'a> Transaction<'a> {
         self.payload.recipient_address()
     }
 
-    /// Checks if postconditions rendering should be skipped for SIP-10 token transfers
-    /// when the expected postcondition matches the current one
-    fn is_skip_postconditions_rendering(&self) -> Result<bool, ParserError> {
+    /// Checks if SIP-10 token transfer details should be hidden
+    /// This includes postconditions and contract call base items (address, name, function)
+    fn should_hide_sip10_details(&self) -> Result<bool, ParserError> {
         if self.post_conditions.num_items() == 0 {
             return Ok(false);
         }
@@ -267,7 +267,7 @@ impl<'a> Transaction<'a> {
 
         // Skip rendering if expected condition is the current one
         if expected_condition == current_condition {
-            c_zemu_log_stack("Hiding post conditions\x00");
+            c_zemu_log_stack("Hiding SIP-10 details\x00");
             return Ok(true);
         }
 
@@ -277,12 +277,14 @@ impl<'a> Transaction<'a> {
     pub fn num_items(&self) -> Result<u8, ParserError> {
         let mut num_items_post_conditions = self.post_conditions.num_items();
 
-        if self.is_skip_postconditions_rendering()? {
+        let hide_sip10_details = self.should_hide_sip10_details()?;
+
+        if hide_sip10_details {
             num_items_post_conditions = 0;
         }
 
         // nonce + origin + fee-rate + payload + post-conditions
-        3u8.checked_add(self.payload.num_items())
+        3u8.checked_add(self.payload.num_items(hide_sip10_details))
             .and_then(|res| res.checked_add(num_items_post_conditions))
             .ok_or(ParserError::ValueOutOfRange)
     }
@@ -297,10 +299,10 @@ impl<'a> Transaction<'a> {
         c_zemu_log_stack("Transaction::get_origin_items\x00");
         let mut writer_key = zxformat::Writer::new(out_key);
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "cpp_test"))]
         let origin = self.transaction_auth.origin();
 
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "cpp_test")))]
         let origin = match self.signer {
             SignerId::Origin => self.transaction_auth.origin(),
             SignerId::Sponsor => self
@@ -351,8 +353,9 @@ impl<'a> Transaction<'a> {
         c_zemu_log_stack("Transaction::get_other_items\x00");
         let num_items = self.num_items()?;
         let mut post_conditions_items = self.post_conditions.num_items();
+        let hide_sip10_details = self.should_hide_sip10_details()?;
 
-        if self.is_skip_postconditions_rendering()? {
+        if hide_sip10_details {
             post_conditions_items = 0;
         }
 
@@ -363,12 +366,14 @@ impl<'a> Transaction<'a> {
             self.post_conditions
                 .get_items(display_idx, out_key, out_value, page_idx, num_items)
         } else {
+            let mut total_items = num_items - post_conditions_items;
             self.payload.get_items(
                 display_idx,
                 out_key,
                 out_value,
                 page_idx,
-                num_items - post_conditions_items, // we need to display the payload in order
+                total_items, // we need to display the payload in order
+                hide_sip10_details,
             )
         }
     }

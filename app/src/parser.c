@@ -97,31 +97,6 @@ parser_error_t parser_getItem(const parser_context_t *ctx, uint16_t displayIdx, 
         return parser_no_data;
     }
 
-#if !defined(LEDGER_SPECIFIC)
-    switch (displayIdx) {
-        case 0:
-            strcpy(outKey, "Origin");
-            outKeyLen = strlen("Origin");
-            strcpy(outVal, "cpp_test can't do crypto operations");
-            outValLen = strlen("cpp_test can't do crypto operations");
-            return parser_ok;
-        case 1:
-            strcpy(outKey, "Nonce");
-            outKeyLen = strlen("Nonce");
-            strcpy(outVal, "cpp_test can't do crypto operations");
-            outValLen = strlen("cpp_test can't do crypto operations");
-            return parser_ok;
-        case 2:
-            strcpy(outKey, "Fee (uSTX)");
-            outKeyLen = strlen("Fee (uSTX)");
-            strcpy(outVal, "cpp_test can't do crypto operations");
-            outValLen = strlen("cpp_test can't do crypto operations");
-            return parser_ok;
-        default:
-            break;
-    }
-#endif
-
     CHECK_PARSER_ERR(_getItem(ctx, displayIdx, outKey, outKeyLen, outVal, outValLen, pageIdx, pageCount, &parser_state));
     return parser_ok;
 }
