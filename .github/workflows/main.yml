@@ -129,8 +129,6 @@ jobs:
   cpp_tests:
     needs: [configure, setup_rust]
     runs-on: ubuntu-latest
-    container:
-      image: zondax/rust-ci:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -190,7 +188,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
       - name: Install deps
         run: pip install ledgerblue --break-system-packages
       - name: Setup Rust environment
@@ -246,7 +244,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
       - name: Install deps
         run: pip install ledgerblue --break-system-packages
       - name: Setup Rust environment
