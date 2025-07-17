@@ -20,7 +20,6 @@
 extern "C" {
 #endif
 #include <stdint.h>
-
 #include "zxerror.h"
 
 /// Return the number of items in the address view
