@@ -17,18 +17,10 @@ pub struct Arguments<'a>(&'a [u8]);
 
 impl<'a> Arguments<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         check_canary!();
 
         let (mut rem, num_args) = be_u32::<_, ParserError>(bytes)?;
-
-        // Remove this check, this does not affect memory consumption
-        // and allow user to sign streamline contract calls that in practice have
-        // more that 30 arguments, for example swap transactions.
-        // see: https://github.com/Zondax/ledger-stacks/issues/176
-        // if num_args > MAX_NUM_ARGS && !is_expert_mode() {
-        //     return Err(ParserError::InvalidTransactionPayload.into());
-        // }
 
         // Parse all arguments so we can be sure that at runtime when each
         // argument is retrieved it does not crashes

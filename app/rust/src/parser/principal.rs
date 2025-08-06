@@ -12,7 +12,7 @@ impl<'a> StandardPrincipal<'a> {
     pub const BYTES_LEN: usize = HASH160_LEN + 1;
 
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (raw, address) = take(Self::BYTES_LEN)(bytes)?;
         Ok((raw, Self(address)))
     }
@@ -35,13 +35,13 @@ impl<'a> StandardPrincipal<'a> {
 pub struct ContractPrincipal<'a>(StandardPrincipal<'a>, ContractName<'a>);
 impl<'a> ContractPrincipal<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (rem, address) = StandardPrincipal::from_bytes(bytes)?;
         let (rem, name) = ContractName::from_bytes(rem)?;
         Ok((rem, Self(address, name)))
     }
 
-    pub fn read_as_bytes(bytes: &'a [u8]) -> Result<(&[u8], &[u8]), nom::Err<ParserError>> {
+    pub fn read_as_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], &'a [u8]), nom::Err<ParserError>> {
         let (rem, _) = Self::from_bytes(bytes)?;
         let len = bytes.len() - rem.len();
         let (rem, self_bytes) = take(len)(bytes)?;
@@ -74,14 +74,14 @@ pub enum PrincipalData<'a> {
 
 impl<'a> PrincipalData<'a> {
     #[inline(never)]
-    pub fn standard_from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn standard_from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         StandardPrincipal::from_bytes(bytes).map(|(r, p)| (r, Self::Standard(p)))
     }
 
     #[inline(never)]
     pub fn contract_principal_from_bytes(
         bytes: &'a [u8],
-    ) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    ) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         ContractPrincipal::from_bytes(bytes).map(|(r, p)| (r, Self::Contract(p)))
     }
 

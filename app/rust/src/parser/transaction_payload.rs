@@ -7,7 +7,7 @@ mod versioned_contract;
 use nom::number::complete::le_u8;
 
 use self::{
-    contract_call::{TransactionContractCall, CONTRACT_CALL_BASE_ITEMS},
+    contract_call::{TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS},
     smart_contract::TransactionSmartContract,
     token_transfer::StxTokenTransfer,
     versioned_contract::VersionedSmartContract,
@@ -44,13 +44,13 @@ impl TransactionPayloadId {
 pub enum TransactionPayload<'a> {
     TokenTransfer(StxTokenTransfer<'a>),
     SmartContract(TransactionSmartContract<'a>),
-    ContractCall(TransactionContractCall<'a>),
+    ContractCall(TransactionContractCallWrapper<'a>),
     VersionedSmartContract(VersionedSmartContract<'a>),
 }
 
 impl<'a> TransactionPayload<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let id = le_u8(bytes)?;
         let res = match TransactionPayloadId::from_u8(id.1)? {
             TransactionPayloadId::TokenTransfer => {
@@ -62,7 +62,7 @@ impl<'a> TransactionPayload<'a> {
                 (contract.0, Self::SmartContract(contract.1))
             }
             TransactionPayloadId::ContractCall => {
-                let call = TransactionContractCall::from_bytes(id.0)?;
+                let call = TransactionContractCallWrapper::from_bytes(id.0)?;
                 (call.0, Self::ContractCall(call.1))
             }
             TransactionPayloadId::VersionedSmartContract => {
@@ -138,11 +138,13 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn num_items(&self) -> u8 {
+    pub fn num_items(&self, hide_sip10_details: bool) -> u8 {
         match self {
             Self::TokenTransfer(_) => 3,
             Self::SmartContract(_) | Self::VersionedSmartContract(_) => 1,
-            Self::ContractCall(ref call) => call.num_items().unwrap_or(CONTRACT_CALL_BASE_ITEMS),
+            Self::ContractCall(ref call) => {
+                call.num_items(hide_sip10_details).unwrap_or(CONTRACT_CALL_BASE_ITEMS)
+            }
         }
     }
 
@@ -153,8 +155,9 @@ impl<'a> TransactionPayload<'a> {
         out_value: &mut [u8],
         page_idx: u8,
         total_items: u8,
+        hide_sip10_details: bool,
     ) -> Result<u8, ParserError> {
-        let idx = self.num_items() - (total_items - display_idx);
+        let idx = self.num_items(hide_sip10_details) - (total_items - display_idx);
         match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
@@ -163,7 +166,7 @@ impl<'a> TransactionPayload<'a> {
                 contract.get_contract_items(idx, out_key, out_value, page_idx)
             }
             Self::ContractCall(ref call) => {
-                call.get_contract_call_items(idx, out_key, out_value, page_idx)
+                call.get_contract_call_items(idx, out_key, out_value, page_idx, hide_sip10_details)
             }
             Self::VersionedSmartContract(ref deploy) => {
                 deploy.get_contract_items(idx, out_key, out_value, page_idx)
