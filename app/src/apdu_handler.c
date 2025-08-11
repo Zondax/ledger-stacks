@@ -118,9 +118,9 @@ __Z_INLINE void handle_getversion(volatile uint32_t *flags, volatile uint32_t *t
 #else
     G_io_apdu_buffer[0] = 0;
 #endif
-    G_io_apdu_buffer[1] = LEDGER_MAJOR_VERSION;
-    G_io_apdu_buffer[2] = LEDGER_MINOR_VERSION;
-    G_io_apdu_buffer[3] = LEDGER_PATCH_VERSION;
+    G_io_apdu_buffer[1] = MAJOR_VERSION;
+    G_io_apdu_buffer[2] = MINOR_VERSION;
+    G_io_apdu_buffer[3] = PATCH_VERSION;
     G_io_apdu_buffer[4] = !IS_UX_ALLOWED;
 
     G_io_apdu_buffer[5] = (TARGET_ID >> 24) & 0xFF;
@@ -207,6 +207,20 @@ __Z_INLINE void handleSignJwtSecp256K1(volatile uint32_t *flags, volatile uint32
     SignSecp256K1(flags, tx, rx);
 }
 
+__Z_INLINE void handleGetMasterFingerprint(__Z_UNUSED volatile uint32_t *flags, volatile uint32_t *tx,
+                                           __Z_UNUSED uint32_t rx) {
+    uint8_t fingerprint[FINGERPRINT_LEN];
+
+    zxerr_t err = crypto_getMasterFingerprint(fingerprint, sizeof(fingerprint));
+    if (err != zxerr_ok) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+
+    MEMCPY(G_io_apdu_buffer, fingerprint, FINGERPRINT_LEN);
+    *tx = FINGERPRINT_LEN;
+    THROW(APDU_CODE_OK);
+}
+
 void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     uint16_t sw = 0;
 
@@ -250,11 +264,19 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                     break;
                 }
 
-                case SIGN_JWT_SECP256K1: {
+                case INS_SIGN_JWT_SECP256K1: {
                     if (os_global_pin_is_validated() != BOLOS_UX_OK) {
                         THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
                     }
                     handleSignJwtSecp256K1(flags, tx, rx);
+                    break;
+                }
+
+                case INS_GET_MASTER_FINGERPRINT: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
+                    handleGetMasterFingerprint(flags, tx, rx);
                     break;
                 }
 

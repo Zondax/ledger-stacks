@@ -132,9 +132,6 @@ DEFINES += PRODUCTION_BUILD=$(PRODUCTION_BUILD)
 DEFINES += HAVE_HASH HAVE_BLAKE2
 INCLUDES_PATH += $(BOLOS_SDK)/lib_cxng/src
 
-# Application specific flags
-HAVE_APPLICATION_FLAG_DERIVE_MASTER = 1
-
 ########################################
 #           Rust configuration         #
 ########################################

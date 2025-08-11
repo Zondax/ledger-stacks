@@ -14,7 +14,7 @@
  *  limitations under the License.
  ********************************************************************************/
 
-#include "parser.h"
+#include "./parser.h"
 
 #include <stdio.h>
 #include <zxmacros.h>

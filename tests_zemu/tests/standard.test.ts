@@ -56,7 +56,7 @@ import { StacksTestnet } from '@stacks/network'
 import { AnchorMode } from '@stacks/transactions/src/constants'
 
 const sha512_256 = require('js-sha512').sha512_256
-const ripemd160 = require('ripemd160')
+const RIPEMD160 = require('ripemd160')
 const sha256 = require('js-sha256').sha256
 const BN = require('bn.js')
 import { ec as EC } from 'elliptic'
@@ -153,14 +153,17 @@ describe('Standard', function () {
     }
   })
 
-  test.only.each(models)(`get master key fingerprint`, async function (m) {
+  test.concurrent.each(models)(`get master key fingerprint`, async function (m) {
     const sim = new Zemu(m.path)
     try {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new StacksApp(sim.getTransport())
 
-      const masterKey = ""
-      const masterKeyFingerprint = ripemd160(sha256(masterKey)).slice(0, 4)
+      const masterKey = "020e06f6fc9a16fe7fad1d11566ad7a68d571bdde3a141a4dc9907d0cc13f59362"
+      const masterKeyBuffer = Buffer.from(masterKey, 'hex')
+      const sha256Hash = Buffer.from(sha256(masterKeyBuffer), 'hex')
+      const ripemd = new RIPEMD160()
+      const masterKeyFingerprint = ripemd.update(sha256Hash).digest().slice(0, 4)
 
       const response = await app.getMasterFingerprint()
       console.log(response)
@@ -175,6 +178,8 @@ describe('Standard', function () {
       const response2 = await app.getMasterFingerprint()
       expect(response2.returnCode).toEqual(0x9000)
       expect(response.fingerprint.toString('hex')).toEqual(response2.fingerprint.toString('hex'))
+
+      expect(response.fingerprint.toString('hex')).toEqual(masterKeyFingerprint.toString('hex'))
     } finally {
       await sim.close()
     }

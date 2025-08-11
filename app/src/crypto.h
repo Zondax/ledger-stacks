@@ -50,6 +50,8 @@ uint16_t crypto_fillAuthkey_secp256k1(uint8_t *buffer, uint16_t bufferLen);
 zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *message, uint16_t messageLen,
                     uint16_t *sigSize);
 
+zxerr_t crypto_getMasterFingerprint(uint8_t *fingerprint, uint16_t fingerprintLen);
+
 #ifdef __cplusplus
 }
 #endif
