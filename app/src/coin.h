@@ -21,4 +21,6 @@
 #error "APP MODE IS NOT SUPPORTED"
 #endif
 
-#define SK_LEN_25519 64u
+#define SK_LEN_25519              64u
+#define CONTRACT_ADDR_STR_MAX_LEN 100
+#define TOKEN_SYMBOL_MAX_LEN      20

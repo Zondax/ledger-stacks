@@ -65,7 +65,7 @@ impl ValueId {
 impl<'a> Value<'a> {
     pub fn from_bytes<const MAX_DEPTH: u8>(
         bytes: &'a [u8],
-    ) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    ) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         c_zemu_log_stack("Value::from_bytes\x00");
         check_canary!();
 
@@ -253,6 +253,110 @@ impl<'a> Value<'a> {
         }
         Ok(())
     }
+}
+
+#[cfg(test)]
+pub fn value_to_string_impl<const MAX_DEPTH: u8>(
+    depth: &mut u8,
+    bytes: &[u8],
+) -> Result<std::string::String, nom::Err<ParserError>> {
+    use nom::number::complete::{be_i128, be_u128, be_u32};
+    use std::format;
+    use std::string::ToString;
+    use std::vec::Vec;
+    if bytes.is_empty() {
+        return Ok("Empty".to_string());
+    }
+    // get value_id
+    let (rem, id) = ValueId::from_bytes(bytes).map_err(|_| ParserError::UnexpectedValue)?;
+    let value_str = match id {
+        ValueId::Int => {
+            let (_, value) = be_i128(rem)?;
+            format!("Int: {}", value)
+        }
+        ValueId::UInt => {
+            let (_, value) = be_u128(rem)?;
+            format!("UInt: {}", value)
+        }
+        ValueId::Buffer => {
+            let (rem, len) = be_u32(rem)?;
+            let buffer = &rem[..len as usize];
+            format!("Buffer: \"{}\"", hex::encode(buffer))
+        }
+        ValueId::BoolTrue => "Bool: true".to_string(),
+        ValueId::BoolFalse => "Bool: false".to_string(),
+        ValueId::StandardPrincipal => {
+            let (_, principal) = StandardPrincipal::from_bytes(rem)?;
+            format!("StandardPrincipal: \"{}\"", hex::encode(principal.0))
+        }
+        ValueId::ContractPrincipal => {
+            let (_, contract_principal) = ContractPrincipal::read_as_bytes(rem)?;
+            format!("ContractPrincipal: \"{}\"", hex::encode(contract_principal))
+        }
+        ValueId::OptionalNone => "Optional: None".to_string(),
+        ValueId::List => {
+            let (mut remain, num_items) = be_u32(rem)?;
+            let mut list_items = Vec::new();
+            for _ in 0..num_items {
+                *depth += 1;
+                let item = value_to_string_impl::<MAX_DEPTH>(depth, remain)?;
+                list_items.push(item);
+                let value_len = Value::value_len_impl::<MAX_DEPTH>(depth, remain)?;
+
+                // Move to the next item
+                let (rem, _) = take(value_len)(remain)?;
+                remain = rem;
+            }
+            format!("List: [{}]", list_items.join(", "))
+        }
+        ValueId::Tuple => {
+            let (mut remain, num_pairs) = be_u32(rem)?;
+            let mut tuple_items = Vec::new();
+            for _ in 0..num_pairs {
+                let (rem, key) = ClarityName::read_as_bytes(remain)?;
+                let key_str =
+                    std::str::from_utf8(&key[1..]).map_err(|_| ParserError::InvalidUnicode)?;
+
+                let value = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+                tuple_items.push(format!("{}: {}", key_str, value));
+
+                let value_len = Value::value_len_impl::<MAX_DEPTH>(depth, rem)?;
+
+                // Move to the next pair
+                let (rem, _) = take(key.len() + value_len)(remain)?;
+                remain = rem;
+            }
+            format!("Tuple: {{{}}}", tuple_items.join(", "))
+        }
+        ValueId::StringAscii => {
+            let (rem, len) = be_u32(rem)?;
+            let s = std::str::from_utf8(&rem[..len as usize])
+                .map_err(|_| ParserError::InvalidUnicode)?;
+            format!("StringAscii: \"{}\"", s)
+        }
+        ValueId::StringUtf8 => {
+            let (rem, len) = be_u32(rem)?;
+            let s = std::str::from_utf8(&rem[..len as usize])
+                .map_err(|_| ParserError::InvalidUnicode)?;
+            format!("StringUtf8: \"{}\"", s)
+        }
+        ValueId::ResponseErr => {
+            *depth += 1;
+            let inner = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+            format!("ResponseErr: {}", inner)
+        }
+        ValueId::ResponseOk => {
+            *depth += 1;
+            let inner = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+            format!("ResponseOk: {}", inner)
+        }
+        ValueId::OptionalSome => {
+            *depth += 1;
+            let inner = value_to_string_impl::<MAX_DEPTH>(depth, rem)?;
+            format!("Optional: Some({})", inner)
+        }
+    };
+    Ok(value_str)
 }
 
 #[cfg(test)]

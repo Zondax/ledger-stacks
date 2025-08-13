@@ -46,7 +46,7 @@ pub struct PostConditions<'a> {
 
 impl<'a> PostConditions<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, len) = be_u32::<_, ParserError>(bytes)?;
         let conditions_len = len as usize;
 
@@ -194,7 +194,7 @@ impl<'a> PostConditions<'a> {
             .sum()
     }
 
-    fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
+    pub fn current_post_condition(&self) -> Result<TransactionPostCondition, ParserError> {
         let raw_current = self
             .conditions
             .get(self.current_idx as usize)

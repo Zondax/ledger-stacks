@@ -46,7 +46,7 @@ prod:
 
 rust_fuzz:
 	cd app/hfuzz-parser/corpus/ && cargo run
-	cd app/hfuzz-parser/ && cargo hfuzz run transaction app/hfuzz_corpus
+	cd app/hfuzz-parser/ && RUSTFLAGS="--cfg fuzzing_build" cargo hfuzz run transaction app/hfuzz_corpus
 
 
 

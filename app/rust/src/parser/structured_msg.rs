@@ -122,8 +122,15 @@ impl<'a> StructuredMsg<'a> {
 
     pub fn verify(input: &'a [u8]) -> Result<(), ParserError> {
         let rem = Self::parse_prefix(input)?;
+        #[cfg(test)]
+        let mut depth = 0;
+        #[cfg(test)]
+        let s = crate::parser::value::value_to_string_impl::<100>(&mut depth, rem).unwrap();
+        #[cfg(test)]
+        std::println!("Payload value: {}", s);
         // parse domain
         let (msg, _) = Domain::from_bytes(rem)?;
+        c_zemu_log_stack("**Domain parsed\x00");
 
         // validate msg, but here we can be limiting the complexity
         // of the msg we can parse as the device has limited resources.
@@ -159,6 +166,7 @@ impl<'a> StructuredMsg<'a> {
     fn validate(data: &[u8]) -> Result<(), ParserError> {
         let (rem, _) = Value::from_bytes::<MAX_DEPTH>(data)?;
         if !rem.is_empty() {
+            c_zemu_log_stack("**REM not empty\x00");
             return Err(ParserError::UnexpectedValue);
         }
         Ok(())

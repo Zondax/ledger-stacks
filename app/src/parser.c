@@ -28,9 +28,8 @@ static zxerr_t parser_deallocate();
 
 parser_tx_t parser_state;
 // This buffer will store parser_state.
-// Its size corresponds to ParsedObj (Rust struct)
-// Maximum required size: 212 bytes
-#define PARSER_BUFFER_SIZE 256
+// Its size corresponds to ParsedObj (Rust struct), which is at maximum 456 bytes
+#define PARSER_BUFFER_SIZE 456
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE];
 
 parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {
@@ -50,6 +49,7 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
     return err;
 }
 
+#if defined(LEDGER_SPECIFIC)
 parser_error_t parser_validate(const parser_context_t *ctx) {
     uint8_t pubKeyHash[CX_RIPEMD160_SIZE] = {0};
 
@@ -75,6 +75,7 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
 
     return parser_ok;
 }
+#endif
 
 parser_error_t parser_getNumItems(const parser_context_t *ctx, uint8_t *num_items) {
     return _getNumItems(ctx, &parser_state, num_items);

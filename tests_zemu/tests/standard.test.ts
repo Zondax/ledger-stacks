@@ -16,7 +16,7 @@
 
 import Zemu, { ButtonKind, DEFAULT_START_OPTIONS, isTouchDevice, zondaxMainmenuNavigation } from '@zondax/zemu'
 import StacksApp from '@zondax/ledger-stacks'
-import { APP_SEED, models } from './common'
+import { APP_SEED, models, SIP10_DATA } from './common'
 import { encode } from 'varuint-bitcoin'
 
 import {
@@ -1063,5 +1063,96 @@ describe('Standard', function () {
     } finally {
       await sim.close()
     }
+  })
+
+  describe.each(SIP10_DATA)('SIP-10 tests', function (data) {
+    test.concurrent.each(models)('sign_sip10_contract', async function (m) {
+      const sim = new Zemu(m.path)
+      const network = new StacksTestnet()
+      const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
+      const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
+      const path = "m/44'/5757'/0'/0/0"
+      try {
+        await sim.start({ ...defaultOptions, model: m.name })
+        const app = new StacksApp(sim.getTransport())
+        // Get pubkey and check
+        const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+        console.log(pkResponse)
+        expect(pkResponse.returnCode).toEqual(0x9000)
+        expect(pkResponse.errorMessage).toEqual('No errors')
+        const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+        const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+        const sender = standardPrincipalCV('SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE')
+        const fee = new BN(10)
+        const nonce = new BN(0)
+        const [contract_address, contract_name] = 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token'.split('.')
+
+        let txOptions = {
+          anchorMode: AnchorMode.Any,
+          contractAddress: contract_address,
+          contractName: contract_name,
+          functionName: 'transfer',
+          functionArgs: [uintCV(20000), sender, recipient, someCV(stringAsciiCV('tx_memo'))],
+          network: network,
+          fee: fee,
+          nonce: nonce,
+          publicKey: devicePublicKey,
+          postConditions: data.postConditions ? [
+            makeStandardSTXPostCondition(data.postConditions[0].address, data.postConditions[0].code, data.postConditions[0].amount),
+            makeStandardSTXPostCondition(data.postConditions[1].address, data.postConditions[1].code, data.postConditions[1].amount),
+          ] : [],
+        }
+
+        const transaction = await makeUnsignedContractCall(txOptions)
+        const serializeTx = transaction.serialize().toString('hex')
+
+        const blob = Buffer.from(serializeTx, 'hex')
+        const signatureRequest = app.sign(path, blob)
+
+        // Wait until we are not in the main menu
+        await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+        await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-${data.snapshotSuffix}`)
+
+        const signature = await signatureRequest
+        console.log(signature)
+
+        expect(signature.returnCode).toEqual(0x9000)
+
+        // compute postSignHash to verify signature
+
+        const sigHashPreSign = makeSigHashPreSign(
+          transaction.signBegin(),
+          // @ts-ignore
+          transaction.auth.authType,
+          transaction.auth.spendingCondition?.fee,
+          transaction.auth.spendingCondition?.nonce,
+        )
+        console.log('sigHashPreSign: ', sigHashPreSign)
+        const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+
+        const key_t = Buffer.alloc(1)
+        key_t.writeInt8(0x00)
+
+        const array = [presig_hash, key_t, signature.signatureVRS]
+        const to_hash = Buffer.concat(array)
+        const hash = sha512_256(to_hash)
+        console.log('computed postSignHash: ', hash.toString('hex'))
+
+        // compare hashes
+        expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
+
+        //Verify signature
+        const ec = new EC('secp256k1')
+        const signature1 = signature.signatureVRS.toString('hex')
+        const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+        // @ts-ignore
+        const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+        expect(signature1Ok).toEqual(true)
+      } finally {
+        await sim.close()
+      }
+    })
   })
 })

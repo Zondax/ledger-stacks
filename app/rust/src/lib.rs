@@ -1,8 +1,13 @@
-#![no_std]
+// Only enable no_std for non-test, non-fuzzing, non-clippy, non-cpp_test builds
+#![cfg_attr(all(
+    not(test),
+    not(feature = "fuzzing"),
+    not(feature = "clippy"),
+    not(feature = "cpp_test")
+), no_std)]
 #![no_builtins]
 #![macro_use]
 #![allow(dead_code)]
-#![deny(unused_crate_dependencies)]
 
 extern crate no_std_compat as std;
 
@@ -12,10 +17,11 @@ mod zxformat;
 
 fn debug(_msg: &str) {}
 
-#[cfg(not(any(test, fuzzing, feature = "clippy")))]
+// Only define panic handler when not fuzzing and not testing
+#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy")))]
 use core::panic::PanicInfo;
 
-#[cfg(not(any(test, fuzzing, feature = "clippy")))]
+#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
@@ -28,18 +34,18 @@ extern "C" {
 }
 
 pub(crate) fn canary() {
-    #[cfg(not(any(test, fuzzing)))]
+    #[cfg(not(any(test, feature = "fuzzing")))]
     unsafe {
         check_canary();
     }
 }
 
-#[cfg(not(any(test, fuzzing)))]
+#[cfg(not(any(test, feature = "fuzzing")))]
 pub fn is_expert_mode() -> bool {
     unsafe { app_mode_expert() > 0 }
 }
 
-#[cfg(any(test, fuzzing))]
+#[cfg(any(test, feature = "fuzzing"))]
 pub fn is_expert_mode() -> bool {
     true
 }
@@ -51,3 +57,4 @@ macro_rules! check_canary {
         canary();
     };
 }
+

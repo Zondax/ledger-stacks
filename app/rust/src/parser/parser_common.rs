@@ -96,7 +96,7 @@ pub struct AssetInfo<'a> {
 
 impl<'a> AssetInfo<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let address = StacksAddress::from_bytes(bytes)?;
         let (raw, contract_name) = ContractName::from_bytes(address.0)?;
         let asset_name = ClarityName::from_bytes(raw)?;
@@ -111,7 +111,7 @@ impl<'a> AssetInfo<'a> {
     }
 
     #[inline(never)]
-    pub fn read_as_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
+    pub fn read_as_bytes(bytes: &[u8]) -> nom::IResult<&[u8], &[u8], ParserError> {
         let (raw, _) = StacksAddress::from_bytes(bytes)?;
         let (raw1, _) = ContractName::from_bytes(raw)?;
         let (raw2, _) = ClarityName::from_bytes(raw1)?;
@@ -190,9 +190,15 @@ impl HashMode {
 #[cfg_attr(test, derive(Debug))]
 pub struct ContractName<'a>(ClarityName<'a>);
 
+impl AsRef<[u8]> for ContractName<'_> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.name()
+    }
+}
+
 impl<'a> ContractName<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (rem, name) = ClarityName::from_bytes(bytes)?;
 
         // we are using the ClarityName inner type to wrap-up the parsing which is the same for
@@ -228,14 +234,14 @@ impl<'a> ClarityName<'a> {
     pub const MAX_LEN: u8 = 128;
 
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&[u8], Self), nom::Err<ParserError>> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (rem, name) = Self::read_as_bytes(bytes)?;
         // Omit the first byte as it is the encoded length
         Ok((rem, Self(&name[1..])))
     }
 
     #[inline(never)]
-    pub fn read_as_bytes(bytes: &'a [u8]) -> Result<(&[u8], &[u8]), nom::Err<ParserError>> {
+    pub fn read_as_bytes(bytes: &[u8]) -> Result<(&[u8], &[u8]), nom::Err<ParserError>> {
         let (_, len) = le_u8(bytes)?;
 
         if len >= Self::MAX_LEN {
@@ -267,7 +273,7 @@ pub struct StacksAddress<'a>(pub &'a [u8; STACKS_ADDR_LEN]);
 
 impl<'a> StacksAddress<'a> {
     #[inline(never)]
-    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         let (raw, _) = take(STACKS_ADDR_LEN)(bytes)?;
         let address = arrayref::array_ref!(bytes, 0, STACKS_ADDR_LEN);
         Ok((raw, Self(address)))
