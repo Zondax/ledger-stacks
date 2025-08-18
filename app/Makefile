@@ -20,100 +20,146 @@ ifeq ($(BOLOS_SDK),)
 $(error BOLOS_SDK is not set)
 endif
 
-DEBUG := 0
-
-MY_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
-
-include $(CURDIR)/Makefile.conf
-
-include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.installer_script
+########################################
+#        Mandatory configuration       #
+########################################
+# Upload targets to configure the devices 
 include $(BOLOS_SDK)/Makefile.defines
 
-## Display whether this is a production build or for internal use
+# Application name
+APPNAME = "Stacks"
 
+# Application version
+include $(CURDIR)/Makefile.version
+APPVERSION = "$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)"
+
+# Application source files
+APP_SOURCE_PATH += src
+APP_SOURCE_PATH += rust/include
+APP_SOURCE_PATH += ../deps/sha512
+
+# Application icons following guidelines:
+# https://developers.ledger.com/docs/embedded-app/design-requirements/#device-icon
+ICON_NANOS = nanos_icon.gif
+ICON_NANOX = nanox_icon.gif
+ICON_NANOSP = nanox_icon.gif
+ICON_STAX = stax_icon.gif
+ICON_FLEX = flex_icon.gif
+
+# Application allowed derivation curves.
+# Possibles curves are: secp256k1, secp256r1, ed25519 and bls12381g1
+# If your app needs it, you can specify multiple curves by using:
+# `CURVE_APP_LOAD_PARAMS = <curve1> <curve2>`
+CURVE_APP_LOAD_PARAMS = secp256k1
+
+# Application allowed derivation paths.
+# You should request a specific path for your app.
+# This serve as an isolation mechanism.
+# Most application will have to request a path according to the BIP-0044
+# and SLIP-0044 standards.
+# If your app needs it, you can specify multiple path by using:
+# `PATH_APP_LOAD_PARAMS = "44'/1'" "45'/1'"`
+
+APPPATH = "44'/5757'" "5757'" "888'/0'" "44'/1'"
+$(info PATHS LIST = $(APPPATH))
+PATH_APP_LOAD_PARAMS = $(APPPATH)
+
+# Setting to allow building variant applications
+# - <VARIANT_PARAM> is the name of the parameter which should be set
+#   to specify the variant that should be build.
+# - <VARIANT_VALUES> a list of variant that can be build using this app code.
+#   * It must at least contains one value.
+#   * Values can be the app ticker or anything else but should be unique.
+ifeq ($(COIN),)
+    COIN=STX
+endif
+$(info COIN  = [$(COIN)])
+VARIANT_PARAM=COIN
+VARIANT_VALUES=$(COIN)
+
+# Coin specific configuration
+ifeq ($(COIN), STX)
+    DEFINES += APP_STANDARD
+else
+    $(error COIN value not supported: [$(COIN)])
+endif
+
+INCLUDES_PATH += $(CURDIR)/src/common
+INCLUDES_PATH += ../deps/ledger-zxlib/include
+
+########################################
+# Application communication interfaces #
+########################################
+ENABLE_BLUETOOTH = 1
+#ENABLE_NFC = 1
+
+########################################
+#         NBGL custom features         #
+########################################
+ENABLE_NBGL_QRCODE = 1
+#ENABLE_NBGL_KEYBOARD = 1
+#ENABLE_NBGL_KEYPAD = 1
+
+########################################
+#          Features disablers          #
+########################################
+# These advanced settings allow to disable some feature that are by
+# default enabled in the SDK `Makefile.standard_app`.
+#DISABLE_STANDARD_APP_FILES = 1
+#DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE = 1 # To allow custom size declaration
+#DISABLE_STANDARD_APP_DEFINES = 1 # Will set all the following disablers
+#DISABLE_STANDARD_SNPRINTF = 1
+#DISABLE_STANDARD_USB = 1
+#DISABLE_STANDARD_WEBUSB = 1
+#DISABLE_DEBUG_LEDGER_ASSERT = 1
+#DISABLE_DEBUG_THROW = 1
+
+########################################
+#        Other configurations          #
+########################################
+# Set the default value for PRODUCTION_BUILD to 0 if not already defined
+PRODUCTION_BUILD ?= 1
+# Display whether this is a production build or for internal use
 ifeq ($(PRODUCTION_BUILD), 1)
     $(info ************ PRODUCTION_BUILD  = [PRODUCTION BUILD])
 else
     $(info ************ PRODUCTION_BUILD  = [INTERNAL USE])
 endif
-
+# Add the PRODUCTION_BUILD definition to the compiler flags
 DEFINES += PRODUCTION_BUILD=$(PRODUCTION_BUILD)
-
-include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.app_testing
-
-ifndef COIN
-COIN = STX
-endif
-
-include $(CURDIR)/Makefile.version
-
-$(info COIN  = [$(COIN)])
-
-ifeq ($(COIN), STX)
-# Main app configuration
-DEFINES += APP_STANDARD
-APPNAME = "Stacks"
-APPPATH = "44'/5757'" --path "5757'" --path "888'/0'" --path "44'/1'"
-PATH_APP_LOAD_PARAMS = "44'/5757'" "5757'" "888'/0'" "44'/1'"
-else
-define error_message
-
-COIN value not supported: [$(COIN)]
-
-endef
-$(error "$(error_message)")
-endif
-
-APP_LOAD_PARAMS = --curve secp256k1 $(COMMON_LOAD_PARAMS)
-
-include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.devices
-
-$(info TARGET_NAME  = [$(TARGET_NAME)])
-$(info ICONNAME  = [$(ICONNAME)])
-
-ifndef ICONNAME
-$(error ICONNAME is not set)
-endif
 
 # Add SDK BLAKE2b
 DEFINES += HAVE_HASH HAVE_BLAKE2
 INCLUDES_PATH += $(BOLOS_SDK)/lib_cxng/src
 
-# Configure minimun stack size
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-	APP_STACK_MIN_SIZE := 1752
-else
-	APP_STACK_MIN_SIZE := 2000
-endif
-
-include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.platform
-INCLUDES_PATH += $(CURDIR)/src/common/
-
-CC := $(CLANGPATH)clang
-
-ifeq ($(DEBUG), 1)
-CFLAGS += -O3 -Os -Wno-unknown-pragmas -Wno-unused-parameter -g
-else
-CFLAGS += -O3 -Os -Wno-unknown-pragmas -Wno-unused-parameter
-endif
-
-CFLAGS += -DAPPVERSION_M=$(APPVERSION_M) -DAPPVERSION_N=$(APPVERSION_N) -DAPPVERSION_P=$(APPVERSION_P)
-
-AS := $(GCCPATH)arm-none-eabi-gcc
-AFLAGS +=
-
+########################################
+#           Rust configuration         #
+########################################
 RUST_TARGET := thumbv6m-none-eabi
+LDLIBS += -L$(CURDIR)/rust/target/$(RUST_TARGET)/release -lrslib
 
-LD := $(GCCPATH)arm-none-eabi-gcc
-LDFLAGS += -z muldefs
-LDLIBS += -lm -lgcc -lc
-LDLIBS += -L$(MY_DIR)rust/target/$(RUST_TARGET)/release -lrslib
+########################################
 
-APP_SOURCE_PATH += $(MY_DIR)/rust/include
-APP_SOURCE_PATH += $(MY_DIR)/../deps/sha512
+# Configure devices and permissions
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.devices
+# Create installer script
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.installer_script
+# Enable logging
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.app_testing
+# Call standard app flags
+include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.platform
 
-APP_SOURCE_PATH += $(CURDIR)/rust/include
-APP_CUSTOM_LINK_DEPENDENCIES := rust
+$(info TARGET_NAME  = [$(TARGET_NAME)])
+$(info ICONNAME  = [$(ICONNAME)])
+ifeq ($(ICONNAME),)
+$(error ICONNAME is not set)
+endif
+
+########################################
+#             Build rules              #
+########################################
+# make rust a prerequisite for all object files 
+$(OBJECT_FILES): | rust
 
 .PHONY: rust
 rust:
@@ -126,17 +172,6 @@ rust_clean:
 
 clean: rust_clean
 
-include $(CURDIR)/../deps/ledger-zxlib/makefiles/Makefile.side_loading
-
-include $(BOLOS_SDK)/Makefile.rules
-
-
-dep/%.d: %.c Makefile
-
-listvariants:
-	@echo VARIANTS COIN STX
-
 .PHONY: version
 version:
 	@echo "v$(APPVERSION)" > app.version
-

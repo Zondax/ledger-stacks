@@ -21,7 +21,7 @@
   ],
   "dependencies": {
     "@zondax/ledger-stacks": "link:../js",
-    "@zondax/zemu": "0.50.2"
+    "@zondax/zemu": "^0.61.1"
   },
   "devDependencies": {
     "@ledgerhq/hw-transport": "^6.30.6",
@@ -46,6 +46,7 @@
     "js-sha512": "^0.9.0",
     "noble-secp256k1": "^1.2.9",
     "prettier": "^3.3.3",
+    "ripemd160": "^2.0.2",
     "secp256k1": "^5.0.0",
     "ts-jest": "^29.2.3",
     "ts-node": "^10.9.2",
