@@ -18,9 +18,9 @@
 
 #include <string.h>
 
+#include "../parser.h"
 #include "apdu_codes.h"
 #include "buffering.h"
-#include "parser.h"
 #include "zxmacros.h"
 
 #if !defined(TARGET_NANOS)
