@@ -131,7 +131,7 @@ zxerr_t crypto_extractPublicKey(const uint32_t *path, uint32_t path_len, uint8_t
     uint8_t privateKeyData[SK_LEN_25519];
     MEMZERO(&cx_publicKey, sizeof(cx_publicKey));
 
-    if (pubKeyLen < PK_LEN_SECP256K1 || path_len == 0) {
+    if (pubKeyLen < PK_LEN_SECP256K1) {
         return zxerr_invalid_crypto_settings;
     }
 
@@ -255,4 +255,28 @@ catch_cx_error:
     }
 
     return zxerr;
+}
+
+zxerr_t crypto_getMasterFingerprint(uint8_t *fingerprint, uint16_t fingerprintLen) {
+    if (fingerprint == NULL || fingerprintLen < FINGERPRINT_LEN) {
+        return zxerr_buffer_too_small;
+    }
+
+    // Derive master public key (empty path)
+    uint8_t masterPubKey[PK_LEN_SECP256K1];
+    uint32_t emptyPath[] = {0};  // Empty BIP32 path for master key
+    zxerr_t error = crypto_extractPublicKey(emptyPath, 0, masterPubKey, sizeof(masterPubKey));
+    if (error != zxerr_ok) {
+        return error;
+    }
+
+    uint8_t hash_sha256[CX_SHA256_SIZE];
+    cx_hash_sha256(masterPubKey, PK_LEN_SECP256K1, hash_sha256, CX_SHA256_SIZE);
+    uint8_t hash_ripe[CX_RIPEMD160_SIZE];
+    if (!ripemd160(hash_sha256, CX_SHA256_SIZE, hash_ripe)) {
+        return zxerr_unknown;
+    }
+
+    MEMCPY(fingerprint, hash_ripe, FINGERPRINT_LEN);
+    return zxerr_ok;
 }
