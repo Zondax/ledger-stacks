@@ -3,8 +3,8 @@ use crate::parser::{ParsedObj, ParserError};
 #[repr(C)]
 pub struct parser_context_t {
     pub buffer: *const u8,
-    pub bufferLen: u16,
-    pub offset: u16,
+    pub bufferLen: u32,
+    pub offset: u32,
 }
 
 #[repr(C)]
@@ -23,7 +23,7 @@ pub unsafe fn parsed_obj_from_state<'a>(tx: *mut parse_tx_t) -> Option<&'a mut P
 pub unsafe extern "C" fn _parser_init(
     ctx: *mut parser_context_t,
     buffer: *const u8,
-    bufferSize: u16,
+    bufferSize: u32,
     alloc_size: *mut u16,
 ) -> u32 {
     // Lets the caller know how much memory we need for allocating
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn _parser_init(
 unsafe fn parser_init_context(
     ctx: *mut parser_context_t,
     buffer: *const u8,
-    bufferSize: u16,
+    bufferSize: u32,
 ) -> ParserError {
     (*ctx).offset = 0;
 

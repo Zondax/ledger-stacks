@@ -82,8 +82,8 @@ typedef enum {
 } parser_error_t;
 typedef struct {
     const uint8_t *buffer;
-    uint16_t bufferLen;
-    uint16_t offset;
+    uint32_t bufferLen;
+    uint32_t offset;
 } parser_context_t;
 
 typedef enum _TransactionType { Transaction, Message, Jwt, StructuredMsg, Invalid } transaction_type_t;
