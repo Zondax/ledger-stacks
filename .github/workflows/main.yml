@@ -6,13 +6,14 @@ on:
     branches:
       - main
       - develop
-      - master # for safety reasons
-      - dev  # for safety reasons
+      - master
+      - dev
 
 jobs:
   ledger-build:
     uses: Zondax/_workflows/.github/workflows/_ledger_main.yml@v3
     with:
       runs-on: ${{ github.repository_owner == 'zondax' && 'zondax-runners' || 'ubuntu-latest' }}
-      node-version: 22
       has-rust: true
+      has-nanos: false
+      node-version: '22'
