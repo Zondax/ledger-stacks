@@ -79,9 +79,11 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
                 THROW(APDU_CODE_OUTPUT_BUFFER_TOO_SMALL);
             }
             return true;
+        default:
+            tx_initialized = false;
+            THROW(APDU_CODE_INVALIDP1P2);
+            return false;
     }
-    tx_initialized = false;
-    THROW(APDU_CODE_INVALIDP1P2);
 }
 
 __Z_INLINE void extract_default_path(uint32_t rx, uint32_t offset) {
