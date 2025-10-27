@@ -366,7 +366,7 @@ impl<'a> Transaction<'a> {
             self.post_conditions
                 .get_items(display_idx, out_key, out_value, page_idx, num_items)
         } else {
-            let mut total_items = num_items - post_conditions_items;
+            let total_items = num_items - post_conditions_items;
             self.payload.get_items(
                 display_idx,
                 out_key,

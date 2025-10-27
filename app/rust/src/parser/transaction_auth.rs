@@ -89,7 +89,7 @@ impl<'a> TransactionAuth<'a> {
     }
 
     // check just for origin, meaning we support standard transaction only
-    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField, ParserError>> {
+    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField<'_>, ParserError>> {
         match self {
             Self::Standard(origin) => origin.get_auth_field(index),
             Self::Sponsored(origin, _) => origin.get_auth_field(index),
@@ -97,14 +97,14 @@ impl<'a> TransactionAuth<'a> {
     }
 
     #[inline(always)]
-    pub fn origin(&self) -> &SpendingConditionSigner {
+    pub fn origin(&self) -> &SpendingConditionSigner<'_> {
         match self {
             Self::Standard(ref origin) | Self::Sponsored(ref origin, _) => &origin.signer,
         }
     }
 
     #[inline(always)]
-    pub fn sponsor(&self) -> Option<&SpendingConditionSigner> {
+    pub fn sponsor(&self) -> Option<&SpendingConditionSigner<'_>> {
         match self {
             Self::Sponsored(_, ref sponsor) => Some(&sponsor.signer),
             _ => None,

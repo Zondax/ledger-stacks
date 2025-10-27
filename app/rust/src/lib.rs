@@ -18,7 +18,7 @@ mod zxformat;
 fn debug(_msg: &str) {}
 
 // Only define panic handler when not fuzzing and not testing
-#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy")))]
+#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
 use core::panic::PanicInfo;
 
 #[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
