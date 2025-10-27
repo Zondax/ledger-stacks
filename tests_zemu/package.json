@@ -21,7 +21,7 @@
   ],
   "dependencies": {
     "@zondax/ledger-stacks": "link:../js",
-    "@zondax/zemu": "^0.61.1"
+    "@zondax/zemu": "^0.62.1"
   },
   "devDependencies": {
     "@ledgerhq/hw-transport": "^6.30.6",
