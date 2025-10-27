@@ -16,7 +16,7 @@ jobs:
         sdk: ["$NANOS_SDK", "$NANOX_SDK", "$NANOSP_SDK", "$STAX_SDK", "$FLEX_SDK"]
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-legacy:latest
+      image: ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:latest
 
     steps:
       - name: Clone
