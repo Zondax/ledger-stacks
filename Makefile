@@ -22,8 +22,8 @@ ifeq ($(BOLOS_SDK),)
 # When not using the SDK, we override and build the XL complete app
 
 ZXLIB_COMPILE_STAX ?= 1
-# by default builds are not production ready
 PRODUCTION_BUILD ?= 1
+SKIP_NANOS ?= 1
 
 include $(CURDIR)/deps/ledger-zxlib/dockerized_build.mk
 
