@@ -372,7 +372,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     pub fn auth_field(
         &self,
         index: Index,
-    ) -> nom::IResult<&[u8], TransactionAuthField, ParserError> {
+    ) -> nom::IResult<&[u8], TransactionAuthField<'_>, ParserError> {
         Self::field_from_bytes(self.auth_fields_raw, index)
     }
 
@@ -480,7 +480,7 @@ impl<'a> TransactionSpendingCondition<'a> {
         self.signer.hash_mode()
     }
 
-    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField, ParserError>> {
+    pub fn get_auth_field(&self, index: u32) -> Option<Result<TransactionAuthField<'_>, ParserError>> {
         match self.signature {
             SpendingConditionSignature::Multisig(ref sig) => Some(
                 sig.auth_field(Index::FromZero(index))
