@@ -8,7 +8,7 @@ use crate::{
     parser::{
         c32,
         ffi::token_info::{get_token_info, TokenInfo, TOKEN_SYMBOL_MAX_LEN},
-        transaction_payload::{arguments::Arguments, contract_call},
+        transaction_payload::arguments::Arguments,
         ApduPanic, ClarityName, ContractName, ParserError, PrincipalData, StacksAddress, Value,
         ValueId, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
     },
