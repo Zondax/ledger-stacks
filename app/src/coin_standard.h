@@ -46,7 +46,7 @@ extern "C" {
 #define PK_LEN_SECP256K1 33u
 
 // BIP32 fingerprint length
-#define FINGERPRINT_LEN 4u
+// #define FINGERPRINT_LEN 4u
 
 typedef enum {
     addr_secp256k1 = 0,
@@ -69,13 +69,13 @@ typedef enum {
 #define COIN_VERSION_MAINNET_SINGLESIG 22
 #define COIN_VERSION_TESTNET_SINGLESIG 26
 
-#define INS_GET_VERSION            0x00
-#define INS_GET_ADDR_SECP256K1     0x01
-#define INS_SIGN_SECP256K1         0x02
-#define INS_GET_AUTH_PUBKEY        0x03
-#define INS_SIGN_JWT_SECP256K1     0x04
-#define INS_SIGN_STRUCTURED_MSG    0x05
-#define INS_GET_MASTER_FINGERPRINT 0x06
+#define INS_GET_VERSION         0x00
+#define INS_GET_ADDR_SECP256K1  0x01
+#define INS_SIGN_SECP256K1      0x02
+#define INS_GET_AUTH_PUBKEY     0x03
+#define INS_SIGN_JWT_SECP256K1  0x04
+#define INS_SIGN_STRUCTURED_MSG 0x05
+// #define INS_GET_MASTER_FINGERPRINT 0x06
 
 #ifdef __cplusplus
 }

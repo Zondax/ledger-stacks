@@ -257,6 +257,7 @@ catch_cx_error:
     return zxerr;
 }
 
+/* TODO: Implement once the Ledger SDK provides an API to derive the Master Key.
 zxerr_t crypto_getMasterFingerprint(uint8_t *fingerprint, uint16_t fingerprintLen) {
     if (fingerprint == NULL || fingerprintLen < FINGERPRINT_LEN) {
         return zxerr_buffer_too_small;
@@ -280,3 +281,4 @@ zxerr_t crypto_getMasterFingerprint(uint8_t *fingerprint, uint16_t fingerprintLe
     MEMCPY(fingerprint, hash_ripe, FINGERPRINT_LEN);
     return zxerr_ok;
 }
+*/

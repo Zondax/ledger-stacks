@@ -35,6 +35,8 @@ export interface ResponseSign extends ResponseBase {
   signatureDER: Buffer;
 }
 
+/*
 export interface ResponseMasterFingerprint extends ResponseBase {
   fingerprint: Buffer;
 }
+*/

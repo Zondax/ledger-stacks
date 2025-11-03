@@ -156,6 +156,7 @@ describe('Standard', function () {
     }
   })
 
+  /*
   test.concurrent.each(models)(`get master key fingerprint`, async function (m) {
     const sim = new Zemu(m.path)
     try {
@@ -187,6 +188,7 @@ describe('Standard', function () {
       await sim.close()
     }
   })
+  */
 
   test.concurrent.each(models)(`get address2`, async function (m) {
     const sim = new Zemu(m.path)
