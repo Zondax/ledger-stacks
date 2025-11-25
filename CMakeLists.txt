@@ -40,12 +40,20 @@ set(HUNTER_TLS_VERIFY OFF)
 
 enable_testing()
 
-option(ENABLE_COVERAGE "Build with source code coverage instrumentation" OFF)
-option(ENABLE_SANITIZERS "Build with ASAN and UBSAN" OFF)
+# Include common fuzzing configuration
+include(deps/ledger-zxlib/fuzzing/FuzzingCommon.cmake)
 
-string(APPEND CMAKE_C_FLAGS " -fno-omit-frame-pointer -g")
-string(APPEND CMAKE_CXX_FLAGS " -fno-omit-frame-pointer -g")
-string(APPEND CMAKE_LINKER_FLAGS " -fno-omit-frame-pointer -g")
+# Fuzzing options are now managed by FuzzingCommon.cmake
+# option(ENABLE_FUZZING "Build with fuzzing instrumentation and build fuzz targets" OFF)
+# option(ENABLE_COVERAGE "Build with source code coverage instrumentation" OFF)
+# option(ENABLE_SANITIZERS "Build with ASAN and UBSAN" OFF)
+
+# Frame pointer flags are now managed by FuzzingCommon.cmake when fuzzing is enabled
+if(NOT ENABLE_FUZZING)
+    string(APPEND CMAKE_C_FLAGS " -fno-omit-frame-pointer -g")
+    string(APPEND CMAKE_CXX_FLAGS " -fno-omit-frame-pointer -g")
+    string(APPEND CMAKE_LINKER_FLAGS " -fno-omit-frame-pointer -g")
+endif()
 
 hunter_add_package(fmt)
 find_package(fmt CONFIG REQUIRED)
@@ -55,6 +63,19 @@ find_package(jsoncpp CONFIG REQUIRED)
 
 hunter_add_package(GTest)
 find_package(GTest CONFIG REQUIRED)
+
+# Fuzzing configuration is now managed by FuzzingCommon.cmake
+# Additional project-specific fuzzing setup can be added here if needed
+if(ENABLE_FUZZING)
+    add_definitions(-DENABLE_FUZZING)
+
+    if (DEFINED ENV{FUZZ_LOGGING})
+        add_definitions(-DFUZZING_LOGGING)
+        message(FATAL_ERROR "Fuzz logging enabled")
+    endif()
+
+    set(CMAKE_CXX_CLANG_TIDY clang-tidy -checks=-*,bugprone-*,cert-*,clang-analyzer-*,-cert-err58-cpp,misc-*)
+endif()
 
 if(ENABLE_COVERAGE)
     string(APPEND CMAKE_C_FLAGS " -fprofile-instr-generate -fcoverage-mapping")
@@ -162,29 +183,38 @@ target_include_directories(app_lib PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/picohash
 )
 
-##############################################################
-#  Tests
-file(GLOB_RECURSE TESTS_SRC
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
+#  Fuzz Targets
+if(ENABLE_FUZZING)
+        # Setup fuzzing directories
+        setup_fuzz_directories()
+        
+        # Add fuzz targets using the common macro
+        add_fuzz_target(parser_parse ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/parser_parse.cpp app_lib rslib)
+else()
+        ##############################################################
+        #  Tests
+        file(GLOB_RECURSE TESTS_SRC
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
 
-add_executable(unittests ${TESTS_SRC})
-target_include_directories(unittests PRIVATE
-        ${gtest_SOURCE_DIR}/include
-        ${gmock_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/app/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/app/src/common
-        ${CMAKE_CURRENT_SOURCE_DIR}/deps/ledger-zxlib/app/common
-        ${CMAKE_CURRENT_SOURCE_DIR}/deps/picohash
-        )
+        add_executable(unittests ${TESTS_SRC})
+        target_include_directories(unittests PRIVATE
+                ${gtest_SOURCE_DIR}/include
+                ${gmock_SOURCE_DIR}/include
+                ${CMAKE_CURRENT_SOURCE_DIR}/app/src
+                ${CMAKE_CURRENT_SOURCE_DIR}/app/src/common
+                ${CMAKE_CURRENT_SOURCE_DIR}/deps/ledger-zxlib/app/common
+                ${CMAKE_CURRENT_SOURCE_DIR}/deps/picohash
+                )
 
-target_link_libraries(unittests PRIVATE
-        app_lib
-        ${RUST_LIB_NAME}
-        app_lib
-        GTest::gtest_main
-        fmt::fmt
-        JsonCpp::JsonCpp)
+        target_link_libraries(unittests PRIVATE
+                app_lib
+                ${RUST_LIB_NAME}
+                app_lib
+                GTest::gtest_main
+                fmt::fmt
+                JsonCpp::JsonCpp)
 
-add_compile_definitions(TESTVECTORS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/")
-add_test(NAME unittests COMMAND unittests)
-set_tests_properties(unittests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        add_compile_definitions(TESTVECTORS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/")
+        add_test(NAME unittests COMMAND unittests)
+        set_tests_properties(unittests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+endif()

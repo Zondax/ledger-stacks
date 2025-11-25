@@ -55,7 +55,7 @@ dkms.conf
 
 # Others
 \.idea
-.vscode/*.log
+.vscode
 .DS_Store
 node_modules
 
@@ -93,3 +93,10 @@ app/rust/.cargo/.package-cache-mutate
 app/hfuzz_corpus
 
 app/rust/.cargo/.global-cache
+
+fuzz/corpora/
+fuzz/build/
+fuzz/coverage/
+fuzz/logs/
+fuzz-*.log
+fuzz/__pycache__
