@@ -63,9 +63,7 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
     crypto_extractPublicKeyHash(pubKeyHash, RIPEMD160_SIZE);
 #elif defined(ENABLE_FUZZING)
     for (uint8_t i = 0; i < RIPEMD160_SIZE; i++) {
-        pubKeyHash[i] = (ctx->buffer != NULL && ctx->bufferLen > 0)
-                            ? ctx->buffer[i % ctx->bufferLen] ^ i
-                            : i;
+        pubKeyHash[i] = (ctx->buffer != NULL && ctx->bufferLen > 0) ? ctx->buffer[i % ctx->bufferLen] ^ i : i;
     }
 #endif
 
