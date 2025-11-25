@@ -261,13 +261,20 @@ impl<'a> TransactionContractCall<'a> {
         match value.value_id() {
             ValueId::Int => {
                 let value = value.int().ok_or(ParserError::UnexpectedError)?;
-                let mut buff = [0u8; 39];
+                let mut buff = [0u8; 41]; // 40 digits + possible sign
 
-                zxformat::pageString(
-                    out_value,
-                    value.numtoa_str(10, &mut buff).as_bytes(),
-                    page_idx,
-                )
+                // Handle i128::MIN specially as numtoa has a bug with it
+                // (it causes underflow when computing the absolute value)
+                if value == i128::MIN {
+                    let min_str = b"-170141183460469231731687303715884105728";
+                    zxformat::pageString(out_value, min_str, page_idx)
+                } else {
+                    zxformat::pageString(
+                        out_value,
+                        value.numtoa_str(10, &mut buff).as_bytes(),
+                        page_idx,
+                    )
+                }
             }
             ValueId::UInt => {
                 let value = value.uint().ok_or(ParserError::UnexpectedError)?;
@@ -552,12 +559,18 @@ impl<'a> TransactionContractCall<'a> {
                     }
                     ValueId::Int => {
                         let value = inner_value.int().ok_or(ParserError::UnexpectedError)?;
-                        let mut buff = [0u8; 39];
-                        zxformat::pageString(
-                            out_value,
-                            value.numtoa_str(10, &mut buff).as_bytes(),
-                            page_idx,
-                        )
+                        let mut buff = [0u8; 41];
+                        // Handle i128::MIN specially as numtoa has a bug with it
+                        if value == i128::MIN {
+                            let min_str = b"-170141183460469231731687303715884105728";
+                            zxformat::pageString(out_value, min_str, page_idx)
+                        } else {
+                            zxformat::pageString(
+                                out_value,
+                                value.numtoa_str(10, &mut buff).as_bytes(),
+                                page_idx,
+                            )
+                        }
                     }
                     ValueId::BoolTrue => {
                         zxformat::pageString(out_value, "true".as_bytes(), page_idx)
