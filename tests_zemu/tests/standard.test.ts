@@ -853,11 +853,11 @@ describe('Standard', function () {
       //Verify signature
       const ec = new EC('secp256k1')
 
-      const len_buf = encode(msg.length)
+      const len_buf = encode(msg.length).buffer
       const header = Buffer.from('\x17Stacks Signed Message:\n', 'utf8')
       const msg_buf = Buffer.from(msg, 'utf8')
 
-      const arr = [header, len_buf, msg_buf]
+      const arr = [header, Buffer.from(len_buf), msg_buf]
       const data = Buffer.concat(arr)
 
       const msgHash = sha256(data)
