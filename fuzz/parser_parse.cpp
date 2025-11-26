@@ -23,13 +23,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
     char buffer[10000];
     array_to_hexstr(buffer, sizeof(buffer), data, size);
-    // fprintf(stderr, "input blob: %s\n", buffer);
 
     // The first byte of the input is used to determine the transaction type.
     rc = parser_parse(&ctx, data, size);
 
     if (rc != parser_ok) {
-        // fprintf(stderr, "parser error: %s\n", parser_getErrorDescription(rc));
         return 0;
     }
 
@@ -37,7 +35,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
     rc = parser_validate(&ctx);
     if (rc != parser_ok) {
-        // fprintf(stderr, "validation error: %s\n", parser_getErrorDescription(rc));
         return 0;
     }
 

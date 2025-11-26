@@ -43,11 +43,6 @@ enable_testing()
 # Include common fuzzing configuration
 include(deps/ledger-zxlib/fuzzing/FuzzingCommon.cmake)
 
-# Fuzzing options are now managed by FuzzingCommon.cmake
-# option(ENABLE_FUZZING "Build with fuzzing instrumentation and build fuzz targets" OFF)
-# option(ENABLE_COVERAGE "Build with source code coverage instrumentation" OFF)
-# option(ENABLE_SANITIZERS "Build with ASAN and UBSAN" OFF)
-
 # Frame pointer flags are now managed by FuzzingCommon.cmake when fuzzing is enabled
 if(NOT ENABLE_FUZZING)
     string(APPEND CMAKE_C_FLAGS " -fno-omit-frame-pointer -g")
