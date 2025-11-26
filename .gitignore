@@ -55,7 +55,7 @@ dkms.conf
 
 # Others
 \.idea
-.vscode/*.log
+.vscode
 .DS_Store
 node_modules
 
@@ -78,12 +78,6 @@ app/obj
 
 app/glyphs/glyphs.*
 
-app/hfuzz-parser/hfuzz_workspace/transaction/input/*.honggfuzz.cov
-app/hfuzz-parser/hfuzz_target
-app/hfuzz-parser/hfuzz_workspace/transaction/*.TXT
-app/hfuzz-parser/hfuzz_workspace/transaction/*.fuzz
-
-
 tests_zemu/snapshots-tmp
 app/output/*.apdu
 app/output/*.sha256
@@ -93,3 +87,10 @@ app/rust/.cargo/.package-cache-mutate
 app/hfuzz_corpus
 
 app/rust/.cargo/.global-cache
+
+fuzz/corpora/
+fuzz/build/
+fuzz/coverage/
+fuzz/logs/
+fuzz-*.log
+fuzz/__pycache__

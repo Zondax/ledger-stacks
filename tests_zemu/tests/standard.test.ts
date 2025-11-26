@@ -23,18 +23,15 @@ import { encode } from 'varuint-bitcoin'
 import {
   AddressVersion,
   PubKeyEncoding,
-  StacksMessageType,
+  StacksWireType,
   TransactionSigner,
-  createStacksPrivateKey,
   createTransactionAuthField,
-  isCompressed,
-  makeSigHashPreSign,
+  sigHashPreSign,
   makeSTXTokenTransfer,
   makeUnsignedContractCall,
   makeUnsignedSTXTokenTransfer,
-  pubKeyfromPrivKey,
-  publicKeyFromBuffer,
-  publicKeyToString,
+  privateKeyToPublic,
+  createStacksPublicKey,
   standardPrincipalCV,
   contractPrincipalCV,
   uintCV,
@@ -51,18 +48,45 @@ import {
   trueCV,
   falseCV,
   FungibleConditionCode,
-  makeStandardSTXPostCondition,
-  BufferReader,
+  Pc,
+  BytesReader,
   deserializeTransaction,
 } from '@stacks/transactions'
-import { StacksTestnet } from '@stacks/network'
-import { AnchorMode } from '@stacks/transactions/src/constants'
+import { STACKS_TESTNET } from '@stacks/network'
 
 const sha512_256 = require('js-sha512').sha512_256
 const RIPEMD160 = require('ripemd160')
 const sha256 = require('js-sha256').sha256
-const BN = require('bn.js')
 import { ec as EC } from 'elliptic'
+
+// Helper function to convert bigint to little-endian buffer
+function bigintToLeBuffer(value: bigint, length: number): Buffer {
+  const buf = Buffer.alloc(length)
+  for (let i = 0; i < length; i++) {
+    buf[i] = Number(value & 0xffn)
+    value = value >> 8n
+  }
+  return buf
+}
+
+// Helper function to create STX post conditions with the new Pc API
+function createStxPostCondition(address: string, code: FungibleConditionCode, amount: bigint) {
+  const builder = Pc.principal(address)
+  switch (code) {
+    case FungibleConditionCode.Equal:
+      return builder.willSendEq(amount).ustx()
+    case FungibleConditionCode.Greater:
+      return builder.willSendGt(amount).ustx()
+    case FungibleConditionCode.GreaterEqual:
+      return builder.willSendGte(amount).ustx()
+    case FungibleConditionCode.Less:
+      return builder.willSendLt(amount).ustx()
+    case FungibleConditionCode.LessEqual:
+      return builder.willSendLte(amount).ustx()
+    default:
+      return builder.willSendEq(amount).ustx()
+  }
+}
 
 const defaultOptions = {
   ...DEFAULT_START_OPTIONS,
@@ -266,7 +290,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`sign`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const path = "m/44'/5757'/0'/0/0"
 
@@ -284,31 +308,29 @@ describe('Standard', function () {
 
       // uses the provided privKey to derive a pubKey using stacks API
       // we expect the derived publicKey to be same as the ledger-app
-      const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey))
+      const expectedPublicKey = privateKeyToPublic(senderKey)
 
       expect(testPublicKey).toEqual('02' + expectedPublicKey.slice(2, 2 + 32 * 2))
 
       const signedTx = await makeSTXTokenTransfer({
-        anchorMode: AnchorMode.Any,
-        senderKey,
+                senderKey,
         recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
         network,
-        nonce: new BN(0),
-        fee: new BN(180),
-        amount: new BN(1),
+        nonce: 0n,
+        fee: 180n,
+        amount: 1n,
       })
 
       const unsignedTx = await makeUnsignedSTXTokenTransfer({
-        anchorMode: AnchorMode.Any,
-        recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
+                recipient: 'ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSPPWK',
         network,
-        nonce: new BN(0),
-        fee: new BN(180),
-        amount: new BN(1),
+        nonce: 0n,
+        fee: 180n,
+        amount: 1n,
         publicKey: testPublicKey,
       })
 
-      const blob = Buffer.from(unsignedTx.serialize())
+      const blob = Buffer.from(unsignedTx.serialize(), 'hex')
 
       // Check the signature
       const signatureRequest = app.sign(path, blob)
@@ -330,17 +352,17 @@ describe('Standard', function () {
       console.log('ledger-vrs', signature.signatureVRS.toString('hex'))
       console.log('ledger-DER: ', signature.signatureDER.toString('hex'))
 
-      console.log('unsignedTx serialized ', unsignedTx.serialize().toString('hex'))
+      console.log('unsignedTx serialized ', unsignedTx.serialize())
 
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         unsignedTx.signBegin(),
         //@ts-ignore
         unsignedTx.auth.authType,
         unsignedTx.auth.spendingCondition?.fee,
         unsignedTx.auth.spendingCondition?.nonce,
       )
-      console.log('sigHashPreSign: ', sigHashPreSign)
-      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+      console.log('sigHashPreSign: ', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
       const key_t = Buffer.alloc(1)
       key_t.writeInt8(0x00)
@@ -383,7 +405,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`multisig`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const path = "m/44'/5757'/0'/0/0"
 
     try {
@@ -395,22 +417,21 @@ describe('Standard', function () {
       console.log(pkResponse)
       expect(pkResponse.returnCode).toEqual(0x9000)
       expect(pkResponse.errorMessage).toEqual('No errors')
-      const devicePublicKey = publicKeyFromBuffer(pkResponse.publicKey)
+      const devicePublicKey = createStacksPublicKey(pkResponse.publicKey)
       const devicePublicKeyString = pkResponse.publicKey.toString('hex')
 
       const recipient = standardPrincipalCV('ST2XADQKC3EPZ62QTG5Q2RSPV64JG6KXCND0PHT7F')
-      const amount = new BN(2500000)
-      const fee = new BN(0)
-      const nonce = new BN(0)
+      const amount = 2500000n
+      const fee = 0n
+      const nonce = 0n
       const memo = 'multisig tx'
 
-      const priv_key_signer0 = createStacksPrivateKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
+      const priv_key_signer0 = '219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101'
       const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
       const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
 
       const tx = await makeUnsignedSTXTokenTransfer({
-        anchorMode: AnchorMode.Any,
-        recipient,
+                recipient,
         network,
         nonce,
         fee,
@@ -419,7 +440,7 @@ describe('Standard', function () {
         numSignatures: 2,
         publicKeys: pubKeyStrings,
       })
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         tx.signBegin(),
         // @ts-ignore
         tx.auth.authType,
@@ -433,7 +454,7 @@ describe('Standard', function () {
       signer0.signOrigin(priv_key_signer0)
       signer0.appendOrigin(devicePublicKey)
 
-      const serializeTx = tx.serialize().toString('hex')
+      const serializeTx = tx.serialize()
 
       // @ts-ignore
       const signature_signer0_hex = tx.auth.spendingCondition.fields[0].contents.data
@@ -460,11 +481,11 @@ describe('Standard', function () {
       // Add Ledger signature to transaction
       tx.auth.spendingCondition.fields[1] = createTransactionAuthField(PubKeyEncoding.Compressed, {
         data: signature.signatureVRS.toString('hex'),
-        type: StacksMessageType.MessageSignature,
+        type: StacksWireType.MessageSignature,
       })
 
       // For full tx validation, use `stacks-inspect decode-tx <hex-encoded-tx>`
-      const txBytes = tx.serialize().toString('hex')
+      const txBytes = tx.serialize()
       console.log('tx-bytes', txBytes)
 
       // Verifies the first signer signature using the preSigHash and signer0 data
@@ -474,15 +495,16 @@ describe('Standard', function () {
         s: signature_signer0_hex.substr(66, 64),
       }
       // @ts-ignore
-      const signatureOk = ec.verify(sigHashPreSign, signer0_signature_obj, pub_key_signer0, 'hex')
+      const signatureOk = ec.verify(txSigHashPreSign, signer0_signature_obj, pub_key_signer0, 'hex')
       expect(signatureOk).toEqual(true)
 
       // Verifies that the second signer's signature is ok
 
       // Construct the presig_hash from the prior_postsig_hash, authflag, fee and nonce
-      const feeBytes = new BN(tx.auth.getFee()).toBuffer('le', 8)
       // @ts-ignore
-      const nonceBytes = new BN(tx.auth.spendingCondition.nonce).toBuffer('le', 8)
+      const feeBytes = bigintToLeBuffer(tx.auth.spendingCondition?.fee ?? 0n, 8)
+      // @ts-ignore
+      const nonceBytes = bigintToLeBuffer(tx.auth.spendingCondition?.nonce ?? 0n, 8)
 
       // @ts-ignore
       const presig_hash = [Buffer.from(signer0.sigHash, 'hex'), Buffer.alloc(1, tx.auth.authType), feeBytes, nonceBytes]
@@ -502,7 +524,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`order-independent multisig`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const path = "m/44'/5757'/0'/0/0"
 
     try {
@@ -514,22 +536,21 @@ describe('Standard', function () {
       console.log(pkResponse)
       expect(pkResponse.returnCode).toEqual(0x9000)
       expect(pkResponse.errorMessage).toEqual('No errors')
-      const devicePublicKey = publicKeyFromBuffer(pkResponse.publicKey)
+      const devicePublicKey = createStacksPublicKey(pkResponse.publicKey)
       const devicePublicKeyString = pkResponse.publicKey.toString('hex')
 
       const recipient = standardPrincipalCV('ST2XADQKC3EPZ62QTG5Q2RSPV64JG6KXCND0PHT7F')
-      const amount = new BN(2500000)
-      const fee = new BN(0)
-      const nonce = new BN(0)
+      const amount = 2500000n
+      const fee = 0n
+      const nonce = 0n
       const memo = 'multisig tx'
 
-      const priv_key_signer0 = createStacksPrivateKey('219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101')
+      const priv_key_signer0 = '219af15a772e3478a26bbe669b524e9e86c1aaa4c2ae640cd432a29431a4cb0101'
       const pub_key_signer0 = '03c00170321c5ce931d3201927ff6b1993c350f72af5483b9d75e8505ef10aed8c'
       const pubKeyStrings = [pub_key_signer0, devicePublicKeyString]
 
       const tx = await makeUnsignedSTXTokenTransfer({
-        anchorMode: AnchorMode.Any,
-        recipient,
+                recipient,
         network,
         nonce,
         fee,
@@ -544,7 +565,7 @@ describe('Standard', function () {
       // TODO: Replace with constant once support is added in Stacks.js
       tx.auth.spendingCondition.hashMode = 5
 
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         tx.signBegin(),
         // @ts-ignore
         tx.auth.authType,
@@ -558,7 +579,7 @@ describe('Standard', function () {
       signer0.signOrigin(priv_key_signer0)
       signer0.appendOrigin(devicePublicKey)
 
-      const serializeTx = tx.serialize().toString('hex')
+      const serializeTx = tx.serialize()
 
       // @ts-ignore
       const signature_signer0_hex = tx.auth.spendingCondition.fields[0].contents.data
@@ -585,12 +606,12 @@ describe('Standard', function () {
       // @ts-ignore
       // Add Ledger signature to transaction
       tx.auth.spendingCondition.fields[1] = createTransactionAuthField(PubKeyEncoding.Compressed, {
-        type: StacksMessageType.MessageSignature,
+        type: StacksWireType.MessageSignature,
         data: signatureVRS,
       })
 
       // For full tx validation, use `stacks-inspect decode-tx <hex-encoded-tx>`
-      const txBytes = tx.serialize().toString('hex')
+      const txBytes = tx.serialize()
       console.log('tx-bytes', txBytes)
 
       // Verifies the first signer signature using the preSigHash and signer0 data
@@ -600,14 +621,14 @@ describe('Standard', function () {
         s: signature_signer0_hex.substr(66, 64),
       }
       // @ts-ignore
-      const signatureOk = ec.verify(sigHashPreSign, signer0_signature_obj, pub_key_signer0, 'hex')
+      const signatureOk = ec.verify(txSigHashPreSign, signer0_signature_obj, pub_key_signer0, 'hex')
       expect(signatureOk).toEqual(true)
 
       // Verifies that the second signer's signature is ok
       const signature1_obj = { r: signatureVRS.substr(2, 64), s: signatureVRS.substr(66, 64) }
 
       // @ts-ignore
-      const signature1Ok = ec.verify(sigHashPreSign, signature1_obj, devicePublicKeyString, 'hex')
+      const signature1Ok = ec.verify(txSigHashPreSign, signature1_obj, devicePublicKeyString, 'hex')
       expect(signature1Ok).toEqual(true)
     } finally {
       await sim.close()
@@ -616,7 +637,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`sign standard_contract_call_tx`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
     const path = "m/44'/5757'/0'/0/0"
@@ -632,12 +653,11 @@ describe('Standard', function () {
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
       const contract_principal = contractPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5', 'some-contract-name')
-      const fee = new BN(10)
-      const nonce = new BN(0)
+      const fee = 10n
+      const nonce = 0n
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
       const txOptions = {
-        anchorMode: AnchorMode.Any,
-        contractAddress: contract_address,
+                contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
         functionArgs: [uintCV(20000), recipient, uintCV(2), contract_principal, uintCV(10)],
@@ -648,7 +668,7 @@ describe('Standard', function () {
       }
 
       const transaction = await makeUnsignedContractCall(txOptions)
-      const serializeTx = transaction.serialize().toString('hex')
+      const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
       const signatureRequest = app.sign(path, blob)
@@ -665,15 +685,15 @@ describe('Standard', function () {
 
       // compute postSignHash to verify signature
 
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
         // @ts-ignore
         transaction.auth.authType,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
-      console.log('sigHashPreSign: ', sigHashPreSign)
-      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+      console.log('sigHashPreSign: ', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
       const key_t = Buffer.alloc(1)
       key_t.writeInt8(0x00)
@@ -700,7 +720,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`sign_contract_call_long_args`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
     const path = "m/44'/5757'/0'/0/0"
@@ -716,12 +736,11 @@ describe('Standard', function () {
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
       const contract_principal = contractPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5', 'some-contract-name')
-      const fee = new BN(10)
-      const nonce = new BN(0)
+      const fee = 10n
+      const nonce = 0n
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
       const txOptions = {
-        anchorMode: AnchorMode.Any,
-        contractAddress: contract_address,
+                contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
         functionArgs: [
@@ -741,7 +760,7 @@ describe('Standard', function () {
       }
 
       const transaction = await makeUnsignedContractCall(txOptions)
-      const serializeTx = transaction.serialize().toString('hex')
+      const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
       const signatureRequest = app.sign(path, blob)
@@ -758,15 +777,15 @@ describe('Standard', function () {
 
       // compute postSignHash to verify signature
 
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
         // @ts-ignore
         transaction.auth.authType,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
-      console.log('sigHashPreSign: ', sigHashPreSign)
-      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+      console.log('sigHashPreSign: ', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
       const key_t = Buffer.alloc(1)
       key_t.writeInt8(0x00)
@@ -810,7 +829,7 @@ describe('Standard', function () {
 
       // uses the provided privKey to derive a pubKey using stacks API
       // we expect the derived publicKey to be same as the ledger-app
-      const expectedPublicKey = publicKeyToString(pubKeyfromPrivKey(senderKey))
+      const expectedPublicKey = privateKeyToPublic(senderKey)
 
       expect(testPublicKey).toEqual('02' + expectedPublicKey.slice(2, 2 + 32 * 2))
 
@@ -834,11 +853,11 @@ describe('Standard', function () {
       //Verify signature
       const ec = new EC('secp256k1')
 
-      const len_buf = encode(msg.length)
+      const len_buf = encode(msg.length).buffer
       const header = Buffer.from('\x17Stacks Signed Message:\n', 'utf8')
       const msg_buf = Buffer.from(msg, 'utf8')
 
-      const arr = [header, len_buf, msg_buf]
+      const arr = [header, Buffer.from(len_buf), msg_buf]
       const data = Buffer.concat(arr)
 
       const msgHash = sha256(data)
@@ -914,7 +933,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`sign call_with_string_args`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const path = "m/44'/5757'/0'/0/0"
     try {
       await sim.start({ ...defaultOptions, model: m.name })
@@ -927,14 +946,13 @@ describe('Standard', function () {
       const devicePublicKey = pkResponse.publicKey.toString('hex')
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
-      const fee = new BN(10)
-      const nonce = new BN(0)
+      const fee = 10n
+      const nonce = 0n
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.pox'.split('.')
       const long_ascii_string =
         '%s{Lorem} ipsum dolor sit amet, consectetur adipiscing elit. Etiam quis bibendum mauris. Sed ac placerat ante. Donec sodales sapien id nulla convallis egestas'
       const txOptions = {
-        anchorMode: AnchorMode.Any,
-        contractAddress: contract_address,
+                contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
         functionArgs: [stringAsciiCV(long_ascii_string), uintCV(2), stringUtf8CV('Stacks balance, €: '), recipient],
@@ -945,7 +963,7 @@ describe('Standard', function () {
       }
 
       const transaction = await makeUnsignedContractCall(txOptions)
-      const serializeTx = transaction.serialize().toString('hex')
+      const serializeTx = transaction.serialize()
       console.log('serialized transaction length {}', serializeTx.length)
 
       const blob = Buffer.from(serializeTx, 'hex')
@@ -963,15 +981,15 @@ describe('Standard', function () {
 
       // compute postSignHash to verify signature
 
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
         // @ts-ignore
         transaction.auth.authType,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
-      console.log('sigHashPreSign: ', sigHashPreSign)
-      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+      console.log('sigHashPreSign: ', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
       const key_t = Buffer.alloc(1)
       key_t.writeInt8(0x00)
@@ -998,7 +1016,7 @@ describe('Standard', function () {
 
   test.concurrent.each(models)(`sign_contract_and_post_conditions`, async function (m) {
     const sim = new Zemu(m.path)
-    const network = new StacksTestnet()
+    const network = STACKS_TESTNET
     const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
     const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
     const path = "m/44'/5757'/0'/0/0"
@@ -1014,25 +1032,23 @@ describe('Standard', function () {
 
       const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
       const contract_principal = contractPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5', 'some-contract-name')
-      const fee = new BN(10)
-      const nonce = new BN(0)
+      const fee = 10n
+      const nonce = 0n
       const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
 
       const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
       const postConditionAddress2 = 'ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5'
       const postConditionAddress3 = 'ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5'
-      const postConditionCode = FungibleConditionCode.GreaterEqual
-      const postConditionAmount = new BN(1000000)
-      const postConditionAmount2 = new BN(1005020)
+      const postConditionAmount = 1000000n
+      const postConditionAmount2 = 1005020n
       const postConditions = [
-        makeStandardSTXPostCondition(postConditionAddress, postConditionCode, postConditionAmount),
-        makeStandardSTXPostCondition(postConditionAddress2, postConditionCode, postConditionAmount),
-        makeStandardSTXPostCondition(postConditionAddress3, postConditionCode, postConditionAmount2),
+        Pc.principal(postConditionAddress).willSendGte(postConditionAmount).ustx(),
+        Pc.principal(postConditionAddress2).willSendGte(postConditionAmount).ustx(),
+        Pc.principal(postConditionAddress3).willSendGte(postConditionAmount2).ustx(),
       ]
 
       const txOptions = {
-        anchorMode: AnchorMode.Any,
-        contractAddress: contract_address,
+                contractAddress: contract_address,
         contractName: contract_name,
         functionName: 'stack-stx',
         functionArgs: [
@@ -1053,7 +1069,7 @@ describe('Standard', function () {
       }
 
       const transaction = await makeUnsignedContractCall(txOptions)
-      const serializeTx = transaction.serialize().toString('hex')
+      const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
       const signatureRequest = app.sign(path, blob)
@@ -1070,15 +1086,15 @@ describe('Standard', function () {
 
       // compute postSignHash to verify signature
 
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
         // @ts-ignore
         transaction.auth.authType,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
-      console.log('sigHashPreSign: ', sigHashPreSign)
-      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+      console.log('sigHashPreSign: ', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
       const key_t = Buffer.alloc(1)
       key_t.writeInt8(0x00)
@@ -1106,7 +1122,7 @@ describe('Standard', function () {
   describe.each(SIP10_DATA)('SIP-10 tests', function (data) {
     test.concurrent.each(models)('sign_sip10_contract', async function (m) {
       const sim = new Zemu(m.path)
-      const network = new StacksTestnet()
+      const network = STACKS_TESTNET
       const senderKey = '2cefd4375fcb0b3c0935fcbc53a8cb7c7b9e0af0225581bbee006cf7b1aa0216'
       const my_key = '2e64805a5808a8a72df89b4b18d2451f8d5ab5224b4d8c7c36033aee4add3f27f'
       const path = "m/44'/5757'/0'/0/0"
@@ -1122,13 +1138,12 @@ describe('Standard', function () {
 
         const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
         const sender = standardPrincipalCV('SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE')
-        const fee = new BN(10)
-        const nonce = new BN(0)
+        const fee = 10n
+        const nonce = 0n
         const [contract_address, contract_name] = 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token'.split('.')
 
         let txOptions = {
-          anchorMode: AnchorMode.Any,
-          contractAddress: contract_address,
+                    contractAddress: contract_address,
           contractName: contract_name,
           functionName: 'transfer',
           functionArgs: [uintCV(20000), sender, recipient, someCV(stringAsciiCV('tx_memo'))],
@@ -1137,13 +1152,13 @@ describe('Standard', function () {
           nonce: nonce,
           publicKey: devicePublicKey,
           postConditions: data.postConditions ? [
-            makeStandardSTXPostCondition(data.postConditions[0].address, data.postConditions[0].code, data.postConditions[0].amount),
-            makeStandardSTXPostCondition(data.postConditions[1].address, data.postConditions[1].code, data.postConditions[1].amount),
+            createStxPostCondition(data.postConditions[0].address, data.postConditions[0].code, data.postConditions[0].amount),
+            createStxPostCondition(data.postConditions[1].address, data.postConditions[1].code, data.postConditions[1].amount),
           ] : [],
         }
 
         const transaction = await makeUnsignedContractCall(txOptions)
-        const serializeTx = transaction.serialize().toString('hex')
+        const serializeTx = transaction.serialize()
 
         const blob = Buffer.from(serializeTx, 'hex')
         const signatureRequest = app.sign(path, blob)
@@ -1160,15 +1175,15 @@ describe('Standard', function () {
 
         // compute postSignHash to verify signature
 
-        const sigHashPreSign = makeSigHashPreSign(
+        const txSigHashPreSign = sigHashPreSign(
           transaction.signBegin(),
           // @ts-ignore
           transaction.auth.authType,
           transaction.auth.spendingCondition?.fee,
           transaction.auth.spendingCondition?.nonce,
         )
-        console.log('sigHashPreSign: ', sigHashPreSign)
-        const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+        console.log('sigHashPreSign: ', txSigHashPreSign)
+        const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
         const key_t = Buffer.alloc(1)
         key_t.writeInt8(0x00)
@@ -1211,7 +1226,7 @@ describe('Standard', function () {
       const blob = Buffer.from(STANDARD_DEPLOYMENT, 'hex')
 
       // Deserialize transaction to compute signature hash
-      const bufferReader = new BufferReader(blob)
+      const bufferReader = new BytesReader(blob)
       const transaction = deserializeTransaction(bufferReader)
 
       const signatureRequest = app.sign(path, blob)
@@ -1228,15 +1243,15 @@ describe('Standard', function () {
       expect(signature.returnCode).toEqual(0x9000)
 
       // Verify signature
-      const sigHashPreSign = makeSigHashPreSign(
+      const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
         // @ts-ignore
         transaction.auth.authType,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
-      console.log('sigHashPreSign: ', sigHashPreSign)
-      const presig_hash = Buffer.from(sigHashPreSign, 'hex')
+      console.log('sigHashPreSign: ', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
 
       const key_t = Buffer.alloc(1)
       key_t.writeInt8(0x00)

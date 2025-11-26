@@ -289,7 +289,7 @@ export default class StacksApp {
   }
 
   async sign_msg(path: string, message: string) {
-    const len = encode(message.length);
+    const len = Buffer.from(encode(message.length).buffer);
     const stacks_message = '\x17Stacks Signed Message:\n';
     const blob = Buffer.concat([Buffer.from(stacks_message), len, Buffer.from(message)]);
     const ins = INS.SIGN_SECP256K1;
@@ -340,7 +340,6 @@ export default class StacksApp {
   }
 
   async sign_structured_msg(path: string, domain: string, message: string) {
-    const len = encode(message.length);
     const header = 'SIP018';
     const blob = Buffer.concat([Buffer.from(header), Buffer.from(domain, 'hex'), Buffer.from(message, 'hex')]);
     const ins = INS.SIGN_SECP256K1;

@@ -14,39 +14,33 @@
  *  limitations under the License.
  ******************************************************************************* */
 
-import Zemu, {DEFAULT_START_OPTIONS, DeviceModel} from '@zondax/zemu'
+import Zemu, {DEFAULT_START_OPTIONS, IDeviceModel} from '@zondax/zemu'
 import StacksApp from "@zondax/ledger-stacks";
 
 import {
   AddressVersion,
   createMessageSignature,
-  createStacksPrivateKey,
   createTransactionAuthField,
-  isCompressed,
-  makeSigHashPreSign,
+  sigHashPreSign,
   makeSTXTokenTransfer,
   makeUnsignedContractCall,
   makeUnsignedSTXTokenTransfer,
   PubKeyEncoding,
-  pubKeyfromPrivKey,
-  publicKeyToString,
+  privateKeyToPublic,
   standardPrincipalCV,
   TransactionSigner,
   uintCV,
 } from "@stacks/transactions";
-import {StacksTestnet} from "@stacks/network";
+import {STACKS_TESTNET} from "@stacks/network";
 import {ec as EC} from "elliptic";
-import {AnchorMode} from "@stacks/transactions/src/constants";
-//import {recoverPublicKey} from "noble-secp256k1";
 
-const BN = require("bn.js");
 const sha512_256 = require('js-sha512').sha512_256;
 
 const Resolve = require("path").resolve;
 const APP_PATH_S = Resolve('../app/output/app_s.elf')
 const APP_PATH_X = Resolve('../app/output/app_x.elf')
 
-const models: DeviceModel[] = [
+const models: IDeviceModel[] = [
   {name: 'nanos', prefix: 'S', path: APP_PATH_S},
   {name: 'nanox', prefix: 'X', path: APP_PATH_X}
 ];
@@ -80,7 +74,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-      await sim.compareSnapshotsAndAccept(".", "${m.prefix.toLowerCase()}-sign", 9);
+      await sim.compareSnapshotsAndApprove(".", "${m.prefix.toLowerCase()}-sign");
 
       const signature = await signatureRequest;
       console.log(signature);
@@ -106,7 +100,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-      await sim.compareSnapshotsAndAccept(".", "sign_stx_token_transfer_with_postcondition", 13);
+      await sim.compareSnapshotsAndApprove(".", "sign_stx_token_transfer_with_postcondition");
 
       const signature = await signatureRequest;
       console.log(signature);
@@ -131,7 +125,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-      await sim.compareSnapshotsAndAccept(".", "sign_sponsored_smart_contract_tx", 6);
+      await sim.compareSnapshotsAndApprove(".", "sign_sponsored_smart_contract_tx");
 
       const signature = await signatureRequest;
       console.log(signature);
@@ -155,7 +149,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot());
 
-      await sim.compareSnapshotsAndAccept(".", "sign_standard_smart_contract_tx", 6);
+      await sim.compareSnapshotsAndApprove(".", "sign_standard_smart_contract_tx");
 
       const signature = await signatureRequest;
       console.log("Signature: ");
@@ -181,7 +175,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-      await sim.compareSnapshotsAndAccept(".", "sign_sponsored_contract_call_tx", 9);
+      await sim.compareSnapshotsAndApprove(".", "sign_sponsored_contract_call_tx");
 
       const signature = await signatureRequest;
       console.log(signature);
@@ -206,7 +200,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-      await sim.compareSnapshotsAndAccept(".", "sign_contract_call_with_postcondition_tx", 14);
+      await sim.compareSnapshotsAndApprove(".", "sign_contract_call_with_postcondition_tx");
 
       const signature = await signatureRequest;
       console.log(signature);
@@ -233,7 +227,7 @@ describe.skip("Skipped", function () {
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000);
 
-      await sim.compareSnapshotsAndAccept(".", "sign_sponsored_contract_call_tx_with_7_postconditions", 37);
+      await sim.compareSnapshotsAndApprove(".", "sign_sponsored_contract_call_tx_with_7_postconditions");
 
       const signature = await signatureRequest;
       console.log(signature);

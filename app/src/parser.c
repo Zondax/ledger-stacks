@@ -26,11 +26,18 @@
 static zxerr_t parser_allocate();
 static zxerr_t parser_deallocate();
 
+#if defined(LEDGER_SPECIFIC)
+#define RIPEMD160_SIZE CX_RIPEMD160_SIZE
+#else
+#define RIPEMD160_SIZE 20
+#endif
+
 parser_tx_t parser_state;
 // This buffer will store parser_state.
 // Its size corresponds to ParsedObj (Rust struct), which is at maximum 456 bytes
 #define PARSER_BUFFER_SIZE 456
-static uint8_t parser_buffer[PARSER_BUFFER_SIZE];
+// Ensure 8-byte alignment for ARM64 and other 64-bit architectures
+static uint8_t parser_buffer[PARSER_BUFFER_SIZE] __attribute__((aligned(8)));
 
 parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t dataLen) {
     parser_state.state = NULL;
@@ -49,15 +56,20 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
     return err;
 }
 
-#if defined(LEDGER_SPECIFIC)
 parser_error_t parser_validate(const parser_context_t *ctx) {
-    uint8_t pubKeyHash[CX_RIPEMD160_SIZE] = {0};
+    uint8_t pubKeyHash[RIPEMD160_SIZE] = {0};
 
-    crypto_extractPublicKeyHash(pubKeyHash, CX_RIPEMD160_SIZE);
+#if defined(LEDGER_SPECIFIC)
+    crypto_extractPublicKeyHash(pubKeyHash, RIPEMD160_SIZE);
+#elif defined(ENABLE_FUZZING)
+    for (uint8_t i = 0; i < RIPEMD160_SIZE; i++) {
+        pubKeyHash[i] = (ctx->buffer != NULL && ctx->bufferLen > 0) ? ctx->buffer[i % ctx->bufferLen] ^ i : i;
+    }
+#endif
 
     // Checks if the data being processed is a transaction and if so, verify this device is allowed to sign this transaction
     if (parser_get_transaction_type() == Transaction) {
-        if (_check_pubkey_hash(&parser_state, pubKeyHash, CX_RIPEMD160_SIZE) != parser_ok) {
+        if (_check_pubkey_hash(&parser_state, pubKeyHash, RIPEMD160_SIZE) != parser_ok) {
             return parser_invalid_auth_type;
         }
     }
@@ -75,7 +87,6 @@ parser_error_t parser_validate(const parser_context_t *ctx) {
 
     return parser_ok;
 }
-#endif
 
 parser_error_t parser_getNumItems(const parser_context_t *ctx, uint8_t *num_items) {
     return _getNumItems(ctx, &parser_state, num_items);
@@ -150,7 +161,7 @@ zxerr_t parser_structured_msg_hash(uint8_t *out, uint16_t out_len) {
 
 zxerr_t parser_allocate() {
     if (parser_state.len % 4 != 0) {
-        parser_state.len += parser_state.len % 4;
+        parser_state.len += 4 - (parser_state.len % 4);
     }
     if (parser_state.len > PARSER_BUFFER_SIZE) {
         return zxerr_buffer_too_small;
