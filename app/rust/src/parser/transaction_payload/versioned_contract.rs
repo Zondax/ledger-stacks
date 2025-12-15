@@ -28,7 +28,7 @@ impl<'a> VersionedSmartContract<'a> {
         // clarity version
         // len prefixed contract name
         // len prefixed contract code
-        let parse_tag = alt((tag(&[0x01]), tag(&[0x02])));
+        let parse_tag = alt((tag(&[0x01]), tag(&[0x02]), tag(&[0x03]), tag(&[0x04])));
         let parse_length_1_byte = map(be_u8, |length| std::cmp::min(length, 128u8) as usize);
         let parse_length_4_bytes = flat_map(be_u32, take);
 

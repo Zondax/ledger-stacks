@@ -313,7 +313,26 @@ pub enum Index {
 impl<'a> MultisigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
-        // Advance to the end of auth fields
+        // First, read number of auth fields
+        let (mut remaining, num_fields) = be_u32(bytes)?;
+
+        // For unsigned multisig transactions, num_fields may be 0
+        // In that case, we skip parsing auth fields
+        if num_fields == 0 {
+            // auth_fields_raw is just the 4 bytes of num_fields count
+            let (_, auth_fields_raw) = take(4usize)(bytes)?;
+            // Get # of sigs required to sign tx
+            let (remaining, signatures_required) = be_u16(remaining)?;
+            return Ok((
+                remaining,
+                Self {
+                    auth_fields_raw,
+                    signatures_required,
+                },
+            ));
+        }
+
+        // Advance to the end of auth fields by parsing the last one
         let (end, _) = Self::field_from_bytes(bytes, Index::FromLast(0))?;
 
         // Keep reference to auth fields as entire section as raw, unparsed slice
