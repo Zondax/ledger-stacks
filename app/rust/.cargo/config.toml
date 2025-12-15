@@ -6,11 +6,11 @@ rustflags = [
 	"-C", "relocation-model=ropi",
     "-C", "link-arg=-nostartfiles",
     "-C", "link-arg=-Tlink.ld",
-    "-C", "llvm-args=--inline-threshold=0",
-    "-C", "panic=abort"
+    "-C", "llvm-args=--inline-threshold=0"
 ]
 [unstable]
 build-std=["core"]
+build-std-features=["panic_immediate_abort"]
 
 [target.'cfg(target_os = "linux")']
 rustflags = [
