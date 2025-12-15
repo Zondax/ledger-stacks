@@ -314,7 +314,7 @@ impl<'a> MultisigSpendingCondition<'a> {
     #[inline(never)]
     pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&'a [u8], Self, ParserError> {
         // First, read number of auth fields
-        let (mut remaining, num_fields) = be_u32(bytes)?;
+        let (remaining, num_fields) = be_u32(bytes)?;
 
         // For unsigned multisig transactions, num_fields may be 0
         // In that case, we skip parsing auth fields
