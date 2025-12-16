@@ -338,7 +338,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen) {
     SHA512_256_starts(&ctx);
 
     const uint8_t *data = tx_get_buffer() + CRYPTO_BLOB_SKIP_BYTES;
-    const uint16_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
+    const uint32_t data_len = tx_get_buffer_length() - CRYPTO_BLOB_SKIP_BYTES;
 
     switch (tx_typ) {
         case Transaction: {
@@ -352,7 +352,7 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen) {
             uint8_t *last_block = NULL;
             uint8_t **last_block_ptr = &last_block;
 
-            uint16_t last_block_len = tx_last_tx_block(last_block_ptr);
+            uint32_t last_block_len = tx_last_tx_block(last_block_ptr);
             if (last_block == NULL || last_block_len == 0) {
                 return zxerr_no_data;
             }

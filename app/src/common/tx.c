@@ -141,7 +141,7 @@ uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen) {
     return parser_presig_hash_data(buf, bufLen);
 }
 
-uint16_t tx_last_tx_block(uint8_t **last_tx_block) {
+uint32_t tx_last_tx_block(uint8_t **last_tx_block) {
     return parser_last_transaction_block(last_tx_block);
 }
 

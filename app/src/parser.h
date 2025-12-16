@@ -56,8 +56,9 @@ uint8_t parser_tx_nonce(uint8_t *nonce, uint16_t nonce_len);
 uint16_t parser_presig_hash_data(uint8_t *buf, uint16_t bufLen);
 
 // When signing the full transaction, The transaction hash has to be done in blocks.
-// this function returns a pointer to the last transaction block and its lenght
-uint16_t parser_last_transaction_block(uint8_t **last_block);
+// this function returns a pointer to the last transaction block and its length
+// Note: uint32_t is required to support large contracts (> 64KB)
+uint32_t parser_last_transaction_block(uint8_t **last_block);
 
 // Returns 1 if the transaction is multisig, 0 otherwise
 int8_t parser_is_transaction_multisig();

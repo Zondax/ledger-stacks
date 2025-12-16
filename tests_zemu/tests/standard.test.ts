@@ -29,6 +29,7 @@ import {
   sigHashPreSign,
   makeSTXTokenTransfer,
   makeUnsignedContractCall,
+  makeUnsignedContractDeploy,
   makeUnsignedSTXTokenTransfer,
   privateKeyToPublic,
   createStacksPublicKey,
@@ -1308,6 +1309,328 @@ describe('Standard', function () {
       The makeSigHashPreSign function computes a different presig_hash than what the device computes for such large contracts, causing the postSignHash verification to fail.
       The signature for contract deployments is already verified in the test above (sign_standard_smart_contract)
       */
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // Test for multisig 1/1 smart contract deployment
+  // This test addresses the issue where deploying contracts via Ledger multisig
+  // results in "SignatureValidation" error: "Signer hash does not equal hash of public key(s)"
+  test.concurrent.each(models)('sign multisig 1/1 smart contract deployment', async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      // Get pubkey from device
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      console.log(pkResponse)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+      console.log('Device public key:', devicePublicKey)
+
+      // Simple test contract for deployment
+      const contractCode = `
+;; Simple test contract for multisig deployment
+(define-data-var counter uint u0)
+
+(define-public (increment)
+  (begin
+    (var-set counter (+ (var-get counter) u1))
+    (ok (var-get counter))))
+
+(define-read-only (get-counter)
+  (ok (var-get counter)))
+`
+
+      const fee = 10000n
+      const nonce = 0n
+
+      // Create multisig 1/1 contract deploy transaction
+      const txOptions = {
+        contractName: 'test-multisig-contract',
+        codeBody: contractCode,
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        numSignatures: 1,
+        publicKeys: [devicePublicKey],
+        clarityVersion: 4,
+      }
+
+      const transaction = await makeUnsignedContractDeploy(txOptions)
+      const serializeTx = transaction.serialize()
+      console.log('Serialized transaction length:', serializeTx.length)
+
+      const blob = Buffer.from(serializeTx, 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      // Wait until we are not in the main menu
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_contract_deploy`)
+
+      const signature = await signatureRequest
+      console.log('Signature:', signature)
+
+      expect(signature.returnCode).toEqual(0x9000)
+      expect(signature.signatureCompact).toBeDefined()
+      expect(signature.signatureDER).toBeDefined()
+      expect(signature.postSignHash).toBeDefined()
+
+      console.log('ledger-postSignHash:', signature.postSignHash.toString('hex'))
+      console.log('ledger-compact:', signature.signatureCompact.toString('hex'))
+      console.log('ledger-vrs:', signature.signatureVRS.toString('hex'))
+      console.log('ledger-DER:', signature.signatureDER.toString('hex'))
+
+      // Compute and verify signature
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      console.log('sigHashPreSign:', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+
+      const key_t = Buffer.alloc(1)
+      key_t.writeInt8(0x00)
+
+      const array = [presig_hash, key_t, signature.signatureVRS]
+      const to_hash = Buffer.concat(array)
+      const hash = sha512_256(to_hash)
+      console.log('computed postSignHash:', hash.toString('hex'))
+
+      // Compare hashes
+      expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
+
+      // Verify signature cryptographically
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+
+      // Add signature to transaction for verification
+      // @ts-ignore
+      transaction.auth.spendingCondition.fields[0] = createTransactionAuthField(PubKeyEncoding.Compressed, {
+        data: signature.signatureVRS.toString('hex'),
+        type: StacksWireType.MessageSignature,
+      })
+
+      // Serialize final transaction
+      const txBytes = transaction.serialize()
+      console.log('Final signed transaction hex:', txBytes)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // Test for multisig 1/1 LARGE contract deployment (~80KB)
+  // This test reproduces the exact error reported: "Signer hash does not equal hash of public key(s)"
+  // The issue only occurs with large contracts that require many APDU chunks
+  // Skip NanoS due to memory restrictions
+  test.concurrent.each(models.filter((m) => m.name !== 'nanos'))('sign multisig 1/1 LARGE contract deployment (~80KB)', async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+
+    // Generate a large contract (~80KB) to reproduce the issue
+    function generateLargeContract(targetSizeKB: number = 80): string {
+      const targetSize = targetSizeKB * 1024
+
+      let contract = `;; Large test contract for multisig deployment (~${targetSizeKB}KB)
+;; This simulates a complex DeFi contract similar to dlmm-core
+
+;; Error constants
+(define-constant ERR-NOT-AUTHORIZED (err u1001))
+(define-constant ERR-INVALID-AMOUNT (err u1002))
+(define-constant ERR-INSUFFICIENT-BALANCE (err u1003))
+
+;; Data variables
+(define-data-var contract-owner principal tx-sender)
+(define-data-var total-value-locked uint u0)
+(define-data-var protocol-fee-rate uint u30)
+(define-data-var is-paused bool false)
+
+;; Data maps
+(define-map user-balances principal uint)
+(define-map pool-reserves { pool-id: uint } { reserve-x: uint, reserve-y: uint })
+
+;; Read-only functions
+(define-read-only (get-owner)
+  (ok (var-get contract-owner)))
+
+(define-read-only (get-tvl)
+  (ok (var-get total-value-locked)))
+
+`
+
+      // Add many functions to reach target size
+      let fnIndex = 0
+      while (contract.length < targetSize) {
+        const fnType = fnIndex % 3
+
+        if (fnType === 0) {
+          contract += `
+(define-read-only (get-pool-data-${fnIndex.toString().padStart(4, '0')} (pool-id uint))
+  (let (
+    (reserves (default-to { reserve-x: u0, reserve-y: u0 } (map-get? pool-reserves { pool-id: pool-id })))
+    (fee-rate (var-get protocol-fee-rate))
+  )
+  (ok {
+    reserve-x: (get reserve-x reserves),
+    reserve-y: (get reserve-y reserves),
+    fee: fee-rate,
+    pool-id: pool-id
+  })))
+
+`
+        } else if (fnType === 1) {
+          contract += `
+(define-public (update-position-${fnIndex.toString().padStart(4, '0')} (pool-id uint) (amount uint))
+  (let (
+    (sender tx-sender)
+    (current-balance (default-to u0 (map-get? user-balances sender)))
+    (pool-data (default-to { reserve-x: u0, reserve-y: u0 } (map-get? pool-reserves { pool-id: pool-id })))
+  )
+  (asserts! (not (var-get is-paused)) ERR-NOT-AUTHORIZED)
+  (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+  (asserts! (>= current-balance amount) ERR-INSUFFICIENT-BALANCE)
+  (map-set user-balances sender (- current-balance amount))
+  (map-set pool-reserves { pool-id: pool-id }
+    { reserve-x: (+ (get reserve-x pool-data) amount), reserve-y: (get reserve-y pool-data) })
+  (ok true)))
+
+`
+        } else {
+          contract += `
+(define-read-only (calculate-swap-${fnIndex.toString().padStart(4, '0')} (pool-id uint) (amount-in uint) (is-x-to-y bool))
+  (let (
+    (pool-data (default-to { reserve-x: u0, reserve-y: u0 } (map-get? pool-reserves { pool-id: pool-id })))
+    (reserve-in (if is-x-to-y (get reserve-x pool-data) (get reserve-y pool-data)))
+    (reserve-out (if is-x-to-y (get reserve-y pool-data) (get reserve-x pool-data)))
+    (fee-rate (var-get protocol-fee-rate))
+    (amount-with-fee (/ (* amount-in (- u10000 fee-rate)) u10000))
+  )
+  (ok {
+    amount-out: (/ (* amount-with-fee reserve-out) (+ reserve-in amount-with-fee)),
+    fee-amount: (- amount-in amount-with-fee)
+  })))
+
+`
+        }
+        fnIndex++
+      }
+
+      return contract
+    }
+
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      // Get pubkey from device
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      console.log(pkResponse)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+      console.log('Device public key:', devicePublicKey)
+
+      // Generate large contract (~80KB)
+      const contractCode = generateLargeContract(80)
+      console.log('Contract code size:', contractCode.length, 'bytes (~', (contractCode.length / 1024).toFixed(2), 'KB)')
+
+      const fee = 10000n
+      const nonce = 0n
+
+      // Create multisig 1/1 contract deploy transaction
+      const txOptions = {
+        contractName: 'large-multisig-contract',
+        codeBody: contractCode,
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        numSignatures: 1,
+        publicKeys: [devicePublicKey],
+        clarityVersion: 4,
+      }
+
+      const transaction = await makeUnsignedContractDeploy(txOptions)
+      const serializeTx = transaction.serialize()
+      console.log('Serialized transaction length:', serializeTx.length, 'chars (~', (serializeTx.length / 2 / 1024).toFixed(2), 'KB)')
+
+      const blob = Buffer.from(serializeTx, 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      // Wait until we are not in the main menu
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_large_contract_deploy`)
+
+      const signature = await signatureRequest
+      console.log('Signature:', signature)
+
+      expect(signature.returnCode).toEqual(0x9000)
+      expect(signature.signatureCompact).toBeDefined()
+      expect(signature.signatureDER).toBeDefined()
+      expect(signature.postSignHash).toBeDefined()
+
+      console.log('ledger-postSignHash:', signature.postSignHash.toString('hex'))
+      console.log('ledger-compact:', signature.signatureCompact.toString('hex'))
+      console.log('ledger-vrs:', signature.signatureVRS.toString('hex'))
+      console.log('ledger-DER:', signature.signatureDER.toString('hex'))
+
+      // Compute expected postSignHash
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      console.log('JS sigHashPreSign:', txSigHashPreSign)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+
+      const key_t = Buffer.alloc(1)
+      key_t.writeInt8(0x00)
+
+      const array = [presig_hash, key_t, signature.signatureVRS]
+      const to_hash = Buffer.concat(array)
+      const hash = sha512_256(to_hash)
+      console.log('JS computed postSignHash:', hash.toString('hex'))
+      console.log('Device postSignHash:', signature.postSignHash.toString('hex'))
+
+      // THIS IS THE CRITICAL CHECK - for large contracts, these should match
+      // If they don't match, the broadcast will fail with "Signer hash does not equal hash of public key(s)"
+      expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
+
+      // Verify signature cryptographically
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+
+      // Add signature to transaction
+      // @ts-ignore
+      transaction.auth.spendingCondition.fields[0] = createTransactionAuthField(PubKeyEncoding.Compressed, {
+        data: signature.signatureVRS.toString('hex'),
+        type: StacksWireType.MessageSignature,
+      })
+
+      // Serialize final transaction
+      const txBytes = transaction.serialize()
+      console.log('Final signed transaction length:', txBytes.length, 'chars')
     } finally {
       await sim.close()
     }
