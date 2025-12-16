@@ -18,6 +18,7 @@
 
 #include "coin.h"
 #include "cx_errors.h"
+#include "os_seed.h"
 #include "rslib.h"
 #include "sha512.h"
 #include "zxformat.h"
@@ -257,28 +258,17 @@ catch_cx_error:
     return zxerr;
 }
 
-/* TODO: Implement once the Ledger SDK provides an API to derive the Master Key.
 zxerr_t crypto_getMasterFingerprint(uint8_t *fingerprint, uint16_t fingerprintLen) {
     if (fingerprint == NULL || fingerprintLen < FINGERPRINT_LEN) {
         return zxerr_buffer_too_small;
     }
 
-    // Derive master public key (empty path)
-    uint8_t masterPubKey[PK_LEN_SECP256K1];
-    uint32_t emptyPath[] = {0};  // Empty BIP32 path for master key
-    zxerr_t error = crypto_extractPublicKey(emptyPath, 0, masterPubKey, sizeof(masterPubKey));
-    if (error != zxerr_ok) {
-        return error;
-    }
+    uint8_t master_key_identifier[CX_RIPEMD160_SIZE] = {0};
 
-    uint8_t hash_sha256[CX_SHA256_SIZE];
-    cx_hash_sha256(masterPubKey, PK_LEN_SECP256K1, hash_sha256, CX_SHA256_SIZE);
-    uint8_t hash_ripe[CX_RIPEMD160_SIZE];
-    if (!ripemd160(hash_sha256, CX_SHA256_SIZE, hash_ripe)) {
+    if (os_perso_get_master_key_identifier(master_key_identifier, CX_RIPEMD160_SIZE) != CX_OK) {
         return zxerr_unknown;
     }
 
-    MEMCPY(fingerprint, hash_ripe, FINGERPRINT_LEN);
+    MEMCPY(fingerprint, master_key_identifier, FINGERPRINT_LEN);
     return zxerr_ok;
 }
-*/
