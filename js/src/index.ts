@@ -16,7 +16,7 @@
  ******************************************************************************* */
 import Transport from '@ledgerhq/hw-transport';
 import { serializePath } from './helper';
-import { ResponseAddress, ResponseAppInfo, /* ResponseMasterFingerprint, */ ResponseSign, ResponseVersion } from './types';
+import { ResponseAddress, ResponseAppInfo, ResponseMasterFingerprint, ResponseSign, ResponseVersion } from './types';
 import {
   CHUNK_SIZE,
   CLA,
@@ -156,7 +156,6 @@ export default class StacksApp {
       .then(processGetAddrResponse, processErrorResponse);
   }
 
-  /*
   async getMasterFingerprint(): Promise<ResponseMasterFingerprint> {
     return this.transport
       .send(CLA, INS.GET_MASTER_FINGERPRINT, 0, 0, Buffer.alloc(0), [LedgerError.NoErrors])
@@ -181,7 +180,6 @@ export default class StacksApp {
         };
       }, processErrorResponse);
   }
-  */
 
   async showAddressAndPubKey(path: string, version: AddressVersion): Promise<ResponseAddress> {
     const serializedPath = serializePath(path);
