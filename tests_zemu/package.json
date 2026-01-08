@@ -6,7 +6,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest --testPathIgnorePatterns='dev.*|testvectors.*|btc.*'",
+    "test": "jest --testPathIgnorePatterns='dev.*|testvectors.*|btc.*' --maxConcurrency 2",
     "test_dev": "jest",
     "try": "node try.mjs",
     "debug": "node debug/debug.mjs debug"
