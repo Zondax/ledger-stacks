@@ -441,7 +441,14 @@ impl<'a> Transaction<'a> {
         if self.transaction_auth.is_standard_auth() {
             return TransactionAuthFlags::Standard;
         }
-        TransactionAuthFlags::Sponsored
+        // For sponsored transactions, the auth_flag used in the presig_hash
+        // depends on who is signing:
+        // - Origin signer uses Standard (0x04)
+        // - Sponsor signer uses Sponsored (0x05)
+        match self.signer {
+            SignerId::Origin => TransactionAuthFlags::Standard,
+            _ => TransactionAuthFlags::Sponsored,
+        }
     }
 
     /// Checks if we can sign this transaction.
