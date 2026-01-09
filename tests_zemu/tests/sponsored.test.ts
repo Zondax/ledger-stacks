@@ -16,10 +16,11 @@
 
 import Zemu, { DEFAULT_START_OPTIONS } from '@zondax/zemu'
 import StacksApp from '@zondax/ledger-stacks'
-import { APP_SEED, models } from './common'
+import { APP_SEED, models, SIGNATURE_TEST_CASES } from './common'
 
 import {
   AddressVersion,
+  AuthType,
   makeUnsignedContractCall,
   makeUnsignedContractDeploy,
   sigHashPreSign,
@@ -86,10 +87,10 @@ describe('Sponsored', function () {
       expect(signature.returnCode).toEqual(0x9000)
 
       // Verify signature
+      // For sponsored transactions, origin signer uses AuthType.Standard (0x04)
       const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
-        // @ts-ignore
-        transaction.auth.authType,
+        AuthType.Standard,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
@@ -156,10 +157,10 @@ describe('Sponsored', function () {
       expect(signature.returnCode).toEqual(0x9000)
 
       // Verify signature
+      // For sponsored transactions, origin signer uses AuthType.Standard (0x04)
       const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
-        // @ts-ignore
-        transaction.auth.authType,
+        AuthType.Standard,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
@@ -237,10 +238,10 @@ describe('Sponsored', function () {
       expect(signature.returnCode).toEqual(0x9000)
 
       // Verify signature
+      // For sponsored transactions, origin signer uses AuthType.Standard (0x04)
       const txSigHashPreSign = sigHashPreSign(
         transaction.signBegin(),
-        // @ts-ignore
-        transaction.auth.authType,
+        AuthType.Standard,
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
@@ -265,5 +266,33 @@ describe('Sponsored', function () {
     } finally {
       await sim.close()
     }
+  })
+
+  SIGNATURE_TEST_CASES.forEach((testCase) => {
+    test.concurrent.each(models)(testCase.name, async function (m) {
+      const sim = new Zemu(m.path)
+      const path = "m/44'/5757'/0'/0/0"
+
+      try {
+        await sim.start({ ...defaultOptions, model: m.name })
+        const app = new StacksApp(sim.getTransport())
+
+        const signatureRequest = app.sign(path, testCase.blob)
+
+        // Wait until we are not in the main menu
+        await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot(), 20000)
+
+        await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-${testCase.name.replace(/-/g, '_')}`)
+
+        const signature = await signatureRequest
+        console.log(signature)
+        console.log('signatureVRS hex:', signature.signatureVRS.toString('hex'))
+
+        expect(signature.returnCode).toEqual(0x9000)
+        expect(signature.signatureVRS.toString('hex')).toEqual(testCase.expectedSignatureVRS)
+      } finally {
+        await sim.close()
+      }
+    })
   })
 })
