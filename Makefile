@@ -14,8 +14,8 @@
 #*  limitations under the License.
 #********************************************************************************
 
-TESTS_JS_PACKAGE = "@zondax/ledger-stacks"
-TESTS_JS_DIR = $(CURDIR)/js
+# TESTS_JS_PACKAGE = "@zondax/ledger-stacks"
+# TESTS_JS_DIR = $(CURDIR)/js
 
 ifeq ($(BOLOS_SDK),)
 # In this case, there is not predefined SDK and we run dockerized
