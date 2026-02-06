@@ -38,7 +38,7 @@ pub struct Header<'a> {
     alg: &'a str,
 }
 
-impl<'a> Header<'a> {
+impl Header<'_> {
     fn is_valid(&self) -> bool {
         // "JWT"
         let typ = [b'J', b'W', b'T'];

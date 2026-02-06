@@ -98,7 +98,7 @@ where
             contract_address,
             token_symbol,
             decimals: c_token_info.decimals,
-            post_condition_code: post_condition_code,
+            post_condition_code,
         })
     }
 }
