@@ -45,6 +45,6 @@ pub fn sha256(data: &[u8], out: &mut [u8]) -> Result<(), OutputTooSmall> {
     if out.len() != digest.len() {
         return Err(OutputTooSmall);
     }
-    out.copy_from_slice(digest.as_slice());
+    out.copy_from_slice(digest.as_ref());
     Ok(())
 }

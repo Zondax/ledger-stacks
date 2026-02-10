@@ -18,7 +18,6 @@ use super::error::ParserError;
 use super::parser_common::{AssetInfo, C32_ENCODED_ADDRS_LENGTH, STX_DECIMALS, TX_DEPTH_LIMIT};
 use crate::zxformat;
 use crate::{bolos::c_zemu_log_stack, parser::value::Value};
-use lexical_core::Number;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -191,10 +190,10 @@ impl<'a> TransactionPostCondition<'a> {
         Some(output)
     }
 
-    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; u64::FORMATTED_SIZE_DECIMAL]>> {
+    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::U64_FORMATTED_SIZE_DECIMAL]>> {
         let amount = self.amount_stx()?;
 
-        let mut output = ArrayVec::from([0u8; u64::FORMATTED_SIZE_DECIMAL]);
+        let mut output = ArrayVec::from([0u8; zxformat::U64_FORMATTED_SIZE_DECIMAL]);
         let len = zxformat::fpu64_to_str(output.as_mut(), amount, STX_DECIMALS).ok()? as usize;
         unsafe {
             output.set_len(len);

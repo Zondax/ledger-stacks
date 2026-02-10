@@ -4,11 +4,13 @@ use core::fmt::{self, Write};
 
 use crate::parser::ParserError;
 use arrayvec::ArrayVec;
-use lexical_core::Number;
 use numtoa::NumToA;
 
 pub const MAX_STR_BUFF_LEN: usize = 30;
 pub const MAX_U128_FORMATTED_SIZE_DECIMAL: usize = 50;
+
+/// Maximum number of digits in a u64 decimal representation (u64::MAX = 18446744073709551615, 20 digits).
+pub const U64_FORMATTED_SIZE_DECIMAL: usize = 20;
 
 pub struct Writer<'a> {
     buf: &'a mut [u8],
@@ -44,7 +46,7 @@ macro_rules! num_to_str {
     // but lets do it later.
     ($int_type:ty, $_name: ident) => {
         pub fn $_name(output: &mut [u8], number: $int_type) -> Result<&mut [u8], ParserError> {
-            if output.len() < <$int_type>::FORMATTED_SIZE_DECIMAL {
+            if output.len() < U64_FORMATTED_SIZE_DECIMAL {
                 return Err(ParserError::UnexpectedBufferEnd);
             }
 
@@ -96,7 +98,7 @@ num_to_str!(i64, i64_to_str);
 pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, ParserError> {
     #[cfg(any(test, feature = "fuzzing"))]
     {
-        let mut temp = [0u8; u64::FORMATTED_SIZE_DECIMAL];
+        let mut temp = [0u8; U64_FORMATTED_SIZE_DECIMAL];
         let value = u64_to_str(temp.as_mut(), value)?;
         fpstr_to_str(out, value, decimals)
     }
@@ -295,7 +297,7 @@ mod test {
 
     #[test]
     fn test_u64_to_str() {
-        let mut output = [0u8; u64::FORMATTED_SIZE_DECIMAL];
+        let mut output = [0u8; U64_FORMATTED_SIZE_DECIMAL];
         let value = u64_to_str(output.as_mut(), 125_550).unwrap();
         std::println!("value: {}", core::str::from_utf8(value).unwrap());
         assert_eq!(&value, b"125550");
