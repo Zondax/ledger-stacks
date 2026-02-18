@@ -50,7 +50,7 @@ impl<'a> Message<'a> {
 pub struct ByteString<'a>(&'a [u8]);
 
 #[cfg(test)]
-impl<'a> core::fmt::Debug for ByteString<'a> {
+impl core::fmt::Debug for ByteString<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "ByteString(\"")?;
         for byte in self.0 {

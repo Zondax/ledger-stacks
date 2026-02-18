@@ -168,7 +168,7 @@ pub unsafe extern "C" fn _presig_hash_data(
 pub unsafe extern "C" fn _last_block_ptr(
     tx_t: *const parse_tx_t,
     block_ptr: *mut *const u8,
-) -> u16 {
+) -> u32 {
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         let block = tx.last_transaction_block();
 

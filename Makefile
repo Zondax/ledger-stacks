@@ -14,8 +14,8 @@
 #*  limitations under the License.
 #********************************************************************************
 
-TESTS_JS_PACKAGE = "@zondax/ledger-stacks"
-TESTS_JS_DIR = $(CURDIR)/js
+# TESTS_JS_PACKAGE = "@zondax/ledger-stacks"
+# TESTS_JS_DIR = $(CURDIR)/js
 
 ifeq ($(BOLOS_SDK),)
 # In this case, there is not predefined SDK and we run dockerized
@@ -43,10 +43,3 @@ test_all:
 
 prod:
 	make PRODUCTION_BUILD=1
-
-rust_fuzz:
-	cd app/hfuzz-parser/corpus/ && cargo run
-	cd app/hfuzz-parser/ && RUSTFLAGS="--cfg fuzzing_build" cargo hfuzz run transaction app/hfuzz_corpus
-
-
-

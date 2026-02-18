@@ -243,6 +243,8 @@ Data is defined as:
 
 ### INS_GET_MASTER_KEY_FINGERPRINT
 
+Returns the BIP32 master key fingerprint (first 4 bytes of RIPEMD160(SHA256(master_public_key))).
+
 #### Command
 
 | Field | Type     | Content                | Expected |
@@ -255,14 +257,13 @@ Data is defined as:
 
 #### Response
 
-| Field       | Type     | Content                | Note                     |
-| ----------- | -------- | ---------------------- | ------------------------ |
-| FINGERPRINT | byte (4) | Master Key Fingerprint | 4-byte fingerprint       |
-| SW1-SW2     | byte (2) | Return code            | see list of return codes |
+| Field       | Type     | Content                   | Note                     |
+| ----------- | -------- | ------------------------- | ------------------------ |
+| FINGERPRINT | byte (4) | Master key fingerprint    | BIP32 fingerprint        |
+| SW1-SW2     | byte (2) | Return code               | see list of return codes |
 
 #### Notes
 
-- The CLA (0x09) is specific to this application.
-- The INS (0x06) identifies this as a GET_MASTER_KEY_FINGERPRINT operation.
-- No payload is required for this command.
-- The fingerprint is calculated as the first 4 bytes of the RIPEMD160(SHA256(master_public_key)).
+- The fingerprint is calculated as: first 4 bytes of RIPEMD160(SHA256(master_public_key))
+- This follows the BIP32 standard for key fingerprints
+- Requires PIN to be validated before execution

@@ -138,8 +138,8 @@ describe.each(models)('StructuredData', function (m) {
       await sim.start({ ...defaultOptions, model: m.name })
       const app = new StacksApp(sim.getTransport())
 
-      const domain_serialized = serializeCV(DOMAIN).toString('hex')
-      const msg_serialized = serializeCV(op).toString('hex')
+      const domain_serialized = serializeCV(DOMAIN)
+      const msg_serialized = serializeCV(op)
 
       const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.MainnetSingleSig)
 

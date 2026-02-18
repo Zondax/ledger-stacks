@@ -11,6 +11,11 @@ use super::{ClarityName, ContractPrincipal, ParserError, StandardPrincipal};
 
 // Big ints size in bytes
 pub const BIG_INT_SIZE: usize = core::mem::size_of::<u128>();
+
+// Maximum number of items allowed in a list or tuple to prevent DoS attacks
+// via excessively long parsing loops
+pub const MAX_LIST_ITEMS: u32 = 256;
+pub const MAX_TUPLE_PAIRS: u32 = 256;
 mod int;
 mod string;
 mod tuple;
@@ -182,6 +187,12 @@ impl<'a> Value<'a> {
         Self::check_recursion_limit::<MAX_DEPTH>(*depth)?;
 
         let (rem, num_pairs) = be_u32(bytes)?;
+
+        // Limit the number of tuple pairs to prevent DoS via long parsing loops
+        if num_pairs > MAX_TUPLE_PAIRS {
+            return Err(ParserError::ValueOutOfRange.into());
+        }
+
         let mut len = 0;
         let mut remain: &[u8] = rem;
 
@@ -219,6 +230,11 @@ impl<'a> Value<'a> {
 
         // Read the number of items this list contains
         let (rem, num_items) = be_u32(bytes)?;
+
+        // Limit the number of list items to prevent DoS via long parsing loops
+        if num_items > MAX_LIST_ITEMS {
+            return Err(ParserError::ValueOutOfRange.into());
+        }
 
         let mut len = 0;
         let mut remain: &[u8] = rem;

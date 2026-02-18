@@ -80,8 +80,9 @@ uint8_t tx_nonce(uint8_t *nonce, uint16_t nonce_len);
 // Writes in buf, the auth fields used for the initial transaction hash
 uint16_t tx_presig_hash_data(uint8_t *buf, uint16_t bufLen);
 
-// Gets a pointer to the last block in the transaction and returns its lenght
-uint16_t tx_last_tx_block(uint8_t **last_tx_block);
+// Gets a pointer to the last block in the transaction and returns its length
+// Note: uint32_t is required to support large contracts (> 64KB)
+uint32_t tx_last_tx_block(uint8_t **last_tx_block);
 
 // Gets the pointer to the previous signer signature and required data
 // for signing a multisig transaction

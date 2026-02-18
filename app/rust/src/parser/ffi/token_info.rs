@@ -1,4 +1,3 @@
-use core::ffi::CStr;
 use crate::parser::post_conditions::FungibleConditionCode;
 
 pub const CONTRACT_ADDR_STR_MAX_LEN: usize = 100;
@@ -80,6 +79,8 @@ where
     name_null_term[..name_bytes.len()].copy_from_slice(name_bytes);
 
     unsafe {
+        use core::ffi::CStr;
+
         let c_token_info_ptr = get_token(addr_null_term.as_ptr(), name_null_term.as_ptr());
         if c_token_info_ptr.is_null() {
             return None;
@@ -98,7 +99,7 @@ where
             contract_address,
             token_symbol,
             decimals: c_token_info.decimals,
-            post_condition_code: post_condition_code,
+            post_condition_code,
         })
     }
 }

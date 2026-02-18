@@ -171,7 +171,8 @@ impl<'a> TransactionAuth<'a> {
             Self::Standard(ref origin) => origin.init_sighash(buf),
             Self::Sponsored(ref origin, _) => {
                 let len = origin.init_sighash(buf)?;
-                TransactionAuth::write_sponsor_sentinel(&mut buf[len..])
+                let sentinel_len = TransactionAuth::write_sponsor_sentinel(&mut buf[len..])?;
+                Ok(len + sentinel_len)
             }
         }
     }
