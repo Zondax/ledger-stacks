@@ -70,9 +70,13 @@ extern uint8_t action_addr_len;
 
 extern bool review_pending;
 
-__Z_INLINE void set_review_pending(bool val) { review_pending = val; }
+__Z_INLINE void set_review_pending(bool val) {
+    review_pending = val;
+}
 
-__Z_INLINE bool is_review_pending(void) { return review_pending; }
+__Z_INLINE bool is_review_pending(void) {
+    return review_pending;
+}
 
 // helper function to get the presig_hash of the transaction being signed
 __Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen);
