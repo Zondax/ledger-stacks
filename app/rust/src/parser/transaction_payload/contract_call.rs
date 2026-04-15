@@ -636,7 +636,11 @@ impl<'a> TransactionContractCall<'a> {
     pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
         // contract-address, contract-name, function-name
         // + the number of arguments
-        let num_args = self.num_args()? as u8;
+        let raw_args = self.num_args()?;
+        if raw_args > u8::MAX as u32 {
+            return Err(ParserError::ValueOutOfRange);
+        }
+        let num_args = raw_args as u8;
         if hide_sip10_details {
             Ok(num_args)
         } else {

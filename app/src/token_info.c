@@ -172,25 +172,27 @@ bool token_contract_name_matches(const token_info_t *token, const char *contract
     size_t j = 0;
     size_t count = 0;
 
-    // Find the dot in the token's contract address
-    while (*token_addr != '\0' && *token_addr != '.') {
-        // a.contract_name
+    // Find the dot in the token's contract address, bounded by the registry buffer size.
+    while (count < CONTRACT_ADDR_STR_MAX_LEN && *token_addr != '\0' && *token_addr != '.') {
         token_addr++;
+        count++;
     }
-    // move to first character of the contract name
+    if (*token_addr != '.') {
+        return false;
+    }
     token_addr++;
 
-    while (token_addr[i] != '\0' && contract_name[j] != '\0' && count < CONTRACT_ADDR_STR_MAX_LEN) {
-        if (token_addr[i] != contract_name[j]) {
-            return false;
+    count = 0;
+    while (count < CONTRACT_ADDR_STR_MAX_LEN && token_addr[i] == contract_name[j]) {
+        if (token_addr[i] == '\0') {
+            return true;
         }
-
         i++;
         j++;
         count++;
     }
 
-    return true;
+    return false;
 }
 
 // Function to get token info for a contract address

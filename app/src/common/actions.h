@@ -16,6 +16,7 @@
 #pragma once
 
 #include <os_io_seproxyhal.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "apdu_codes.h"
@@ -66,6 +67,12 @@
 #define PREVIOUS_SIGNER_DATA_LEN CX_SHA256_SIZE + 1 + PREVIOUS_SIGNER_SIG_LEN
 
 extern uint8_t action_addr_len;
+
+extern bool review_pending;
+
+__Z_INLINE void set_review_pending(bool val) { review_pending = val; }
+
+__Z_INLINE bool is_review_pending(void) { return review_pending; }
 
 // helper function to get the presig_hash of the transaction being signed
 __Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen);
@@ -128,6 +135,7 @@ __Z_INLINE void app_sign() {
     }
 
     if (err != zxerr_ok) {
+        set_review_pending(false);
         set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
         io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
@@ -139,6 +147,7 @@ __Z_INLINE void app_sign() {
     uint16_t replyLen = 0;
     err = crypto_sign(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 3, presig_hash, CX_SHA256_SIZE, &replyLen);
     if (err != zxerr_ok) {
+        set_review_pending(false);
         set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
         io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
@@ -180,6 +189,7 @@ __Z_INLINE void app_sign() {
             break;
         }
         default: {
+            set_review_pending(false);
             set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
             io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
             return;
@@ -187,16 +197,19 @@ __Z_INLINE void app_sign() {
     }
 
     if (replyLen == 0) {
+        set_review_pending(false);
         set_code(G_io_apdu_buffer, 0, APDU_CODE_SIGN_VERIFY_ERROR);
         io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
         return;
     }
 
+    set_review_pending(false);
     set_code(G_io_apdu_buffer, replyLen, APDU_CODE_OK);
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, replyLen + 2);
 }
 
 __Z_INLINE void app_reject() {
+    set_review_pending(false);
     tx_reset_state();
 
     set_code(G_io_apdu_buffer, 0, APDU_CODE_COMMAND_NOT_ALLOWED);
@@ -236,11 +249,13 @@ __Z_INLINE uint8_t app_fill_auth_pubkey(address_kind_e kind) {
 }
 
 __Z_INLINE void app_reply_address() {
+    set_review_pending(false);
     set_code(G_io_apdu_buffer, action_addr_len, APDU_CODE_OK);
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, action_addr_len + 2);
 }
 
 __Z_INLINE void app_reply_error() {
+    set_review_pending(false);
     set_code(G_io_apdu_buffer, 0, APDU_CODE_DATA_INVALID);
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
 }
