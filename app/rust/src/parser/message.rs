@@ -79,8 +79,12 @@ impl<'a> ByteString<'a> {
 
         let (rem, len) = read_varint(data).map_err(|_| ParserError::InvalidBytestrMessage)?;
 
-        let (_, message_content) = take::<_, _, ParserError>(len as usize)(rem)
+        let (tail, message_content) = take::<_, _, ParserError>(len as usize)(rem)
             .map_err(|_| ParserError::InvalidBytestrMessage)?;
+
+        if !tail.is_empty() {
+            return Err(ParserError::InvalidBytestrMessage);
+        }
 
         if !message_content.is_ascii() {
             return Err(ParserError::InvalidBytestrMessage);
@@ -225,6 +229,25 @@ mod test {
     #[test]
     fn test_only_header() {
         let msg = ByteString::from_bytes("\x17Stacks Signed Message:\n".as_bytes());
+        assert!(msg.is_err());
+    }
+
+    #[test]
+    fn test_reject_trailing_bytes_after_message() {
+        let visible = "benign";
+        let hidden = b"\xDEADBEEF-hidden-suffix";
+        let mut m = built_message(visible.len(), visible);
+        m.extend_from_slice(hidden);
+        let msg = ByteString::from_bytes(&m);
+        assert!(msg.is_err());
+    }
+
+    #[test]
+    fn test_reject_single_trailing_byte() {
+        let visible = "abc";
+        let mut m = built_message(visible.len(), visible);
+        m.push(0x00);
+        let msg = ByteString::from_bytes(&m);
         assert!(msg.is_err());
     }
 }
