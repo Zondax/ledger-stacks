@@ -17,6 +17,12 @@ pub unsafe extern "C" fn _read(
     context: *const parser_context_t,
     parser_state: *mut parse_tx_t,
 ) -> u32 {
+    if context.is_null() || parser_state.is_null() {
+        return ParserError::NoData as u32;
+    }
+    if (*context).buffer.is_null() || (*context).bufferLen == 0 {
+        return ParserError::NoData as u32;
+    }
     let data = core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _);
 
     if let Some(obj) = parsed_obj_from_state(parser_state) {
@@ -63,13 +69,21 @@ pub unsafe extern "C" fn _getItem(
     pageCount: *mut u8,
     tx_t: *const parse_tx_t,
 ) -> u32 {
+    if pageCount.is_null()
+        || outKey.is_null()
+        || outValue.is_null()
+        || outKeyLen == 0
+        || outValueLen == 0
+    {
+        return ParserError::NoData as _;
+    }
+    if tx_t.is_null() || (*tx_t).state.is_null() {
+        return ParserError::ContextMismatch as _;
+    }
     *pageCount = 0u8;
     let page_count = &mut *pageCount;
     let key = core::slice::from_raw_parts_mut(outKey as *mut u8, outKeyLen as usize);
     let value = core::slice::from_raw_parts_mut(outValue as *mut u8, outValueLen as usize);
-    if tx_t.is_null() || (*tx_t).state.is_null() {
-        return ParserError::ContextMismatch as _;
-    }
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
         match obj.get_item(displayIdx, key, value, pageIdx) {
             Ok(page) => {
@@ -154,6 +168,9 @@ pub unsafe extern "C" fn _presig_hash_data(
     buf: *mut u8,
     bufLen: u16,
 ) -> u16 {
+    if tx_t.is_null() || buf.is_null() || bufLen == 0 {
+        return 0;
+    }
     let buffer = core::slice::from_raw_parts_mut(buf, bufLen as usize);
 
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
@@ -273,6 +290,9 @@ pub unsafe extern "C" fn _structured_msg_hash(
     out: *mut u8,
     out_len: u16,
 ) -> u32 {
+    if tx_t.is_null() || out.is_null() || out_len == 0 {
+        return ParserError::NoData as _;
+    }
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.structured_msg()) {
         let output = core::slice::from_raw_parts_mut(out, out_len as _);
         if tx.get_hash(output).is_ok() {

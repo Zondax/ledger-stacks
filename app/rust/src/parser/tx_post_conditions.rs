@@ -15,7 +15,7 @@ pub enum TransactionPostConditionMode {
 
 impl TransactionPostConditionMode {
     #[inline(never)]
-    fn from_u8(v: u8) -> Option<Self> {
+    pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::Allow),
             2 => Some(Self::Deny),

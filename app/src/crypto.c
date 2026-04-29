@@ -240,7 +240,8 @@ zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *me
     err_convert_e err = convertDERtoRSV(signature->der_signature, info, signature->r, signature->s, &signature->v);
 
     if (err != no_error) {
-        return zxerr_encoding_failed;
+        zxerr = zxerr_encoding_failed;
+        goto catch_cx_error;
     }
 
     // return actual size using value from signatureLength

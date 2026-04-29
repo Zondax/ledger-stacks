@@ -17,7 +17,7 @@ use crate::{
 
 use crate::{check_canary, zxformat};
 
-use super::PostConditions;
+use super::{PostConditions, TransactionPostConditionMode};
 
 // In multisig transactions the remainder should contain:
 // 32-byte previous signer post_sig_hash
@@ -44,7 +44,7 @@ pub enum TransactionAnchorMode {
 
 impl TransactionAnchorMode {
     #[inline(never)]
-    fn from_u8(v: u8) -> Option<Self> {
+    pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::OnChainOnly),
             2 => Some(Self::OffChainOnly),
@@ -181,10 +181,12 @@ impl<'a> Transaction<'a> {
     fn read_transaction_modes(&mut self, data: &'a [u8]) -> Result<&'a [u8], ParserError> {
         c_zemu_log_stack("Transaction::read_transaction_modes\x00");
         // two modes are included here,
-        // anchor mode and postcondition mode
+        // anchor mode and postcondition mode — both must be valid enum variants
         let (rem, _) = take::<_, _, ParserError>(2usize)(data)
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         let modes = arrayref::array_ref!(data, 0, 2);
+        TransactionAnchorMode::from_u8(modes[0]).ok_or(ParserError::UnexpectedValue)?;
+        TransactionPostConditionMode::from_u8(modes[1]).ok_or(ParserError::UnexpectedValue)?;
         self.transaction_modes = modes;
         check_canary!();
         Ok(rem)
