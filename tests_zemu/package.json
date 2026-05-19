@@ -21,28 +21,28 @@
   ],
   "dependencies": {
     "@zondax/ledger-stacks": "^1.1.1",
-    "@zondax/zemu": "^0.66.2"
+    "@zondax/zemu": "^0.67.4"
   },
   "devDependencies": {
-    "@ledgerhq/hw-transport-node-hid": "^6.33.0",
-    "@ledgerhq/hw-transport": "^6.35.0",
-    "@matteoh2o1999/github-actions-jest-reporter": "^4.0.0",
+    "@ledgerhq/hw-transport": "^6.35.2",
+    "@ledgerhq/hw-transport-node-hid": "^6.33.2",
+    "@matteoh2o1999/github-actions-jest-reporter": "^4.1.0",
     "@stacks/network": "^7.3.1",
     "@stacks/transactions": "^7.4.0",
     "@types/elliptic": "^6.4.18",
     "@types/jest": "^30.0.0",
     "@types/secp256k1": "^4.0.7",
-    "@typescript-eslint/eslint-plugin": "^8.58.2",
-    "@typescript-eslint/parser": "^8.58.2",
+    "@typescript-eslint/eslint-plugin": "^8.59.4",
+    "@typescript-eslint/parser": "^8.59.4",
     "bn.js": "^5.2.3",
     "crypto-js": "4.2.0",
     "elliptic": "^6.6.1",
-    "eslint": "^10.2.0",
+    "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jest": "^29.15.2",
     "eslint-plugin-prettier": "^5.5.5",
-    "jest": "^30.3.0",
+    "jest": "^30.4.2",
     "jest-serial-runner": "^1.2.2",
     "js-sha256": "0.11.1",
     "js-sha512": "^0.9.0",
@@ -50,9 +50,10 @@
     "prettier": "^3.8.3",
     "ripemd160": "^2.0.3",
     "secp256k1": "^5.0.1",
-    "ts-jest": "^29.4.9",
+    "ts-jest": "^29.4.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "varuint-bitcoin": "^2.0.0"
-  }
+  },
+  "packageManager": "pnpm@11.1.1+sha512.d1fdf5f73c617b64fa1a56a81c3c8dfe0e966e33a6010aa256b517ae77be21d93e05affc0de1a83b0e4f29d569f68b446ae8f068cd7247c0bb3df0fb4d7bdf9a"
 }
