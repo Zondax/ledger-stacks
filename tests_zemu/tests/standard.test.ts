@@ -1176,6 +1176,84 @@ describe('Standard', function () {
     })
   })
 
+  // Regression test for issue #220 (https://github.com/Zondax/ledger-stacks/issues/220):
+  // unwrapping vLiSTX fails on-device with "invalid data". An unwrap is a `burn` call on
+  // SM26NBC8....token-vlqstx that carries TWO fungible post-conditions. Before the fix the
+  // device rendered the first post-condition fine but could not render the second one, so
+  // the review aborted with a parser error instead of producing a signature.
+  //
+  // This is a faithful replica of mainnet tx
+  // 0xc3fa8e85054d0c1d229f58def1ee1edd082aa5b3e9b6603afc33dbdf49f4f376.
+  // The first PC uses GreaterEqual (not Equal), so the SIP-10 "hide details" path does NOT
+  // apply here — this exercises the plain multi-post-condition rendering path.
+  test.concurrent.each(models)('sign_sip10_unwrap_multi_postcondition $name', async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const sender = standardPrincipalCV('SP1D6WJMETM08X6FAEXMQFPJ5R96GGTDE4REQYF39')
+      const [contract_address, contract_name] = 'SM26NBC8SFHNW4P1Y4DFH27974P56WN86C92HPEHH.token-vlqstx'.split('.')
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'burn',
+        functionArgs: [uintCV(85134395n), sender],
+        network: network,
+        fee: 4468n,
+        nonce: 673n,
+        publicKey: devicePublicKey,
+        postConditions: [
+          // PC #1: the token-vlqstx contract sends >= 0 LiSTX (lqstx)
+          Pc.principal('SM26NBC8SFHNW4P1Y4DFH27974P56WN86C92HPEHH.token-vlqstx')
+            .willSendGte(0n)
+            .ft('SM26NBC8SFHNW4P1Y4DFH27974P56WN86C92HPEHH.token-lqstx', 'lqstx'),
+          // PC #2: the sender sends exactly the burned amount of vLiSTX (vlqstx)
+          Pc.principal('SP1D6WJMETM08X6FAEXMQFPJ5R96GGTDE4REQYF39')
+            .willSendEq(85134395n)
+            .ft('SM26NBC8SFHNW4P1Y4DFH27974P56WN86C92HPEHH.token-vlqstx', 'vlqstx'),
+        ],
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = Buffer.from(transaction.serialize(), 'hex')
+
+      const signatureRequest = app.sign(path, blob)
+
+      // Review every screen, including BOTH post-conditions, and approve. Before the fix
+      // the device errored while rendering the second post-condition (issue #220).
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_sip10_unwrap_multi_postcondition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      // Verify the produced signature against the device public key.
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const sigHex = signature.signatureVRS.toString('hex')
+      const sigObj = { r: sigHex.substr(2, 64), s: sigHex.substr(66, 64) }
+      // @ts-ignore
+      expect(ec.verify(presig_hash, sigObj, devicePublicKey, 'hex')).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
   test.concurrent.each(models)('sign standard_smart_contract_tx', async function (m) {
     const sim = new Zemu(m.path)
     const path = "m/44'/5757'/5'/0/0"
