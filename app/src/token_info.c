@@ -120,6 +120,10 @@ static const token_info_t TOKEN_REGISTRY[] = {
     {.contract_address = "SP2C1WREHGM75C7TGFAEJPFKTFTEGZKF6DFT6E2GE.kangaroo",
      .token_symbol = "ROO",
      .decimals = 6,
+     .post_condition_code = POST_CONDITION_CODE_EQUAL},
+    {.contract_address = "SP1A27KFY4XERQCCRCARCYD1CC5N7M6688BSYADJ7.zest-token",
+     .token_symbol = "ZEST",
+     .decimals = 6,
      .post_condition_code = POST_CONDITION_CODE_EQUAL}};
 
 #define TOKEN_REGISTRY_SIZE (sizeof(TOKEN_REGISTRY) / sizeof(TOKEN_REGISTRY[0]))
