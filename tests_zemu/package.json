@@ -20,7 +20,7 @@
     "Ledger"
   ],
   "dependencies": {
-    "@zondax/ledger-stacks": "^1.1.1",
+    "@zondax/ledger-stacks": "^1.1.2",
     "@zondax/zemu": "^0.67.4"
   },
   "devDependencies": {

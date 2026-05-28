@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@zondax/ledger-stacks':
-        specifier: ^1.1.1
-        version: 1.1.1
+        specifier: ^1.1.2
+        version: 1.1.2
       '@zondax/zemu':
         specifier: ^0.67.4
         version: 0.67.4
@@ -851,8 +851,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@zondax/ledger-stacks@1.1.1':
-    resolution: {integrity: sha512-4p1laoM+M7OIhQXGtTnP5WF5um8iucfkUIMxZB8mmszP3Fwr93Z7eKSntXBjSGd9d5/yiAVcxr4LTL1CURrguQ==}
+  '@zondax/ledger-stacks@1.1.2':
+    resolution: {integrity: sha512-VKLPFJijpod7ttuLsZzbkpRAnn6ZPn+o6+QyZOFwh7TolkhvIH7AjfThAjY7DLMhHjcpmPdWLyzbliCeCjNJXA==}
 
   '@zondax/zemu@0.67.4':
     resolution: {integrity: sha512-Ibu2OzEetPfrRmH3taqFChW8XwpC09lB+lJi2oL69VM8lqNutbAEPE4lrLjDTMhwAIEnyFZ6f2ny9UrxLtRi+w==}
@@ -3808,7 +3808,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
 
-  '@zondax/ledger-stacks@1.1.1':
+  '@zondax/ledger-stacks@1.1.2':
     dependencies:
       '@ledgerhq/hw-transport': 6.35.2
       '@stacks/transactions': 7.4.0
