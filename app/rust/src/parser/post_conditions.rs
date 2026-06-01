@@ -498,4 +498,39 @@ mod test {
         assert_eq!(parsed2.asset_name().unwrap(), b"hello-asset".as_ref());
         assert_eq!(parsed2.tokens_amount().unwrap(), 23456);
     }
+
+    #[test]
+    fn test_non_fungible_may_send_postcondition() {
+        // Non-fungible post-condition with the SIP-040 MaySend (0x12) condition code.
+        // Reuse the known-good fungible fixture's principal + asset-info prefix, then swap
+        // the type byte (1->2 = NonFungibleToken) and the tail. A non-fungible condition
+        // ends with: <clarity nft-value> <1-byte condition code> (no 8-byte amount).
+        let mut bytes = vec![
+            1u8, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 13, 99, 111, 110, 116, 114, 97, 99, 116, 45, 110, 97, 109, 101, 11, 104, 101, 108,
+            108, 111, 45, 97, 115, 115, 101, 116,
+        ];
+        // type byte -> NonFungibleToken
+        bytes[0] = 2;
+        // nft value: BoolTrue (single-byte clarity value)
+        bytes.push(0x03);
+        // NonfungibleConditionCode::MaySend
+        bytes.push(0x12);
+
+        let parsed = TransactionPostCondition::from_bytes(bytes.as_ref())
+            .unwrap()
+            .1;
+        assert!(parsed.is_non_fungible());
+        assert_eq!(parsed.get_inner_bytes(), &bytes[1..]);
+        assert_eq!(
+            parsed.non_fungible_condition_code().unwrap(),
+            NonfungibleConditionCode::MaySend
+        );
+        assert_eq!(
+            parsed.non_fungible_condition_code().unwrap().to_str(),
+            "MaySend"
+        );
+        assert_eq!(parsed.asset_name().unwrap(), b"hello-asset".as_ref());
+    }
 }

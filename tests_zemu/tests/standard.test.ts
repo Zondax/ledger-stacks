@@ -49,6 +49,7 @@ import {
   trueCV,
   falseCV,
   FungibleConditionCode,
+  PostConditionMode,
   Pc,
   BytesReader,
   deserializeTransaction,
@@ -1075,6 +1076,139 @@ describe('Standard', function () {
       expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
 
       //Verify signature
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-040 (epoch 3.4): non-fungible "MaybeSent" (MaySend, 0x12) post-condition.
+  // Asserts the app parses and signs a tx carrying the new NFT condition code and
+  // renders it on the existing non-fungible post-condition screen.
+  test.concurrent.each(models)(`sign_nft_may_send_post_condition`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      // MaybeSent / MaySend (0x12): optionally transfer the NFT — always satisfied.
+      const postConditions = [
+        Pc.principal(postConditionAddress)
+          .willMaybeSendAsset()
+          .nft('SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE.my-nft::my-asset', uintCV(12)),
+      ]
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer-nft',
+        functionArgs: [uintCV(12), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditions,
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = Buffer.from(transaction.serialize(), 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_nft_may_send_post_condition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-040 (epoch 3.4): "Originator" post-condition mode (0x03). Asserts the app
+  // accepts and signs a tx whose mode is Originator (previously rejected as invalid).
+  test.concurrent.each(models)(`sign_originator_post_condition_mode`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      const postConditions = [Pc.principal(postConditionAddress).willSendGte(1000000n).ustx()]
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer',
+        functionArgs: [uintCV(20000), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditionMode: PostConditionMode.Originator,
+        postConditions,
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = Buffer.from(transaction.serialize(), 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_originator_post_condition_mode`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
       const ec = new EC('secp256k1')
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }

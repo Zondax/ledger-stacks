@@ -11,6 +11,9 @@ use super::{ParserError, NUM_SUPPORTED_POST_CONDITIONS};
 pub enum TransactionPostConditionMode {
     Allow = 0x01, // allow any other changes not specified
     Deny = 0x02,  // deny any other changes not specified
+    // Introduced in SIP-040 (epoch 3.4): restrict only the origin account's assets,
+    // allow any movements among other principals
+    Originator = 0x03,
 }
 
 impl TransactionPostConditionMode {
@@ -19,6 +22,7 @@ impl TransactionPostConditionMode {
         match v {
             1 => Some(Self::Allow),
             2 => Some(Self::Deny),
+            3 => Some(Self::Originator),
             _ => None,
         }
     }
