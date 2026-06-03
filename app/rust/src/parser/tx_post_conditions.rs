@@ -41,7 +41,6 @@ pub struct PostConditions<'a> {
     num_items: u8,
     // The number of post_conditions in our list
     num_conditions: usize,
-    current_idx: u8,
 }
 
 impl<'a> PostConditions<'a> {
@@ -86,35 +85,10 @@ impl<'a> PostConditions<'a> {
             Self {
                 conditions,
                 num_items,
-                current_idx: 0,
                 num_conditions,
             },
         ))
     }
-    // pub fn from_bytes(bytes: &'a [u8]) -> nom::IResult<&[u8], Self, ParserError> {
-    //     let (raw, len) = be_u32::<_, ParserError>(bytes)?;
-    //
-    //     if len > NUM_SUPPORTED_POST_CONDITIONS as u32 {
-    //         return Err(nom::Err::Error(ParserError::ValueOutOfRange));
-    //     }
-    //     let mut conditions: ArrayVec<[&'a [u8]; NUM_SUPPORTED_POST_CONDITIONS]> = ArrayVec::new();
-    //     let mut iter = iterator(raw, TransactionPostCondition::read_as_bytes);
-    //     iter.take(len as _).enumerate().for_each(|i| {
-    //         conditions.push(i.1);
-    //     });
-    //     let res = iter.finish()?;
-    //     let num_items = Self::get_num_items(&conditions[..len as usize]);
-    //     check_canary!();
-    //     Ok((
-    //         res.0,
-    //         Self {
-    //             conditions,
-    //             num_items,
-    //             current_idx: 0,
-    //             num_conditions: len as usize,
-    //         },
-    //     ))
-    // }
 
     pub fn get_num_items(conditions: &[&[u8]]) -> u8 {
         conditions
@@ -133,38 +107,6 @@ impl<'a> PostConditions<'a> {
     }
 
     #[inline(never)]
-    fn update_postcondition(
-        &mut self,
-        total_items: u8,
-        display_idx: u8,
-    ) -> Result<u8, ParserError> {
-        // map display_idx to our range of items
-        let in_start = total_items - self.num_items;
-        let idx = self.map_idx(display_idx, in_start, total_items);
-
-        let limit = self.get_current_limit();
-
-        // get the current postcondition which is used to
-        // check if it is time to change to the next/previous postconditions in our list
-        // and if that is not the case, we use it to get its items
-        let current_condition = self.current_post_condition()?;
-
-        // before continuing we need to check if the current display_idx
-        // correspond to the current, next or previous postcondition
-        // if so, update it
-        if idx >= (limit + current_condition.num_items()) {
-            self.current_idx += 1;
-            // this should not happen
-            if self.current_idx > self.num_items {
-                return Err(ParserError::UnexpectedError);
-            }
-        } else if idx < limit && idx > 0 {
-            self.current_idx -= 1;
-        }
-        Ok(idx)
-    }
-
-    #[inline(never)]
     pub fn get_items(
         &mut self,
         display_idx: u8,
@@ -175,32 +117,38 @@ impl<'a> PostConditions<'a> {
     ) -> Result<u8, ParserError> {
         c_zemu_log_stack("PostConditions::get_items\x00");
 
-        let idx = self.update_postcondition(num_items, display_idx)?;
-        let current_postcondition = self.current_post_condition()?;
-        current_postcondition.get_items(idx, out_key, out_value, page_idx)
+        // The post-conditions occupy the last `self.num_items` display slots of the whole
+        // transaction. Translate the global `display_idx` into an offset within the
+        // post-conditions block, then walk the conditions (each contributing
+        // `condition.num_items()` slots) to find which one owns that offset and which of
+        // its sub-items to render. This is derived entirely from `display_idx`, so it is
+        // correct for any number of post-conditions and re-entrant across paging calls.
+        let pc_start = num_items
+            .checked_sub(self.num_items)
+            .ok_or(ParserError::DisplayIdxOutOfRange)?;
+        let mut local = display_idx
+            .checked_sub(pc_start)
+            .ok_or(ParserError::DisplayIdxOutOfRange)?;
+
+        for raw in self.conditions.iter() {
+            let (_, condition) = TransactionPostCondition::from_bytes(raw)
+                .map_err(|_| ParserError::PostConditionFailed)?;
+            let items = condition.num_items();
+            if local < items {
+                return condition.get_items(local, out_key, out_value, page_idx);
+            }
+            local -= items;
+        }
+
+        Err(ParserError::DisplayIdxOutOfRange)
     }
 
-    fn map_idx(&self, display_idx: u8, in_start: u8, in_end: u8) -> u8 {
-        let slope = self.num_items / (in_end - in_start);
-        slope * (display_idx - in_start)
-    }
+    /// Returns the first post-condition. Used to decide whether SIP-10 transfer details
+    /// should be hidden (see `Transaction::should_hide_sip10_details`).
+    pub fn first_post_condition(&self) -> Result<TransactionPostCondition<'_>, ParserError> {
+        let raw = self.conditions.first().ok_or(ParserError::ValueOutOfRange)?;
 
-    fn get_current_limit(&self) -> u8 {
-        let current = self.current_idx as usize;
-        self.conditions[..current]
-            .iter()
-            .filter_map(|bytes| TransactionPostCondition::from_bytes(bytes).ok())
-            .map(|condition| (condition.1).num_items())
-            .sum()
-    }
-
-    pub fn current_post_condition(&self) -> Result<TransactionPostCondition<'_>, ParserError> {
-        let raw_current = self
-            .conditions
-            .get(self.current_idx as usize)
-            .ok_or(ParserError::ValueOutOfRange)?;
-
-        TransactionPostCondition::from_bytes(raw_current)
+        TransactionPostCondition::from_bytes(raw)
             .map_err(|_| ParserError::PostConditionFailed)
             .map(|res| res.1)
     }

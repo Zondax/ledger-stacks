@@ -262,7 +262,7 @@ impl<'a> Transaction<'a> {
             None => return Ok(false),
         };
 
-        let current_condition = match self.post_conditions.current_post_condition()?.fungible_condition_code() {
+        let current_condition = match self.post_conditions.first_post_condition()?.fungible_condition_code() {
             Some(code) => code,
             None => return Ok(false),
         };
