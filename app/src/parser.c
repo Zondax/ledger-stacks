@@ -34,8 +34,10 @@ static zxerr_t parser_deallocate();
 
 parser_tx_t parser_state;
 // This buffer will store parser_state.
-// Its size corresponds to ParsedObj (Rust struct), which is at maximum 456 bytes
-#define PARSER_BUFFER_SIZE 456
+// Its size must be >= size_of::<ParsedObj>() (Rust). The post-condition list is stored
+// inline (NUM_SUPPORTED_POST_CONDITIONS slices), so the struct grows with that cap; 2048
+// bytes covers up to ~100 post-conditions on 32-bit targets with margin.
+#define PARSER_BUFFER_SIZE 2048
 // Ensure 8-byte alignment for ARM64 and other 64-bit architectures
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE] __attribute__((aligned(8)));
 
