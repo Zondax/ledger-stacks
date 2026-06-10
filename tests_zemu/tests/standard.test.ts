@@ -19,6 +19,8 @@ import StacksApp from '@zondax/ledger-stacks'
 import { APP_SEED, models, SIP10_DATA } from './common'
 import { DLMM_CORE_V1_1_DEPLOYMENT, STANDARD_DEPLOYMENT } from './contracts'
 import { encode } from 'varuint-bitcoin'
+import * as fs from 'fs'
+import * as path from 'path'
 
 import {
   AddressVersion,
@@ -1809,6 +1811,92 @@ describe('Standard', function () {
       // Serialize final transaction
       const txBytes = transaction.serialize()
       console.log('Final signed transaction length:', txBytes.length, 'chars')
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-040 post-condition handling — issue #224 (HODLMM Zest/STX "remove liquidity"
+  // failed on Ledger with "Data invalid"). These transactions carry 84 post-conditions
+  // (81x NFT MaySend + 2x FT + 1x STX, Deny mode). Identical MaySend NFT conditions are
+  // collapsed into one "Count: N" display item so the screen count stays under the
+  // device's display-item ceiling.
+  // Real captured unsigned transaction blobs (issue #224), keyed by label.
+  const dlmmFixtures: Record<string, string> = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, 'dlmm_post_conditions.json'), 'utf8'),
+  )
+  const dlmmBlobs = Object.keys(dlmmFixtures).map((name) => ({ name }))
+  const dlmmCases = models.flatMap((m) => dlmmBlobs.map((b) => ({ m, b })))
+
+  // hash160(pubkey) = ripemd160(sha256(pubkey))
+  function dlmmHash160(pubkeyHex: string): Buffer {
+    const sha = Buffer.from(sha256(Buffer.from(pubkeyHex, 'hex')), 'hex')
+    return new RIPEMD160().update(sha).digest()
+  }
+
+  test.concurrent.each(dlmmCases)('sign_dlmm_aggregated_post_conditions', async function ({ m, b }) {
+    const sim = new Zemu(m.path)
+    const dpath = "m/44'/5757'/0'/0/0"
+    const rawHex = dlmmFixtures[b.name]
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pk = await app.getAddressAndPubKey(dpath, AddressVersion.MainnetSingleSig)
+      expect(pk.returnCode).toEqual(0x9000)
+
+      // The blob origin is the reporter's key, which would fail the device signer check,
+      // so patch the 20-byte signer hash (offset 7) to the test device's key hash160 —
+      // isolating parse/display/sign from auth. Deterministic => stable snapshots.
+      const blob = Buffer.from(rawHex, 'hex')
+      dlmmHash160(pk.publicKey.toString('hex')).copy(blob, 7)
+
+      const signatureRequest = app.sign(dpath, blob)
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_aggregated_${b.name}`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // Safety: a transaction with too many *distinct* (non-aggregatable) post-conditions
+  // must be REJECTED, never signed with conditions the device couldn't display. 70 FT
+  // conditions => 280 display items, over the u8/255 ceiling. Built with the device's own
+  // key as origin so this isn't an auth failure — the reject is the display-overflow path.
+  test.concurrent.each(models)('rejects_too_many_post_conditions', async function (m) {
+    const sim = new Zemu(m.path)
+    const dpath = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pk = await app.getAddressAndPubKey(dpath, AddressVersion.TestnetSingleSig)
+      expect(pk.returnCode).toEqual(0x9000)
+      const devicePublicKey = pk.publicKey.toString('hex')
+
+      const postConditions = []
+      for (let i = 0; i < 70; i++) {
+        postConditions.push(
+          Pc.principal('SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE')
+            .willSendGte(1n)
+            .ft('SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token', 'sbtc'),
+        )
+      }
+      const tx = await makeUnsignedContractCall({
+        contractAddress: 'SP000000000000000000002Q6VF78',
+        contractName: 'long_args_contract',
+        functionName: 'transfer',
+        functionArgs: [uintCV(1)],
+        network: STACKS_TESTNET,
+        fee: 10n,
+        nonce: 0n,
+        publicKey: devicePublicKey,
+        postConditions,
+      })
+
+      const sig = await app.sign(dpath, Buffer.from(tx.serialize(), 'hex'))
+      expect(sig.returnCode).not.toEqual(0x9000)
     } finally {
       await sim.close()
     }

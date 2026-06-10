@@ -35,6 +35,14 @@ pub struct ParsedObj<'a> {
     obj: Obj<'a>,
 }
 
+// Must stay <= PARSER_BUFFER_SIZE in app/src/parser.c. Compile-time guard so growing
+// NUM_SUPPORTED_POST_CONDITIONS can't silently overflow the C-side parser buffer.
+// Gated to the 32-bit device target: on a 64-bit host every slice pointer is twice as
+// wide, so the host struct is ~2x larger and would trip this without reflecting the
+// real (device) layout. parser_allocate() also checks this at runtime.
+#[cfg(target_pointer_width = "32")]
+const _: () = assert!(core::mem::size_of::<ParsedObj>() <= 2048);
+
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
         if data.is_empty() {

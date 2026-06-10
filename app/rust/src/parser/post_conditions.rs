@@ -19,6 +19,10 @@ use super::parser_common::{AssetInfo, C32_ENCODED_ADDRS_LENGTH, STX_DECIMALS, TX
 use crate::zxformat;
 use crate::{bolos::c_zemu_log_stack, parser::value::Value};
 
+/// Number of display items emitted for an aggregated run of identical NFT
+/// post-conditions: Principal, Asset name, NonFungi. Code, Count.
+pub const AGGREGATED_NFT_ITEMS: u8 = 4;
+
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
 pub enum PostConditionType {
@@ -400,6 +404,78 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
+    /// For an aggregatable non-fungible post-condition, returns the bytes that identify it
+    /// apart from the per-token value: (principal, asset-info, condition-code). Two such
+    /// conditions with the same key differ only in which token instance they reference, so
+    /// they can be collapsed into a single aggregated display item.
+    ///
+    /// Only `MaySend` (the permissive code, always satisfied) is aggregated. `Sent` and
+    /// `NotSent` are guarantees about specific tokens, so they are always rendered
+    /// individually. Returns None for STX/FT and for non-MaySend NFT conditions.
+    pub fn nft_group_key(&self) -> Option<(&'a [u8], &'a [u8], u8)> {
+        match self {
+            Self::Nonfungible(inner) => {
+                let inner = *inner;
+                let code = *inner.last()?;
+                if code != NonfungibleConditionCode::MaySend as u8 {
+                    return None;
+                }
+                let (after_principal, _) = PostConditionPrincipal::read_as_bytes(inner).ok()?;
+                let principal = &inner[..inner.len() - after_principal.len()];
+                let (after_asset, _) = AssetInfo::read_as_bytes(after_principal).ok()?;
+                let asset = &after_principal[..after_principal.len() - after_asset.len()];
+                Some((principal, asset, code))
+            }
+            _ => None,
+        }
+    }
+
+    /// Render one display item of an aggregated run of `count` identical NFT
+    /// post-conditions (see `nft_group_key`). Shows the shared principal/asset/code once
+    /// plus the number of conditions collapsed.
+    pub fn get_aggregated_nft_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+        count: u32,
+    ) -> Result<u8, ParserError> {
+        match display_idx {
+            0 => self.write_principal_address(out_key, out_value, page_idx),
+            1 => {
+                let mut writer_key = zxformat::Writer::new(out_key);
+                writer_key
+                    .write_str("Asset name")
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                let name = self.asset_name().ok_or(ParserError::InvalidAssetName)?;
+                zxformat::pageString(out_value, name, page_idx)
+            }
+            2 => {
+                let mut writer_key = zxformat::Writer::new(out_key);
+                writer_key
+                    .write_str("NonFungi. Code")
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                let code = self
+                    .non_fungible_condition_code()
+                    .ok_or(ParserError::InvalidNonFungibleCode)?;
+                zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+            }
+            3 => {
+                let mut writer_key = zxformat::Writer::new(out_key);
+                writer_key
+                    .write_str("Count")
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                let mut buf = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
+                let len = zxformat::u64_to_str(buf.as_mut(), count as u64)
+                    .map_err(|_| ParserError::UnexpectedValue)?
+                    .len();
+                zxformat::pageString(out_value, &buf[..len], page_idx)
+            }
+            _ => Err(ParserError::DisplayIdxOutOfRange),
+        }
+    }
+
     #[cfg(test)]
     pub fn get_inner_bytes(&self) -> &[u8] {
         match self {
@@ -415,6 +491,78 @@ mod test {
 
     use super::*;
     use std::prelude::v1::*;
+
+    // STX: type(0) | principal | code | amount(8). FT: type(1) | principal | asset | code |
+    // amount(8). NFT: type(2) | principal | asset | value | code.
+    fn stx_cond(code: u8) -> Vec<u8> {
+        let mut v = vec![0u8, 2, 1];
+        v.extend_from_slice(&[1u8; 20]);
+        v.push(code);
+        v.extend_from_slice(&[0u8; 8]);
+        v
+    }
+    fn ft_cond(code: u8) -> Vec<u8> {
+        let mut v = vec![1u8, 2, 1];
+        v.extend_from_slice(&[1u8; 20]);
+        v.push(1);
+        v.extend_from_slice(&[0xBB; 20]);
+        v.push(4);
+        v.extend_from_slice(b"pool");
+        v.push(3);
+        v.extend_from_slice(b"tok");
+        v.push(code);
+        v.extend_from_slice(&[0u8; 8]);
+        v
+    }
+    fn nft_cond(code: u8) -> Vec<u8> {
+        let mut v = vec![2u8, 2, 1];
+        v.extend_from_slice(&[1u8; 20]);
+        v.push(1);
+        v.extend_from_slice(&[0xBB; 20]);
+        v.push(4);
+        v.extend_from_slice(b"pool");
+        v.push(3);
+        v.extend_from_slice(b"tok");
+        v.push(0x03); // value: bool (1 byte)
+        v.push(code);
+        v
+    }
+
+    #[test]
+    fn test_maysend_code_cannot_leak_into_ft_or_stx() {
+        // 0x12 (MaySend) is an NFT-only code. On an STX/FT condition it is not a valid
+        // fungible code, so fungible_condition_code() rejects it (=> InvalidFungibleCode
+        // at display, never silently accepted).
+        let stx_bytes = stx_cond(0x12);
+        let stx = TransactionPostCondition::from_bytes(&stx_bytes).unwrap().1;
+        assert!(stx.fungible_condition_code().is_none());
+
+        let ft_bytes = ft_cond(0x12);
+        let ft = TransactionPostCondition::from_bytes(&ft_bytes).unwrap().1;
+        assert!(ft.fungible_condition_code().is_none());
+
+        // Conversely, a fungible code (0x02) on an NFT is not a valid non-fungible code.
+        let nft_bytes = nft_cond(0x02);
+        let nft_bad = TransactionPostCondition::from_bytes(&nft_bytes).unwrap().1;
+        assert!(nft_bad.non_fungible_condition_code().is_none());
+    }
+
+    #[test]
+    fn test_group_key_only_matches_maysend_nft() {
+        // STX / FT / non-MaySend NFT are never aggregatable (group key is None);
+        // only MaySend (0x12) yields a grouping key.
+        let cases: &[(Vec<u8>, bool)] = &[
+            (stx_cond(0x01), false),
+            (ft_cond(0x01), false),
+            (nft_cond(0x10), false), // Sent
+            (nft_cond(0x11), false), // NotSent
+            (nft_cond(0x12), true),  // MaySend
+        ];
+        for (bytes, expected) in cases {
+            let pc = TransactionPostCondition::from_bytes(bytes).unwrap().1;
+            assert_eq!(pc.nft_group_key().is_some(), *expected);
+        }
+    }
 
     #[test]
     fn test_stx_postcondition() {

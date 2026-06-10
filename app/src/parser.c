@@ -16,6 +16,7 @@
 
 #include "./parser.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <zxmacros.h>
 
@@ -34,8 +35,16 @@ static zxerr_t parser_deallocate();
 
 parser_tx_t parser_state;
 // This buffer will store parser_state.
-// Its size corresponds to ParsedObj (Rust struct), which is at maximum 456 bytes
-#define PARSER_BUFFER_SIZE 456
+// Its size must be >= size_of::<ParsedObj>() (Rust). The post-condition list is stored
+// inline (NUM_SUPPORTED_POST_CONDITIONS slices), so the struct grows with that cap *and*
+// with pointer width: each slice is 8 bytes on the 32-bit device but 16 on a 64-bit host
+// (unit tests), making the same struct ~2x larger there. 2048 covers the device layout;
+// the host needs more, so size per pointer width to avoid overflowing parser_allocate().
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define PARSER_BUFFER_SIZE 4096
+#else
+#define PARSER_BUFFER_SIZE 2048
+#endif
 // Ensure 8-byte alignment for ARM64 and other 64-bit architectures
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE] __attribute__((aligned(8)));
 

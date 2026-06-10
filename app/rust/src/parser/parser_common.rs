@@ -15,9 +15,15 @@ pub const STX_DECIMALS: u8 = 6;
 
 pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 
-// The amount of post_conditions we can
-// handle
-pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 16;
+// Max post-conditions we store (and therefore can sign). Chosen as ~1.5x the largest
+// real-world transaction observed (an 84-post-condition DLMM liquidity withdrawal,
+// issue #224), rounded to a power of two. Each slot is one slice (8 bytes on the 32-bit
+// device), so 128 slots keep `ParsedObj` within the C-side parser buffer (see the
+// size_of assert in parsed_obj.rs). Transactions with more post-conditions are rejected
+// at parse. Note: the *display* path additionally relies on aggregating near-duplicate
+// post-conditions to stay under the device's ~200 display-item ceiling; transactions
+// with many *distinct* post-conditions are rejected gracefully at num_items().
+pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 128;
 pub const SIGNATURE_LEN: usize = 65;
 pub const PUBKEY_LEN: usize = 33;
 pub const MEMO_LEN: usize = 34;
