@@ -53,6 +53,7 @@ import {
   FungibleConditionCode,
   PostConditionMode,
   Pc,
+  postConditionToHex,
   BytesReader,
   deserializeTransaction,
 } from '@stacks/transactions'
@@ -71,6 +72,60 @@ function bigintToLeBuffer(value: bigint, length: number): Buffer {
     value = value >> 8n
   }
   return buf
+}
+
+// SIP-044 (epoch 4.0) introduces two post-condition type IDs that @stacks/transactions
+// cannot build yet (it only emits STX/FT/NFT). We hand-patch the serialized bytes of a
+// known-good STX (0x00) post-condition into the new layouts:
+//   - staking (0x03): byte-identical to STX (principal + fungible code + 8-byte amount),
+//     so only the type ID byte changes.
+//   - PoX (0x04): principal + 1-byte PoX code, no amount — swap the type byte and replace
+//     the trailing [code + 8-byte amount] with the single PoX code byte (8 bytes shorter).
+// The same patch is applied to both the wire blob sent to the device and the signBegin()
+// pre-image used to recompute the expected sighash, so the device signature still verifies.
+type PostConditionPatch = { kind: 'staking' } | { kind: 'pox'; code: number }
+
+function patchStxPostCondition(buf: Buffer, stxPcBytes: Buffer, patch: PostConditionPatch): Buffer {
+  const offset = buf.indexOf(stxPcBytes)
+  if (offset < 0) {
+    throw new Error('STX post-condition bytes not found in serialized transaction')
+  }
+  const pcLen = stxPcBytes.length
+
+  let newPc: Buffer
+  if (patch.kind === 'staking') {
+    newPc = Buffer.from(stxPcBytes)
+    newPc[0] = 0x03
+  } else {
+    // principal occupies everything between the type byte and the [code(1) + amount(8)] tail
+    const principal = stxPcBytes.subarray(1, pcLen - 9)
+    newPc = Buffer.concat([Buffer.from([0x04]), principal, Buffer.from([patch.code])])
+  }
+
+  return Buffer.concat([buf.subarray(0, offset), newPc, buf.subarray(offset + pcLen)])
+}
+
+// Recompute the pre-sign sighash for a hand-patched (staking/PoX) transaction. The device
+// signs the patched bytes, but @stacks/transactions can't deserialize the new type IDs, so
+// transaction.signBegin() would hash the original STX post-condition. signBegin() equals
+// sha512_256(serialize(tx with fee=0, nonce=0)) (the cleared sighash serialization), so we
+// rebuild that cleared serialization, apply the same post-condition patch, hash it, then
+// fold the real fee/nonce back in via sigHashPreSign — exactly the device's computation.
+async function patchedPreSignHash(
+  txOptions: any,
+  stxPcBytes: Buffer,
+  patch: PostConditionPatch,
+  transaction: any,
+): Promise<string> {
+  const clearedTx = await makeUnsignedContractCall({ ...txOptions, fee: 0n, nonce: 0n })
+  const clearedPatched = patchStxPostCondition(Buffer.from(clearedTx.serialize(), 'hex'), stxPcBytes, patch)
+  const curSigHash = sha512_256(clearedPatched)
+  return sigHashPreSign(
+    curSigHash,
+    transaction.auth.authType,
+    transaction.auth.spendingCondition?.fee,
+    transaction.auth.spendingCondition?.nonce,
+  )
 }
 
 // Helper function to create STX post conditions with the new Pc API
@@ -1210,6 +1265,128 @@ describe('Standard', function () {
         transaction.auth.spendingCondition?.fee,
         transaction.auth.spendingCondition?.nonce,
       )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-044 (epoch 4.0): staking post-condition (type 0x03). Same body as the STX
+  // post-condition; asserts the app parses and signs it and renders the new staking screen.
+  test.concurrent.each(models)(`sign_staking_post_condition`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      // Built as STX (0x00) then patched to staking (0x03) — identical body.
+      const stxPc = Pc.principal(postConditionAddress).willSendGte(1000000n).ustx()
+      const stxPcBytes = Buffer.from(postConditionToHex(stxPc), 'hex')
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer',
+        functionArgs: [uintCV(20000), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditions: [stxPc],
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = patchStxPostCondition(Buffer.from(transaction.serialize(), 'hex'), stxPcBytes, { kind: 'staking' })
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_staking_post_condition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = await patchedPreSignHash(txOptions, stxPcBytes, { kind: 'staking' }, transaction)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-044 (epoch 4.0): PoX post-condition (type 0x04). Principal + 1-byte PoX code, no
+  // amount; asserts the app parses and signs it and renders the PoX screen (PoX required).
+  test.concurrent.each(models)(`sign_pox_post_condition`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      // Built as STX (0x00) then patched to PoX (0x04) with code 0x32 (PoX required).
+      const stxPc = Pc.principal(postConditionAddress).willSendGte(1000000n).ustx()
+      const stxPcBytes = Buffer.from(postConditionToHex(stxPc), 'hex')
+      const POX_MUST = 0x32
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer',
+        functionArgs: [uintCV(20000), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditions: [stxPc],
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = patchStxPostCondition(Buffer.from(transaction.serialize(), 'hex'), stxPcBytes, {
+        kind: 'pox',
+        code: POX_MUST,
+      })
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_pox_post_condition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = await patchedPreSignHash(txOptions, stxPcBytes, { kind: 'pox', code: POX_MUST }, transaction)
       const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
       const ec = new EC('secp256k1')
       const signature1 = signature.signatureVRS.toString('hex')
