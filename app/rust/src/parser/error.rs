@@ -61,6 +61,7 @@ pub enum ParserError {
     CryptoError = 42,
     InvalidTokenTransferPrincipal = 43,
     RecursionLimit = 44,
+    InvalidPoxCode = 45,
     // TODO: Remove
     InvalidUnicode,
 }

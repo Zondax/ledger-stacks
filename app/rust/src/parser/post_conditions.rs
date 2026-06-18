@@ -8,8 +8,10 @@ use nom::{
 mod fungible;
 mod non_fungible;
 mod post_condition_principal;
+mod pox;
 pub use fungible::FungibleConditionCode;
 pub use non_fungible::NonfungibleConditionCode;
+pub use pox::PoxConditionCode;
 
 pub use post_condition_principal::{PostConditionPrincipal, PostConditionPrincipalId};
 
@@ -29,6 +31,9 @@ pub enum PostConditionType {
     Stx = 0,
     FungibleToken = 1,
     NonFungibleToken = 2,
+    // Introduced in SIP-044 (Clarity 6 / epoch 4.0).
+    Staking = 3,
+    Pox = 4,
 }
 
 impl TryFrom<u8> for PostConditionType {
@@ -39,6 +44,8 @@ impl TryFrom<u8> for PostConditionType {
             0 => Self::Stx,
             1 => Self::FungibleToken,
             2 => Self::NonFungibleToken,
+            3 => Self::Staking,
+            4 => Self::Pox,
             _ => return Err(ParserError::InvalidPostCondition),
         };
 
@@ -54,6 +61,10 @@ pub enum TransactionPostCondition<'a> {
     Stx(&'a [u8]),
     Fungible(&'a [u8]),
     Nonfungible(&'a [u8]),
+    // SIP-044 (epoch 4.0). Staking body is byte-identical to Stx (principal + fungible
+    // code + 8-byte amount); Pox body is principal + 1-byte PoX code (no amount).
+    Staking(&'a [u8]),
+    Pox(&'a [u8]),
 }
 
 impl<'a> TransactionPostCondition<'a> {
@@ -82,6 +93,18 @@ impl<'a> TransactionPostCondition<'a> {
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Nonfungible(inner)))
             }
+            // Same body layout as Stx: principal + 1-byte fungible code + 8-byte amount.
+            PostConditionType::Staking => {
+                let len = principal_len + 1 + 8;
+                let (raw, inner) = take(len)(raw)?;
+                Ok((raw, Self::Staking(inner)))
+            }
+            // principal + 1-byte PoX condition code, no amount.
+            PostConditionType::Pox => {
+                let len = principal_len + 1;
+                let (raw, inner) = take(len)(raw)?;
+                Ok((raw, Self::Pox(inner)))
+            }
         }
     }
 
@@ -108,6 +131,16 @@ impl<'a> TransactionPostCondition<'a> {
                 let (raw, _) = take(1usize)(raw)?;
                 rem = raw;
             }
+            PostConditionType::Staking => {
+                // 8-byte amount + 1-byte fungible code, same as Stx.
+                let (raw, _) = take(9usize)(rem)?;
+                rem = raw;
+            }
+            PostConditionType::Pox => {
+                // 1-byte PoX condition code, no amount.
+                let (raw, _) = take(1usize)(rem)?;
+                rem = raw;
+            }
         };
         crate::check_canary!();
         let len = bytes.len() - rem.len();
@@ -116,7 +149,11 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn is_origin_principal(&self) -> bool {
         match self {
-            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal)
+            | Self::Fungible(principal)
+            | Self::Nonfungible(principal)
+            | Self::Staking(principal)
+            | Self::Pox(principal) => {
                 principal[0] == PostConditionPrincipalId::Origin as u8
             }
         }
@@ -124,7 +161,11 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn is_standard_principal(&self) -> bool {
         match self {
-            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal)
+            | Self::Fungible(principal)
+            | Self::Nonfungible(principal)
+            | Self::Staking(principal)
+            | Self::Pox(principal) => {
                 principal[0] == PostConditionPrincipalId::Standard as u8
             }
         }
@@ -132,7 +173,11 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn is_contract_principal(&self) -> bool {
         match self {
-            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal)
+            | Self::Fungible(principal)
+            | Self::Nonfungible(principal)
+            | Self::Staking(principal)
+            | Self::Pox(principal) => {
                 principal[0] == PostConditionPrincipalId::Origin as u8
             }
         }
@@ -143,7 +188,11 @@ impl<'a> TransactionPostCondition<'a> {
         &self,
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         match self {
-            Self::Stx(principal) | Self::Fungible(principal) | Self::Nonfungible(principal) => {
+            Self::Stx(principal)
+            | Self::Fungible(principal)
+            | Self::Nonfungible(principal)
+            | Self::Staking(principal)
+            | Self::Pox(principal) => {
                 let (_, principal) = PostConditionPrincipal::from_bytes(principal)
                     .map_err(|_| ParserError::InvalidPostCondition)?;
                 principal.get_principal_address()
@@ -175,7 +224,8 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn amount_stx(&self) -> Option<u64> {
         match self {
-            Self::Stx(inner) => {
+            // Staking shares the Stx body: 8-byte uSTX amount at the tail.
+            Self::Stx(inner) | Self::Staking(inner) => {
                 let at = inner.len() - 8;
                 be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
@@ -207,10 +257,23 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn fungible_condition_code(&self) -> Option<FungibleConditionCode> {
         let code = match self {
-            Self::Stx(inner) | Self::Fungible(inner) => inner[inner.len() - 9], // TODO: comment this 9
+            // 1-byte code precedes the 8-byte amount, so it sits at len-9. Staking reuses
+            // the fungible codes on the same body layout as Stx.
+            Self::Stx(inner) | Self::Fungible(inner) | Self::Staking(inner) => {
+                inner[inner.len() - 9]
+            }
             _ => return None,
         };
         FungibleConditionCode::from_u8(code)
+    }
+
+    pub fn pox_condition_code(&self) -> Option<PoxConditionCode> {
+        let code = match self {
+            // PoX body is principal + 1-byte code, so the code is the last byte.
+            Self::Pox(inner) => inner[inner.len() - 1],
+            _ => return None,
+        };
+        PoxConditionCode::from_u8(code)
     }
 
     pub fn non_fungible_condition_code(&self) -> Option<NonfungibleConditionCode> {
@@ -235,8 +298,10 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn num_items(&self) -> u8 {
         match self {
-            Self::Stx(..) | Self::Nonfungible(..) => 3,
+            // Staking: principal + code + amount. Pox: principal + code.
+            Self::Stx(..) | Self::Nonfungible(..) | Self::Staking(..) => 3,
             Self::Fungible(..) => 4,
+            Self::Pox(..) => 2,
         }
     }
 
@@ -275,6 +340,8 @@ impl<'a> TransactionPostCondition<'a> {
                 Self::Nonfungible(..) => {
                     self.get_non_fungible_items(index, out_key, out_value, page_idx)
                 }
+                Self::Staking(..) => self.get_staking_items(index, out_key, out_value, page_idx),
+                Self::Pox(..) => self.get_pox_items(index, out_key, out_value, page_idx),
             }
         }
     }
@@ -404,6 +471,70 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
+    pub fn get_staking_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("TransactionPostCondition::get_staking_items\x00");
+
+        let mut writer_key = zxformat::Writer::new(out_key);
+        match self {
+            Self::Staking(..) => match display_idx {
+                // PostCondition code (reuses the fungible codes)
+                1 => {
+                    writer_key
+                        .write_str("Staking Code")
+                        .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                    let code = self
+                        .fungible_condition_code()
+                        .ok_or(ParserError::InvalidFungibleCode)?;
+                    zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                }
+                // Amount in stx
+                2 => {
+                    writer_key
+                        .write_str("Staked STX")
+                        .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                    let amount = self.amount_stx_str().ok_or(ParserError::UnexpectedValue)?;
+                    zxformat::pageString(out_value, amount.as_ref(), page_idx)
+                }
+                _ => Err(ParserError::DisplayIdxOutOfRange),
+            },
+            _ => Err(ParserError::UnexpectedError),
+        }
+    }
+
+    pub fn get_pox_items(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        c_zemu_log_stack("TransactionPostCondition::get_pox_items\x00");
+
+        let mut writer_key = zxformat::Writer::new(out_key);
+        match self {
+            Self::Pox(..) => match display_idx {
+                // PoX condition code
+                1 => {
+                    writer_key
+                        .write_str("PoX Code")
+                        .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                    let code = self
+                        .pox_condition_code()
+                        .ok_or(ParserError::InvalidPoxCode)?;
+                    zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                }
+                _ => Err(ParserError::DisplayIdxOutOfRange),
+            },
+            _ => Err(ParserError::UnexpectedError),
+        }
+    }
+
     /// For an aggregatable non-fungible post-condition, returns the bytes that identify it
     /// apart from the per-token value: (principal, asset-info, condition-code). Two such
     /// conditions with the same key differ only in which token instance they reference, so
@@ -479,7 +610,11 @@ impl<'a> TransactionPostCondition<'a> {
     #[cfg(test)]
     pub fn get_inner_bytes(&self) -> &[u8] {
         match self {
-            Self::Stx(inner) | Self::Fungible(inner) | Self::Nonfungible(inner) => inner,
+            Self::Stx(inner)
+            | Self::Fungible(inner)
+            | Self::Nonfungible(inner)
+            | Self::Staking(inner)
+            | Self::Pox(inner) => inner,
         }
     }
 }
@@ -680,5 +815,113 @@ mod test {
             "MaySend"
         );
         assert_eq!(parsed.asset_name().unwrap(), b"hello-asset".as_ref());
+    }
+
+    // SIP-044 staking (0x03): type(3) | standard-principal | fungible code | amount(8).
+    // Byte-identical to STX, only the type byte differs.
+    fn staking_cond(code: u8, amount: u64) -> Vec<u8> {
+        let mut v = vec![3u8, 2, 1];
+        v.extend_from_slice(&[1u8; 20]);
+        v.push(code);
+        v.extend_from_slice(&amount.to_be_bytes());
+        v
+    }
+
+    // SIP-044 PoX (0x04): type(4) | standard-principal | pox code. No amount.
+    fn pox_cond(code: u8) -> Vec<u8> {
+        let mut v = vec![4u8, 2, 1];
+        v.extend_from_slice(&[1u8; 20]);
+        v.push(code);
+        v
+    }
+
+    fn val_str(buf: &[u8]) -> String {
+        String::from_utf8_lossy(buf)
+            .trim_end_matches('\0')
+            .to_string()
+    }
+
+    #[test]
+    fn test_staking_postcondition() {
+        // Append a sentinel so the trailing remainder confirms read length math:
+        // 1 (type) + 22 (principal) + 1 (code) + 8 (amount) = 32 bytes consumed.
+        let mut bytes = staking_cond(0x03, 12345);
+        bytes.push(0xEE);
+        let (rem, parsed) = TransactionPostCondition::from_bytes(&bytes).unwrap();
+        assert_eq!(rem, &[0xEE]);
+        assert!(matches!(parsed, TransactionPostCondition::Staking(..)));
+        assert_eq!(parsed.get_inner_bytes(), &bytes[1..bytes.len() - 1]);
+        assert_eq!(parsed.amount_stx().unwrap(), 12345);
+        assert_eq!(
+            parsed.fungible_condition_code().unwrap(),
+            FungibleConditionCode::SentGe
+        );
+        assert_eq!(parsed.num_items(), 3);
+        // PoX accessor must not apply to a staking condition.
+        assert!(parsed.pox_condition_code().is_none());
+    }
+
+    #[test]
+    fn test_staking_display_items() {
+        // 100 STX = 100_000_000 uSTX (STX has 6 decimals).
+        let bytes = staking_cond(0x03, 100_000_000);
+        let parsed = TransactionPostCondition::from_bytes(&bytes).unwrap().1;
+        let mut key = [0u8; 64];
+        let mut val = [0u8; 64];
+
+        // item 1: staking condition code, rendered like the fungible codes.
+        parsed.get_items(1, &mut key, &mut val, 0).unwrap();
+        assert!(val_str(&key).starts_with("Staking Code"));
+        assert_eq!(val_str(&val), "SentGe");
+
+        // item 2: staked amount, rendered in STX (non-empty).
+        parsed.get_items(2, &mut key, &mut val, 0).unwrap();
+        assert!(val_str(&key).starts_with("Staked STX"));
+        assert!(!val_str(&val).is_empty());
+    }
+
+    #[test]
+    fn test_pox_postcondition() {
+        let cases: &[(u8, PoxConditionCode, &str)] = &[
+            (0x30, PoxConditionCode::MustNot, "PoX deny"),
+            (0x31, PoxConditionCode::May, "PoX allow"),
+            (0x32, PoxConditionCode::Must, "PoX required"),
+        ];
+        for &(byte, code, label) in cases {
+            // Sentinel confirms read length: 1 (type) + 22 (principal) + 1 (code) = 24.
+            let mut bytes = pox_cond(byte);
+            bytes.push(0xEE);
+            let (rem, parsed) = TransactionPostCondition::from_bytes(&bytes).unwrap();
+            assert_eq!(rem, &[0xEE]);
+            assert!(matches!(parsed, TransactionPostCondition::Pox(..)));
+            assert_eq!(parsed.pox_condition_code().unwrap(), code);
+            assert_eq!(parsed.pox_condition_code().unwrap().to_str(), label);
+            assert_eq!(parsed.num_items(), 2);
+            // Fungible/amount accessors must not apply to a PoX condition.
+            assert!(parsed.fungible_condition_code().is_none());
+            assert!(parsed.amount_stx().is_none());
+
+            // item 1 renders the PoX code label.
+            let mut key = [0u8; 64];
+            let mut val = [0u8; 64];
+            parsed.get_items(1, &mut key, &mut val, 0).unwrap();
+            assert!(val_str(&key).starts_with("PoX Code"));
+            assert_eq!(val_str(&val), label);
+        }
+    }
+
+    #[test]
+    fn test_invalid_pox_code_rejected_at_display() {
+        // An out-of-range PoX code byte parses structurally (it is just a byte) but yields
+        // no PoxConditionCode, so display reports InvalidPoxCode rather than signing a code
+        // the device cannot name.
+        let bytes = pox_cond(0x33); // not in {0x30, 0x31, 0x32}
+        let parsed = TransactionPostCondition::from_bytes(&bytes).unwrap().1;
+        assert!(parsed.pox_condition_code().is_none());
+
+        let mut key = [0u8; 64];
+        let mut val = [0u8; 64];
+        let err = parsed.get_items(1, &mut key, &mut val, 0).unwrap_err();
+        assert_eq!(err, ParserError::InvalidPoxCode);
     }
 }

@@ -239,6 +239,8 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Invalid fungible code type";
         case parser_invalid_non_fungible_code:
             return "Invalid non fungible code";
+        case parser_invalid_pox_code:
+            return "Invalid PoX code";
         case parser_invalid_asset_info:
             return "Invalid asset info";
         case parser_invalid_post_condition:

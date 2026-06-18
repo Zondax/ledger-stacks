@@ -26,9 +26,21 @@ const EXTRA_CHARS_FOR_FORMAT: usize = 3;
 
 const ADDR_STACKING1: &str = "SP000000000000000000002Q6VF78";
 const ADDR_STACKING2: &str = "ST000000000000000000002AMW42H";
-const CONTRACT_NAME_STACKING: &str = "pox";
 const FN_NAME_STACKING1: &str = "stack-stx";
 const FN_NAME_STACKING2: &str = "delegate-stx";
+
+/// Matches a boot PoX contract name: `pox` or `pox-N` (`pox-2`, `pox-3`, `pox-4`, ...).
+/// Versioned so the friendly stacking labels keep applying to whichever PoX contract is
+/// active at a given epoch, rather than pinning a single version.
+fn is_pox_contract_name(name: &[u8]) -> bool {
+    if name == b"pox" {
+        return true;
+    }
+    match name.strip_prefix(b"pox-") {
+        Some(rest) => !rest.is_empty() && rest.iter().all(u8::is_ascii_digit),
+        None => false,
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, PartialEq)]
@@ -209,7 +221,7 @@ impl<'a> TransactionContractCall<'a> {
         let addr = addr.as_ref();
         let contract_name = self.contract_name()?;
         if (addr == ADDR_STACKING1.as_bytes() || addr == ADDR_STACKING2.as_bytes())
-            && contract_name.name() == CONTRACT_NAME_STACKING.as_bytes()
+            && is_pox_contract_name(contract_name.name())
         {
             let name = self.function_name()?;
             if name == FN_NAME_STACKING1.as_bytes() {
