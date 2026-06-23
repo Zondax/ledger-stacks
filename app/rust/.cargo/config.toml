@@ -1,3 +1,9 @@
+# `panic_immediate_abort` is no longer a build-std feature: as of
+# nightly-2025-12-05 it became the `immediate-abort` panic strategy. It is now
+# selected via `panic = "immediate-abort"` in `[profile.release]` of Cargo.toml
+# (gated by `cargo-features = ["panic-immediate-abort"]`), and `core` is rebuilt
+# with that strategy through `-Z build-std=core` passed in app/Makefile.
+
 [build]
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
@@ -8,9 +14,6 @@ rustflags = [
     "-C", "link-arg=-Tlink.ld",
     "-C", "llvm-args=--inline-threshold=0",
 ]
-# immediate-abort is selected via the Cargo.toml [profile.release] panic setting
-# (cargo-features = ["panic-immediate-abort"]); build-std=core is passed on the
-# cargo command line in the Makefile (nightly-2025-12-05).
 
 [target.'cfg(target_os = "linux")']
 rustflags = [
