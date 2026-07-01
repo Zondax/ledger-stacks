@@ -25,6 +25,11 @@ use crate::{bolos::c_zemu_log_stack, parser::value::Value};
 /// post-conditions: Principal, Asset name, NonFungi. Code, Count.
 pub const AGGREGATED_NFT_ITEMS: u8 = 4;
 
+/// Byte width of a condition code (fungible / PoX / NFT) in a post-condition body.
+const CODE_LEN: usize = 1;
+/// Byte width of a uSTX amount (big-endian u64) in a post-condition body.
+const AMOUNT_LEN: usize = 8;
+
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
 pub enum PostConditionType {
@@ -76,32 +81,32 @@ impl<'a> TransactionPostCondition<'a> {
 
         match PostConditionType::try_from(cond_type)? {
             PostConditionType::Stx => {
-                let len = principal_len + 1 + 8;
+                let len = principal_len + CODE_LEN + AMOUNT_LEN;
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Stx(inner)))
             }
             PostConditionType::FungibleToken => {
                 let asset = AssetInfo::read_as_bytes(principal.0)?;
-                let len = principal_len + asset.1.len() + 1 + 8;
+                let len = principal_len + asset.1.len() + CODE_LEN + AMOUNT_LEN;
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Fungible(inner)))
             }
             PostConditionType::NonFungibleToken => {
                 let asset = AssetInfo::read_as_bytes(principal.0)?;
                 let value_len = Value::value_len::<TX_DEPTH_LIMIT>(asset.0)?;
-                let len = principal_len + asset.1.len() + value_len + 1;
+                let len = principal_len + asset.1.len() + value_len + CODE_LEN;
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Nonfungible(inner)))
             }
             // Same body layout as Stx: principal + 1-byte fungible code + 8-byte amount.
             PostConditionType::Staking => {
-                let len = principal_len + 1 + 8;
+                let len = principal_len + CODE_LEN + AMOUNT_LEN;
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Staking(inner)))
             }
             // principal + 1-byte PoX condition code, no amount.
             PostConditionType::Pox => {
-                let len = principal_len + 1;
+                let len = principal_len + CODE_LEN;
                 let (raw, inner) = take(len)(raw)?;
                 Ok((raw, Self::Pox(inner)))
             }
@@ -116,29 +121,29 @@ impl<'a> TransactionPostCondition<'a> {
         match PostConditionType::try_from(cond_type)? {
             PostConditionType::Stx => {
                 // We take 9-bytes which comprises the 8-byte amount + 1-byte fungible code
-                let (raw, _) = take(9usize)(rem)?;
+                let (raw, _) = take(CODE_LEN + AMOUNT_LEN)(rem)?;
                 rem = raw;
             }
             PostConditionType::FungibleToken => {
                 let (raw, _) = AssetInfo::read_as_bytes(rem)?;
                 // We take 9-bytes which containf the 8-byte amount + 1-byte fungible code
-                let (raw, _) = take(9usize)(raw)?;
+                let (raw, _) = take(CODE_LEN + AMOUNT_LEN)(raw)?;
                 rem = raw;
             }
             PostConditionType::NonFungibleToken => {
                 let (asset_raw, _) = AssetInfo::read_as_bytes(rem)?;
                 let (raw, _) = Value::from_bytes::<TX_DEPTH_LIMIT>(asset_raw)?;
-                let (raw, _) = take(1usize)(raw)?;
+                let (raw, _) = take(CODE_LEN)(raw)?;
                 rem = raw;
             }
             PostConditionType::Staking => {
                 // 8-byte amount + 1-byte fungible code, same as Stx.
-                let (raw, _) = take(9usize)(rem)?;
+                let (raw, _) = take(CODE_LEN + AMOUNT_LEN)(rem)?;
                 rem = raw;
             }
             PostConditionType::Pox => {
                 // 1-byte PoX condition code, no amount.
-                let (raw, _) = take(1usize)(rem)?;
+                let (raw, _) = take(CODE_LEN)(rem)?;
                 rem = raw;
             }
         };
@@ -215,7 +220,7 @@ impl<'a> TransactionPostCondition<'a> {
     pub fn tokens_amount(&self) -> Option<u64> {
         match *self {
             Self::Stx(inner) | Self::Fungible(inner) => {
-                let at = inner.len() - 8;
+                let at = inner.len() - AMOUNT_LEN;
                 be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
             _ => None,
@@ -226,7 +231,7 @@ impl<'a> TransactionPostCondition<'a> {
         match self {
             // Staking shares the Stx body: 8-byte uSTX amount at the tail.
             Self::Stx(inner) | Self::Staking(inner) => {
-                let at = inner.len() - 8;
+                let at = inner.len() - AMOUNT_LEN;
                 be_u64::<_, ParserError>(&inner[at..]).map(|res| res.1).ok()
             }
             _ => None,
@@ -260,7 +265,7 @@ impl<'a> TransactionPostCondition<'a> {
             // 1-byte code precedes the 8-byte amount, so it sits at len-9. Staking reuses
             // the fungible codes on the same body layout as Stx.
             Self::Stx(inner) | Self::Fungible(inner) | Self::Staking(inner) => {
-                inner[inner.len() - 9]
+                inner[inner.len() - (CODE_LEN + AMOUNT_LEN)]
             }
             _ => return None,
         };
@@ -270,7 +275,7 @@ impl<'a> TransactionPostCondition<'a> {
     pub fn pox_condition_code(&self) -> Option<PoxConditionCode> {
         let code = match self {
             // PoX body is principal + 1-byte code, so the code is the last byte.
-            Self::Pox(inner) => inner[inner.len() - 1],
+            Self::Pox(inner) => inner[inner.len() - CODE_LEN],
             _ => return None,
         };
         PoxConditionCode::from_u8(code)
@@ -278,7 +283,7 @@ impl<'a> TransactionPostCondition<'a> {
 
     pub fn non_fungible_condition_code(&self) -> Option<NonfungibleConditionCode> {
         let code = match self {
-            Self::Nonfungible(inner) => inner[inner.len() - 1],
+            Self::Nonfungible(inner) => inner[inner.len() - CODE_LEN],
             _ => return None,
         };
         NonfungibleConditionCode::from_u8(code)
