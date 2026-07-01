@@ -178,7 +178,7 @@ impl<'a> TransactionPostCondition<'a> {
             | Self::Nonfungible(principal)
             | Self::Staking(principal)
             | Self::Pox(principal) => {
-                principal[0] == PostConditionPrincipalId::Origin as u8
+                principal[0] == PostConditionPrincipalId::Contract as u8
             }
         }
     }
