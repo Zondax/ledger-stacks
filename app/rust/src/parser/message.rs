@@ -5,7 +5,7 @@ use core::fmt::Write;
 use nom::bytes::complete::take;
 
 // The lenght of \x17Stacks Signed Message:
-const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().len();
+const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".len();
 // Truncates an ascii
 // message to around this size, as we need to change special characters
 // like /t or /r with spaces.

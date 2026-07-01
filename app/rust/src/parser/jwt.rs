@@ -9,7 +9,7 @@ use hex::encode_to_slice;
 const MAX_BASE64_HEADER_LEN: usize = 250;
 
 fn decode_data(input: &[u8], output: &mut [u8]) -> Result<usize, ParserError> {
-    let estimate_len = (input.len() + 3) / 4;
+    let estimate_len = input.len().div_ceil(4);
     let estimate_len = estimate_len * 3;
 
     if output.len() < estimate_len {
