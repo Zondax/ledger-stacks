@@ -1,10 +1,6 @@
-// Only enable no_std for non-test, non-fuzzing, non-clippy, non-cpp_test builds
-#![cfg_attr(all(
-    not(test),
-    not(feature = "fuzzing"),
-    not(feature = "clippy"),
-    not(feature = "cpp_test")
-), no_std)]
+// no_std only on the bare-metal device target; host builds (tests, clippy,
+// fuzzing) link std, which also provides the panic handler defined below.
+#![cfg_attr(target_os = "none", no_std)]
 #![no_builtins]
 #![macro_use]
 
