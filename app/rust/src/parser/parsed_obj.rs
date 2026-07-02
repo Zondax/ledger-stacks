@@ -1,5 +1,3 @@
-#![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
-
 use crate::bolos::c_zemu_log_stack;
 
 use super::{error::ParserError, transaction::Transaction, Message};
@@ -40,11 +38,9 @@ pub struct ParsedObj<'a> {
 // Gated to the 32-bit device target: on a 64-bit host every slice pointer is twice as
 // wide, so the host struct is ~2x larger and would trip this without reflecting the
 // real (device) layout. parser_allocate() also checks this at runtime.
-// Mirror of PARSER_BUFFER_SIZE in app/src/parser.c (see comment above).
+// 2048 mirrors PARSER_BUFFER_SIZE in app/src/parser.c (see comment above).
 #[cfg(target_pointer_width = "32")]
-const MAX_PARSED_OBJ_SIZE: usize = 2048;
-#[cfg(target_pointer_width = "32")]
-const _: () = assert!(core::mem::size_of::<ParsedObj>() <= MAX_PARSED_OBJ_SIZE);
+const _: () = assert!(core::mem::size_of::<ParsedObj>() <= 2048);
 
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {

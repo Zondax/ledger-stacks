@@ -1,6 +1,3 @@
-#![allow(non_camel_case_types, non_upper_case_globals, non_snake_case)]
-#![allow(clippy::upper_case_acronyms)]
-
 use arrayvec::CapacityError;
 use nom::error::ErrorKind;
 

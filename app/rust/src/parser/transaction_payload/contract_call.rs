@@ -279,9 +279,9 @@ impl<'a> TransactionContractCall<'a> {
                 // (it causes underflow when computing the absolute value)
                 if value == i128::MIN {
                     let min_str = b"-170141183460469231731687303715884105728";
-                    zxformat::pageString(out_value, min_str, page_idx)
+                    zxformat::page_string(out_value, min_str, page_idx)
                 } else {
-                    zxformat::pageString(
+                    zxformat::page_string(
                         out_value,
                         value.numtoa_str(10, &mut buff).as_bytes(),
                         page_idx,
@@ -296,32 +296,32 @@ impl<'a> TransactionContractCall<'a> {
                     self.label_stacking_value(out_key)?;
                 }
 
-                zxformat::pageString(
+                zxformat::page_string(
                     out_value,
                     value.numtoa_str(10, &mut buff).as_bytes(),
                     page_idx,
                 )
             }
-            ValueId::BoolTrue => zxformat::pageString(out_value, "Bool: true".as_bytes(), page_idx),
+            ValueId::BoolTrue => zxformat::page_string(out_value, "Bool: true".as_bytes(), page_idx),
             ValueId::BoolFalse => {
-                zxformat::pageString(out_value, "Bool: false".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "Bool: false".as_bytes(), page_idx)
             }
             ValueId::OptionalNone => {
-                zxformat::pageString(out_value, "Option: None".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "Option: None".as_bytes(), page_idx)
             }
             ValueId::OptionalSome => {
-                zxformat::pageString(out_value, "Option: Some".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "Option: Some".as_bytes(), page_idx)
             }
             ValueId::ResponseOk => {
-                zxformat::pageString(out_value, "Result: Ok".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "Result: Ok".as_bytes(), page_idx)
             }
             ValueId::ResponseErr => {
-                zxformat::pageString(out_value, "Result: Err".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "Result: Err".as_bytes(), page_idx)
             }
             ValueId::StandardPrincipal => {
                 let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
                 let address = principal.encoded_address()?;
-                zxformat::pageString(out_value, &address[0..address.len()], page_idx)
+                zxformat::page_string(out_value, &address[0..address.len()], page_idx)
             }
             ValueId::ContractPrincipal => {
                 // holds principal_encoded address + '.' + contract_name
@@ -345,11 +345,11 @@ impl<'a> TransactionContractCall<'a> {
                     .apdu_unwrap()
                     .copy_from_slice(contract_name.name());
 
-                zxformat::pageString(out_value, &data[0..len + contract_name.len()], page_idx)
+                zxformat::page_string(out_value, &data[0..len + contract_name.len()], page_idx)
             }
-            ValueId::Buffer => zxformat::pageString(out_value, "is Buffer".as_bytes(), page_idx),
-            ValueId::List => zxformat::pageString(out_value, "is List".as_bytes(), page_idx),
-            ValueId::Tuple => zxformat::pageString(out_value, "is Tuple".as_bytes(), page_idx),
+            ValueId::Buffer => zxformat::page_string(out_value, "is Buffer".as_bytes(), page_idx),
+            ValueId::List => zxformat::page_string(out_value, "is List".as_bytes(), page_idx),
+            ValueId::Tuple => zxformat::page_string(out_value, "is Tuple".as_bytes(), page_idx),
             ValueId::StringAscii => {
                 // 4 bytes encode the length of the string
                 let len = if payload.len() - 4 > MAX_STRING_ASCII_TO_SHOW {
@@ -357,7 +357,7 @@ impl<'a> TransactionContractCall<'a> {
                 } else {
                     payload.len()
                 };
-                zxformat::pageString(
+                zxformat::page_string(
                     out_value,
                     &payload[4..len], // omit the first 4-bytes as they are the string length
                     page_idx,
@@ -365,7 +365,7 @@ impl<'a> TransactionContractCall<'a> {
             }
 
             ValueId::StringUtf8 => {
-                zxformat::pageString(out_value, "is StringUtf8".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "is StringUtf8".as_bytes(), page_idx)
             }
         }
     }
@@ -444,7 +444,7 @@ impl<'a> TransactionContractCall<'a> {
                 pos += 1;
 
                 // Page the formatted string
-                zxformat::pageString(out_value, &display_buffer[..pos], page_idx)
+                zxformat::page_string(out_value, &display_buffer[..pos], page_idx)
             }
             1 => {
                 // Sender principal
@@ -455,7 +455,7 @@ impl<'a> TransactionContractCall<'a> {
                     ValueId::StandardPrincipal => {
                         let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
                         let address = principal.encoded_address()?;
-                        zxformat::pageString(out_value, &address[..address.len()], page_idx)
+                        zxformat::page_string(out_value, &address[..address.len()], page_idx)
                     }
                     ValueId::ContractPrincipal => {
                         // holds principal_encoded address + '.' + contract_name + null terminator
@@ -476,7 +476,7 @@ impl<'a> TransactionContractCall<'a> {
                             .apdu_unwrap()
                             .copy_from_slice(contract_name.name());
 
-                        zxformat::pageString(
+                        zxformat::page_string(
                             out_value,
                             &data[..len + contract_name.len()],
                             page_idx,
@@ -495,7 +495,7 @@ impl<'a> TransactionContractCall<'a> {
                     ValueId::StandardPrincipal => {
                         let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
                         let address = principal.encoded_address()?;
-                        zxformat::pageString(out_value, &address[..address.len()], page_idx)
+                        zxformat::page_string(out_value, &address[..address.len()], page_idx)
                     }
                     ValueId::ContractPrincipal => {
                         let mut data =
@@ -515,7 +515,7 @@ impl<'a> TransactionContractCall<'a> {
                             .apdu_unwrap()
                             .copy_from_slice(contract_name.name());
 
-                        zxformat::pageString(
+                        zxformat::page_string(
                             out_value,
                             &data[..len + contract_name.len()],
                             page_idx,
@@ -546,7 +546,7 @@ impl<'a> TransactionContractCall<'a> {
         match memo_value.value_id() {
             ValueId::OptionalNone => {
                 // Simply render "None"
-                zxformat::pageString(out_value, "None".as_bytes(), page_idx)
+                zxformat::page_string(out_value, "None".as_bytes(), page_idx)
             }
             ValueId::OptionalSome => {
                 // Extract the inner value, skipping the first byte which is the value ID
@@ -563,7 +563,7 @@ impl<'a> TransactionContractCall<'a> {
                     ValueId::UInt => {
                         let value = inner_value.uint().ok_or(ParserError::UnexpectedError)?;
                         let mut buff = [0u8; 39];
-                        zxformat::pageString(
+                        zxformat::page_string(
                             out_value,
                             value.numtoa_str(10, &mut buff).as_bytes(),
                             page_idx,
@@ -575,9 +575,9 @@ impl<'a> TransactionContractCall<'a> {
                         // Handle i128::MIN specially as numtoa has a bug with it
                         if value == i128::MIN {
                             let min_str = b"-170141183460469231731687303715884105728";
-                            zxformat::pageString(out_value, min_str, page_idx)
+                            zxformat::page_string(out_value, min_str, page_idx)
                         } else {
-                            zxformat::pageString(
+                            zxformat::page_string(
                                 out_value,
                                 value.numtoa_str(10, &mut buff).as_bytes(),
                                 page_idx,
@@ -585,16 +585,16 @@ impl<'a> TransactionContractCall<'a> {
                         }
                     }
                     ValueId::BoolTrue => {
-                        zxformat::pageString(out_value, "true".as_bytes(), page_idx)
+                        zxformat::page_string(out_value, "true".as_bytes(), page_idx)
                     }
                     ValueId::BoolFalse => {
-                        zxformat::pageString(out_value, "false".as_bytes(), page_idx)
+                        zxformat::page_string(out_value, "false".as_bytes(), page_idx)
                     }
                     ValueId::StandardPrincipal => {
                         let payload = inner_value.payload();
                         let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
                         let address = principal.encoded_address()?;
-                        zxformat::pageString(out_value, &address[0..address.len()], page_idx)
+                        zxformat::page_string(out_value, &address[0..address.len()], page_idx)
                     }
                     ValueId::ContractPrincipal => {
                         let payload = inner_value.payload();
@@ -616,7 +616,7 @@ impl<'a> TransactionContractCall<'a> {
                             .apdu_unwrap()
                             .copy_from_slice(contract_name.name());
 
-                        zxformat::pageString(
+                        zxformat::page_string(
                             out_value,
                             &data[0..len + contract_name.len()],
                             page_idx,
@@ -630,14 +630,14 @@ impl<'a> TransactionContractCall<'a> {
                         } else {
                             payload.len()
                         };
-                        zxformat::pageString(
+                        zxformat::page_string(
                             out_value,
                             &payload[4..len], // omit the first 4-bytes as they are the string length
                             page_idx,
                         )
                     }
                     // For other types, just show a generic message
-                    _ => zxformat::pageString(out_value, "Complex memo value".as_bytes(), page_idx),
+                    _ => zxformat::page_string(out_value, "Complex memo value".as_bytes(), page_idx),
                 }
             }
             // If it's not an Optional type at all
@@ -681,7 +681,7 @@ impl<'a> TransactionContractCall<'a> {
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let address = self.contract_address()?;
                 check_canary!();
-                zxformat::pageString(out_value, address.as_ref(), page_idx)
+                zxformat::page_string(out_value, address.as_ref(), page_idx)
             }
             // Contract.name
             1 => {
@@ -690,7 +690,7 @@ impl<'a> TransactionContractCall<'a> {
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let name = self.contract_name()?;
                 check_canary!();
-                zxformat::pageString(out_value, name.name(), page_idx)
+                zxformat::page_string(out_value, name.name(), page_idx)
             }
             // Function-name
             2 => {
@@ -699,7 +699,7 @@ impl<'a> TransactionContractCall<'a> {
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let name = self.function_name()?;
                 check_canary!();
-                zxformat::pageString(out_value, name, page_idx)
+                zxformat::page_string(out_value, name, page_idx)
             }
             _ => Err(ParserError::DisplayIdxOutOfRange),
         }

@@ -1,6 +1,7 @@
-#![allow(non_snake_case)]
-
-use core::fmt::{self, Write};
+use core::fmt::{self};
+// `Write` trait methods are only exercised by fpstr_to_str's test/fuzzing path.
+#[cfg(any(test, feature = "fuzzing"))]
+use core::fmt::Write;
 
 use crate::parser::ParserError;
 use arrayvec::ArrayVec;
@@ -79,9 +80,6 @@ macro_rules! num_to_str {
 }
 
 num_to_str!(u64, u64_to_str);
-num_to_str!(u32, u32_to_str);
-num_to_str!(u8, u8_to_str);
-num_to_str!(i64, i64_to_str);
 
 /// Fixed point u64 number with native/test support
 ///
@@ -113,6 +111,9 @@ pub fn fpu64_to_str(out: &mut [u8], value: u64, decimals: u8) -> Result<usize, P
     }
 }
 
+// Only used by fpu64_to_str's test/fuzzing path; the device build formats via
+// the native fp_uint64_to_str FFI instead.
+#[cfg(any(test, feature = "fuzzing"))]
 pub(crate) fn fpstr_to_str(
     out: &mut [u8],
     value: &[u8],
@@ -256,7 +257,7 @@ pub fn format_u128_decimals(
 }
 
 #[inline(never)]
-pub fn pageString(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result<u8, ParserError> {
+pub fn page_string(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result<u8, ParserError> {
     // Just ensure the buffer is clear
     for i in out_value.iter_mut() {
         *i = 0u8;
@@ -350,10 +351,10 @@ mod test {
     fn test_paging_string() {
         let inValue = b"abcdabcdabcd";
         let mut outValue = [0u8; 6];
-        // the pageString will left over the last byte
+        // the page_string will left over the last byte
         // as a string terminator, so we make chunks of outValue.len() - 1
         for (idx, chunk) in inValue.chunks(outValue.len() - 1).enumerate() {
-            pageString(outValue.as_mut(), inValue.as_ref(), idx as u8).unwrap();
+            page_string(outValue.as_mut(), inValue.as_ref(), idx as u8).unwrap();
             assert_eq!(outValue[..chunk.len()].as_ref(), chunk);
         }
     }

@@ -26,10 +26,6 @@ extern "C" {
     pub fn get_token(contract_address: *const u8, contract_name: *const u8) -> *const CTokenInfo;
 }
 
-// Function to get the length of a null-terminated C string
-fn c_strlen(buf: &[u8]) -> usize {
-    buf.iter().position(|&b| b == 0).unwrap_or(buf.len())
-}
 
 /// Retrieves token information by calling the C function `get_token`.
 ///

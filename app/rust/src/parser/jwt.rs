@@ -1,6 +1,5 @@
-#![allow(clippy::missing_safety_doc)]
 use super::error::ParserError;
-use crate::zxformat::{pageString, Writer};
+use crate::zxformat::{page_string, Writer};
 
 use crate::bolos::{sha256, SHA256_LEN};
 use core::{fmt::Write, str};
@@ -137,7 +136,7 @@ impl<'a> Jwt<'a> {
         let mut hash_str = [0u8; SHA256_LEN * 2];
         encode_to_slice(out_data.as_ref(), hash_str.as_mut())
             .map_err(|_| ParserError::UnexpectedError)?;
-        pageString(out_value, hash_str.as_ref(), page_idx)
+        page_string(out_value, hash_str.as_ref(), page_idx)
     }
 }
 

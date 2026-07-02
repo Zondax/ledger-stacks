@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use nom::number::complete::{be_u32, le_u8};
+use nom::number::complete::be_u32;
 
 use crate::{bolos::c_zemu_log_stack, check_canary, parser::TransactionPostCondition};
 
@@ -64,14 +64,6 @@ impl TransactionPostConditionMode {
             3 => Some(Self::Originator),
             _ => None,
         }
-    }
-
-    #[inline(never)]
-    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let mode = le_u8(bytes)?;
-        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::UnexpectedError)?;
-        check_canary!();
-        Ok((mode.0, tx_mode))
     }
 }
 

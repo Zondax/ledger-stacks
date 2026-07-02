@@ -322,7 +322,7 @@ impl<'a> TransactionPostCondition<'a> {
             .write_str("Principal")
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
         let addr = self.get_principal_address()?;
-        let rs = zxformat::pageString(out_value, addr.as_ref(), page_idx);
+        let rs = zxformat::page_string(out_value, addr.as_ref(), page_idx);
         crate::check_canary!();
         rs
     }
@@ -371,7 +371,7 @@ impl<'a> TransactionPostCondition<'a> {
                     let code = self
                         .fungible_condition_code()
                         .ok_or(ParserError::InvalidFungibleCode)?;
-                    zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                    zxformat::page_string(out_value, code.to_str().as_bytes(), page_idx)
                 }
                 // Amount in stx
                 2 => {
@@ -379,7 +379,7 @@ impl<'a> TransactionPostCondition<'a> {
                         .write_str("Stx amount")
                         .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                     let amount = self.amount_stx_str().unwrap();
-                    zxformat::pageString(out_value, amount.as_ref(), page_idx)
+                    zxformat::page_string(out_value, amount.as_ref(), page_idx)
                 }
                 _ => Err(ParserError::DisplayIdxOutOfRange),
             },
@@ -407,7 +407,7 @@ impl<'a> TransactionPostCondition<'a> {
                             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                         let name = self.asset_name().ok_or(ParserError::InvalidAssetName)?;
                         crate::check_canary!();
-                        zxformat::pageString(out_value, name, page_idx)
+                        zxformat::page_string(out_value, name, page_idx)
                     }
                     // Fungible code
                     2 => {
@@ -418,7 +418,7 @@ impl<'a> TransactionPostCondition<'a> {
                             .fungible_condition_code()
                             .ok_or(ParserError::InvalidFungibleCode)?;
                         crate::check_canary!();
-                        zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                        zxformat::page_string(out_value, code.to_str().as_bytes(), page_idx)
                     }
                     // Amount of tokens
                     3 => {
@@ -429,7 +429,7 @@ impl<'a> TransactionPostCondition<'a> {
                             .tokens_amount_str()
                             .ok_or(ParserError::UnexpectedValue)?;
                         crate::check_canary!();
-                        zxformat::pageString(out_value, &token[..token.len()], page_idx)
+                        zxformat::page_string(out_value, &token[..token.len()], page_idx)
                     }
                     _ => Err(ParserError::DisplayIdxOutOfRange),
                 }
@@ -457,7 +457,7 @@ impl<'a> TransactionPostCondition<'a> {
                             .write_str("Asset name")
                             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                         let name = self.asset_name().ok_or(ParserError::InvalidAssetName)?;
-                        zxformat::pageString(out_value, name, page_idx)
+                        zxformat::page_string(out_value, name, page_idx)
                     }
                     // Fungible code
                     2 => {
@@ -467,7 +467,7 @@ impl<'a> TransactionPostCondition<'a> {
                         let code = self
                             .non_fungible_condition_code()
                             .ok_or(ParserError::InvalidNonFungibleCode)?;
-                        zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                        zxformat::page_string(out_value, code.to_str().as_bytes(), page_idx)
                     }
                     _ => Err(ParserError::DisplayIdxOutOfRange),
                 }
@@ -496,7 +496,7 @@ impl<'a> TransactionPostCondition<'a> {
                     let code = self
                         .fungible_condition_code()
                         .ok_or(ParserError::InvalidFungibleCode)?;
-                    zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                    zxformat::page_string(out_value, code.to_str().as_bytes(), page_idx)
                 }
                 // Amount in stx
                 2 => {
@@ -504,7 +504,7 @@ impl<'a> TransactionPostCondition<'a> {
                         .write_str("Staked STX")
                         .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                     let amount = self.amount_stx_str().ok_or(ParserError::UnexpectedValue)?;
-                    zxformat::pageString(out_value, amount.as_ref(), page_idx)
+                    zxformat::page_string(out_value, amount.as_ref(), page_idx)
                 }
                 _ => Err(ParserError::DisplayIdxOutOfRange),
             },
@@ -532,7 +532,7 @@ impl<'a> TransactionPostCondition<'a> {
                     let code = self
                         .pox_condition_code()
                         .ok_or(ParserError::InvalidPoxCode)?;
-                    zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                    zxformat::page_string(out_value, code.to_str().as_bytes(), page_idx)
                 }
                 _ => Err(ParserError::DisplayIdxOutOfRange),
             },
@@ -585,7 +585,7 @@ impl<'a> TransactionPostCondition<'a> {
                     .write_str("Asset name")
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let name = self.asset_name().ok_or(ParserError::InvalidAssetName)?;
-                zxformat::pageString(out_value, name, page_idx)
+                zxformat::page_string(out_value, name, page_idx)
             }
             2 => {
                 let mut writer_key = zxformat::Writer::new(out_key);
@@ -595,7 +595,7 @@ impl<'a> TransactionPostCondition<'a> {
                 let code = self
                     .non_fungible_condition_code()
                     .ok_or(ParserError::InvalidNonFungibleCode)?;
-                zxformat::pageString(out_value, code.to_str().as_bytes(), page_idx)
+                zxformat::page_string(out_value, code.to_str().as_bytes(), page_idx)
             }
             3 => {
                 let mut writer_key = zxformat::Writer::new(out_key);
@@ -606,7 +606,7 @@ impl<'a> TransactionPostCondition<'a> {
                 let len = zxformat::u64_to_str(buf.as_mut(), count as u64)
                     .map_err(|_| ParserError::UnexpectedValue)?
                     .len();
-                zxformat::pageString(out_value, &buf[..len], page_idx)
+                zxformat::page_string(out_value, &buf[..len], page_idx)
             }
             _ => Err(ParserError::DisplayIdxOutOfRange),
         }

@@ -7,15 +7,12 @@
 ), no_std)]
 #![no_builtins]
 #![macro_use]
-#![allow(dead_code)]
 
 extern crate no_std_compat as std;
 
 mod bolos;
 pub mod parser;
 mod zxformat;
-
-fn debug(_msg: &str) {}
 
 // Only define panic handler when not fuzzing and not testing
 #[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
@@ -29,7 +26,6 @@ fn panic(_info: &PanicInfo) -> ! {
 
 extern "C" {
     fn check_canary();
-    fn pic(link_address: u32) -> u32;
     fn app_mode_expert() -> u8;
 }
 
