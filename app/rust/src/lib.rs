@@ -1,13 +1,8 @@
-// Only enable no_std for non-test, non-fuzzing, non-clippy, non-cpp_test builds
-#![cfg_attr(all(
-    not(test),
-    not(feature = "fuzzing"),
-    not(feature = "clippy"),
-    not(feature = "cpp_test")
-), no_std)]
+// no_std only on the bare-metal device target; host builds (tests, clippy,
+// fuzzing) link std, which also provides the panic handler defined below.
+#![cfg_attr(target_os = "none", no_std)]
 #![no_builtins]
 #![macro_use]
-#![allow(dead_code)]
 
 extern crate no_std_compat as std;
 
@@ -15,21 +10,20 @@ mod bolos;
 pub mod parser;
 mod zxformat;
 
-fn debug(_msg: &str) {}
-
-// Only define panic handler when not fuzzing and not testing
-#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
-use core::panic::PanicInfo;
-
-#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
+// The panic handler is only needed on the bare-metal device target; on host
+// builds (tests, clippy, fuzzing) std already provides one, so defining ours
+// would clash (duplicate `panic_impl` lang item).
+#[cfg(target_os = "none")]
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+// These SDK symbols are only referenced by the device build; on host/test builds
+// their callers are compiled out, so the declarations would otherwise be dead.
+#[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
     fn check_canary();
-    fn pic(link_address: u32) -> u32;
     fn app_mode_expert() -> u8;
 }
 

@@ -70,7 +70,7 @@ impl<'a> VersionedSmartContract<'a> {
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 check_canary!();
                 let name = self.contract_name()?;
-                zxformat::pageString(out_value, name.name(), page_idx)
+                zxformat::page_string(out_value, name.name(), page_idx)
             }
             _ => Err(ParserError::ValueOutOfRange),
         }

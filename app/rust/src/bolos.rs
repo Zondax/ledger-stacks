@@ -17,6 +17,8 @@ pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {
 }
 
 // extern function that uses the device sdk to compute a hash
+// (only linked on device; host/test builds hash via the sha2 crate below)
+#[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
     pub fn hash_sha256(in_data: *const u8, in_len: u16, out: *mut u8);
 }

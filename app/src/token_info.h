@@ -22,8 +22,6 @@ extern "C" {
 #endif
 
 const token_info_t *get_token(const char *contract_address, const char *contract_name);
-// uint8_t token_registry_size(void);
-// uint16_t get_token_i(size_t index, uint8_t *out, uint16_t out_len);
 
 #ifdef __cplusplus
 }
