@@ -14,16 +14,18 @@ mod bolos;
 pub mod parser;
 mod zxformat;
 
-// Only define panic handler when not fuzzing and not testing
-#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
-use core::panic::PanicInfo;
-
-#[cfg(all(not(test), not(feature = "fuzzing"), not(feature = "clippy"), not(feature = "cpp_test")))]
+// The panic handler is only needed on the bare-metal device target; on host
+// builds (tests, clippy, fuzzing) std already provides one, so defining ours
+// would clash (duplicate `panic_impl` lang item).
+#[cfg(target_os = "none")]
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+// These SDK symbols are only referenced by the device build; on host/test builds
+// their callers are compiled out, so the declarations would otherwise be dead.
+#[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
     fn check_canary();
     fn app_mode_expert() -> u8;

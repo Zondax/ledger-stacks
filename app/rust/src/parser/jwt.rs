@@ -169,15 +169,6 @@ mod test {
         }
     }
 
-    impl Header {
-        fn with_other(other: Option<String>) -> Self {
-            Self {
-                other,
-                ..Default::default()
-            }
-        }
-    }
-
     impl Display for Header {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let header =

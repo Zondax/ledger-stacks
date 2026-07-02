@@ -1,8 +1,11 @@
 use crate::parser::post_conditions::FungibleConditionCode;
 
+// Only used by the device-only get_token_info FFI below.
+#[cfg(not(any(test, feature = "fuzzing")))]
 pub const CONTRACT_ADDR_STR_MAX_LEN: usize = 100;
 pub const TOKEN_SYMBOL_MAX_LEN: usize = 20;
 
+#[cfg(not(any(test, feature = "fuzzing")))]
 #[repr(C)]
 pub struct CTokenInfo {
     // Addresses could be shorter than this CONTRACT_ADDR_STR_MAX_LEN
@@ -22,6 +25,7 @@ pub struct TokenInfo<'a> {
     pub post_condition_code: Option<FungibleConditionCode>,
 }
 
+#[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
     pub fn get_token(contract_address: *const u8, contract_name: *const u8) -> *const CTokenInfo;
 }

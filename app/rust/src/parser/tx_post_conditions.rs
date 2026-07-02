@@ -260,10 +260,7 @@ mod test {
         let a = nft_cond(0x03, 0x12);
         let b = nft_cond(0x04, 0x12);
         let conds = [a.as_slice(), b.as_slice()];
-        assert_eq!(
-            PostConditions::get_num_items(&conds),
-            AGGREGATED_NFT_ITEMS as u8
-        );
+        assert_eq!(PostConditions::get_num_items(&conds), AGGREGATED_NFT_ITEMS);
     }
 
     #[test]
