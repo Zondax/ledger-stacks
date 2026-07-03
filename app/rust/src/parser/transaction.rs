@@ -1,7 +1,7 @@
 use core::fmt::Write;
 use nom::{
     bytes::complete::take,
-    number::complete::{be_u32, le_u8},
+    number::complete::be_u32,
     sequence::tuple,
 };
 
@@ -51,14 +51,6 @@ impl TransactionAnchorMode {
             3 => Some(Self::Any),
             _ => None,
         }
-    }
-
-    #[inline(never)]
-    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self, ParserError> {
-        let mode = le_u8(bytes)?;
-        let tx_mode = Self::from_u8(mode.1).ok_or(ParserError::UnexpectedError)?;
-        check_canary!();
-        Ok((mode.0, tx_mode))
     }
 }
 
@@ -321,7 +313,7 @@ impl<'a> Transaction<'a> {
                     .write_str("Origin")
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let origin_address = origin.signer_address(self.version)?;
-                zxformat::pageString(out_value, origin_address.as_ref(), page_idx)
+                zxformat::page_string(out_value, origin_address.as_ref(), page_idx)
             }
             // The signer nonce
             1 => {
@@ -329,7 +321,7 @@ impl<'a> Transaction<'a> {
                     .write_str("Nonce")
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let nonce_str = origin.nonce_str()?;
-                zxformat::pageString(out_value, nonce_str.as_ref(), page_idx)
+                zxformat::page_string(out_value, nonce_str.as_ref(), page_idx)
             }
             // The signer fee-rate
             2 => {
@@ -337,7 +329,7 @@ impl<'a> Transaction<'a> {
                     .write_str("Fee (uSTX)")
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let fee_str = origin.fee_str()?;
-                zxformat::pageString(out_value, fee_str.as_ref(), page_idx)
+                zxformat::page_string(out_value, fee_str.as_ref(), page_idx)
             }
 
             _ => unreachable!(),

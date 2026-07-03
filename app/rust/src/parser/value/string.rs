@@ -40,10 +40,6 @@ impl<'a> String<'a> {
         Ok((rem, s))
     }
 
-    pub fn is_ascii(&self) -> bool {
-        self.0.is_ascii()
-    }
-
     pub fn len(&self) -> usize {
         self.0.len()
     }

@@ -6,15 +6,6 @@ use crate::parser::error::ParserError;
 
 use super::ValueId;
 
-const INT_WIDTH: usize = 16;
-
-// Represents the inner bytes which conform either a Int128 as defined by SIP005 regarding
-// clarity values types.
-#[repr(C)]
-#[derive(Copy, Clone, PartialEq)]
-#[cfg_attr(test, derive(Debug))]
-struct IntBytes<'a>(&'a [u8; INT_WIDTH]);
-
 // Represents a clarity signed integer of 128 bits
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq)]

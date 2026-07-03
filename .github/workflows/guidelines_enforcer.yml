@@ -21,4 +21,10 @@ on:
 jobs:
   guidelines_enforcer:
     name: Call Ledger guidelines_enforcer
-    uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_guidelines_enforcer.yml@v1
+    # Pinned to v1.101.0 (not @v1). v1.102.0 (2026-06-30) added a "Build application"
+    # job that compiles C apps in ledger-app-builder-lite (clang only, no Rust) to
+    # glyph-filter the manifest. This app is sdk="C" but embeds a Rust static lib via
+    # its Makefile, so `make rust` fails with "cargo: command not found". v1.101.0 is
+    # the last release before that job existed. Revert to @v1 once the enforcer exposes
+    # a builder override for C+Rust hybrids.
+    uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_guidelines_enforcer.yml@v1.101.0

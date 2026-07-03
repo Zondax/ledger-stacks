@@ -1,4 +1,3 @@
-#![allow(clippy::upper_case_acronyms)]
 use core::convert::TryFrom;
 
 use nom::{bytes::complete::take, number::complete::le_u8};

@@ -218,22 +218,6 @@ pub enum SpendingConditionSignature<'a> {
     Multisig(MultisigSpendingCondition<'a>),
 }
 
-impl SpendingConditionSignature<'_> {
-    fn clear_signature(&mut self) {
-        match self {
-            Self::Singlesig(ref mut singlesig) => singlesig.clear_signature(),
-            Self::Multisig(ref mut multisig) => multisig.clear_signature(),
-        }
-    }
-
-    pub fn required_signatures(self) -> Option<u16> {
-        match self {
-            Self::Multisig(ref multisig) => Some(multisig.required_signatures()),
-            _ => None,
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(PartialEq, Clone)]
 #[cfg_attr(test, derive(Debug))]
@@ -262,17 +246,6 @@ impl<'a> SinglesigSpendingCondition<'a> {
                 Ok(TransactionPublicKeyEncoding::Uncompressed)
             }
             _ => Err(ParserError::InvalidPubkeyEncoding),
-        }
-    }
-
-    fn clear_signature(&mut self) {
-        let ptr = self.0.as_ptr();
-        unsafe {
-            let ptr = ptr as *mut u8;
-            // Set the signature encoding type to Compressed
-            ptr.write_bytes(TransactionPublicKeyEncoding::Compressed as u8, 1);
-            // zeroize the signature
-            ptr.write_bytes(0, SIGNATURE_LEN);
         }
     }
 }
@@ -404,27 +377,6 @@ impl<'a> MultisigSpendingCondition<'a> {
         Self::num_fields_from_bytes(self.auth_fields_raw)
             .map(|num| num.1)
             .map_err(|_| ParserError::UnexpectedValue)
-    }
-
-    fn clear_signature(&mut self) {
-        let ptr = self.auth_fields_raw.as_ptr();
-        // clear all the multisig data except for the last 2-bytes
-        // which are the signature count
-        let len = self.auth_fields_raw.len();
-        unsafe {
-            let ptr = ptr as *mut u8;
-            // zeroize the auth fields
-            ptr.write_bytes(0, len);
-        }
-    }
-
-    // If it is a multisig sponsor
-    // then clear it as a singlesig spending condition
-    fn clear_as_singlesig(&mut self) {
-        // TODO: check if it involves shrinking
-        // the general transaction buffer
-        // function is not being called anywhere
-        todo!();
     }
 }
 

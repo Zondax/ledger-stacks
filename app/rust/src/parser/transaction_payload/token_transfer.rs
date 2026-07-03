@@ -111,7 +111,7 @@ impl<'a> StxTokenTransfer<'a> {
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let amount = self.amount_stx()?;
                 check_canary!();
-                zxformat::pageString(out_value, amount.as_ref(), page_idx)
+                zxformat::page_string(out_value, amount.as_ref(), page_idx)
             }
             // Recipient address
             1 => {
@@ -120,14 +120,14 @@ impl<'a> StxTokenTransfer<'a> {
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let recipient = self.encoded_address()?;
                 check_canary!();
-                zxformat::pageString(out_value, recipient.as_ref(), page_idx)
+                zxformat::page_string(out_value, recipient.as_ref(), page_idx)
             }
             2 => {
                 writer_key
                     .write_str("Memo")
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 check_canary!();
-                zxformat::pageString(out_value, self.memo(), page_idx)
+                zxformat::page_string(out_value, self.memo(), page_idx)
             }
             _ => Err(ParserError::DisplayIdxOutOfRange),
         }

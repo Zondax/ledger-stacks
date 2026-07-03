@@ -1,6 +1,3 @@
-#![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
-#![allow(clippy::cast_ptr_alignment)]
-
 use crate::parser::{error::ParserError, spending_condition::TransactionAuthField, Tag};
 pub mod context;
 pub mod token_info;
@@ -9,9 +6,13 @@ use self::context::{parse_tx_t, parsed_obj_from_state, parser_context_t};
 
 // extern c function for formatting to fixed point number
 extern "C" {
-    pub fn fp_uint64_to_str(out: *mut i8, outLen: u16, value: u64, decimals: u8) -> u16;
+    pub fn fp_uint64_to_str(out: *mut i8, out_len: u16, value: u64, decimals: u8) -> u16;
 }
 
+/// # Safety
+///
+/// `context` and `parser_state` must be valid pointers, and `context.buffer`
+/// must point to at least `context.buffer_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn _read(
     context: *const parser_context_t,
@@ -20,10 +21,10 @@ pub unsafe extern "C" fn _read(
     if context.is_null() || parser_state.is_null() {
         return ParserError::NoData as u32;
     }
-    if (*context).buffer.is_null() || (*context).bufferLen == 0 {
+    if (*context).buffer.is_null() || (*context).buffer_len == 0 {
         return ParserError::NoData as u32;
     }
-    let data = core::slice::from_raw_parts((*context).buffer, (*context).bufferLen as _);
+    let data = core::slice::from_raw_parts((*context).buffer, (*context).buffer_len as _);
 
     if let Some(obj) = parsed_obj_from_state(parser_state) {
         match obj.read(data) {
@@ -35,6 +36,10 @@ pub unsafe extern "C" fn _read(
     }
 }
 
+/// # Safety
+///
+/// `tx_t` and `num_items` must be valid, non-null pointers to an initialized
+/// parser state.
 #[no_mangle]
 pub unsafe extern "C" fn _getNumItems(
     _ctx: *const parser_context_t,
@@ -57,35 +62,39 @@ pub unsafe extern "C" fn _getNumItems(
     }
 }
 
+/// # Safety
+///
+/// All pointer arguments must be valid; `out_key` and `out_value` must point to
+/// buffers of at least `out_key_len` and `out_value_len` bytes respectively.
 #[no_mangle]
 pub unsafe extern "C" fn _getItem(
     _ctx: *const parser_context_t,
-    displayIdx: u8,
-    outKey: *mut i8,
-    outKeyLen: u16,
-    outValue: *mut i8,
-    outValueLen: u16,
-    pageIdx: u8,
-    pageCount: *mut u8,
+    display_idx: u8,
+    out_key: *mut i8,
+    out_key_len: u16,
+    out_value: *mut i8,
+    out_value_len: u16,
+    page_idx: u8,
+    page_count: *mut u8,
     tx_t: *const parse_tx_t,
 ) -> u32 {
-    if pageCount.is_null()
-        || outKey.is_null()
-        || outValue.is_null()
-        || outKeyLen == 0
-        || outValueLen == 0
+    if page_count.is_null()
+        || out_key.is_null()
+        || out_value.is_null()
+        || out_key_len == 0
+        || out_value_len == 0
     {
         return ParserError::NoData as _;
     }
     if tx_t.is_null() || (*tx_t).state.is_null() {
         return ParserError::ContextMismatch as _;
     }
-    *pageCount = 0u8;
-    let page_count = &mut *pageCount;
-    let key = core::slice::from_raw_parts_mut(outKey as *mut u8, outKeyLen as usize);
-    let value = core::slice::from_raw_parts_mut(outValue as *mut u8, outValueLen as usize);
+    *page_count = 0u8;
+    let page_count = &mut *page_count;
+    let key = core::slice::from_raw_parts_mut(out_key as *mut u8, out_key_len as usize);
+    let value = core::slice::from_raw_parts_mut(out_value as *mut u8, out_value_len as usize);
     if let Some(obj) = parsed_obj_from_state(tx_t as _) {
-        match obj.get_item(displayIdx, key, value, pageIdx) {
+        match obj.get_item(display_idx, key, value, page_idx) {
             Ok(page) => {
                 *page_count = page;
                 ParserError::ParserOk as _
@@ -148,14 +157,14 @@ pub unsafe extern "C" fn _nonce_bytes(
 #[no_mangle]
 pub unsafe extern "C" fn _check_pubkey_hash(
     tx_t: *const parse_tx_t,
-    pubKey: *const u8,
-    pubKeyLen: u16,
+    pub_key: *const u8,
+    pub_key_len: u16,
 ) -> u32 {
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
-        if pubKey.is_null() {
+        if pub_key.is_null() {
             return ParserError::NoData as _;
         }
-        let pk = core::slice::from_raw_parts(pubKey, pubKeyLen as _);
+        let pk = core::slice::from_raw_parts(pub_key, pub_key_len as _);
         tx.check_signer_pk_hash(pk) as _
     } else {
         ParserError::ContextMismatch as _
@@ -166,12 +175,12 @@ pub unsafe extern "C" fn _check_pubkey_hash(
 pub unsafe extern "C" fn _presig_hash_data(
     tx_t: *const parse_tx_t,
     buf: *mut u8,
-    bufLen: u16,
+    buf_len: u16,
 ) -> u16 {
-    if tx_t.is_null() || buf.is_null() || bufLen == 0 {
+    if tx_t.is_null() || buf.is_null() || buf_len == 0 {
         return 0;
     }
-    let buffer = core::slice::from_raw_parts_mut(buf, bufLen as usize);
+    let buffer = core::slice::from_raw_parts_mut(buf, buf_len as usize);
 
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {
         if let Ok(len) = tx.transaction_auth.initial_sighash_auth(buffer) {
