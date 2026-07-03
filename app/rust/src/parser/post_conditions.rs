@@ -164,30 +164,6 @@ impl<'a> TransactionPostCondition<'a> {
         }
     }
 
-    pub fn is_standard_principal(&self) -> bool {
-        match self {
-            Self::Stx(principal)
-            | Self::Fungible(principal)
-            | Self::Nonfungible(principal)
-            | Self::Staking(principal)
-            | Self::Pox(principal) => {
-                principal[0] == PostConditionPrincipalId::Standard as u8
-            }
-        }
-    }
-
-    pub fn is_contract_principal(&self) -> bool {
-        match self {
-            Self::Stx(principal)
-            | Self::Fungible(principal)
-            | Self::Nonfungible(principal)
-            | Self::Staking(principal)
-            | Self::Pox(principal) => {
-                principal[0] == PostConditionPrincipalId::Contract as u8
-            }
-        }
-    }
-
     #[inline(never)]
     pub fn get_principal_address(
         &self,
