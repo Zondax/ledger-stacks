@@ -36,7 +36,24 @@ extern address_kind_e addressKind;
 
 extern uint8_t version;
 
+// Holds the parameters of an in-flight multisig address request.
+// `pubkeys` stores the (num_pubkeys - 1) cosigner compressed public keys, in
+// the order they appear in the multisig, excluding the slot the device's own
+// derived key occupies (see `device_key_index`).
+typedef struct {
+    uint8_t hash_mode;         // currently only MULTISIG_HASH_MODE_P2SH
+    uint8_t num_required;      // m: required signatures
+    uint8_t num_pubkeys;       // n: total participating keys
+    uint8_t device_key_index;  // position of this device's key in the ordered set
+    uint8_t pubkeys[MULTISIG_MAX_PUBKEYS * PK_LEN_SECP256K1];
+} multisig_data_t;
+
+extern multisig_data_t multisig_data;
+
 bool set_network_version(uint8_t version);
+
+// Set the address version for a multisig request (mainnet/testnet multisig only).
+bool set_multisig_version(uint8_t version);
 
 bool isTestnet();
 
@@ -46,6 +63,12 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKey, uint16_t pubKeyLen);
 
 uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t bufferLen);
 uint16_t crypto_fillAuthkey_secp256k1(uint8_t *buffer, uint16_t bufferLen);
+
+// Builds the multisig (P2SH) address from the device's derived key plus the
+// cosigner keys stored in `multisig_data`, and writes [device pubkey || c32
+// address] into `buffer`. Returns the total number of bytes written, or 0 on
+// error.
+uint16_t crypto_fillAddress_multisig(uint8_t *buffer, uint16_t bufferLen);
 
 zxerr_t crypto_sign(uint8_t *buffer, uint16_t signatureMaxlen, const uint8_t *message, uint16_t messageLen,
                     uint16_t *sigSize);

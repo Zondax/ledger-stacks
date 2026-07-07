@@ -26,6 +26,8 @@
 
 uint8_t version;
 
+multisig_data_t multisig_data;
+
 uint32_t hdPath[HDPATH_LEN_DEFAULT];
 uint32_t hdPath_len;
 
@@ -84,6 +86,19 @@ bool is_valid_network_version(uint8_t ver) {
     return true;
 }
 
+bool is_valid_multisig_version(uint8_t ver) {
+    return ver == COIN_VERSION_MAINNET_MULTISIG || ver == COIN_VERSION_TESTNET_MULTISIG;
+}
+
+bool set_multisig_version(uint8_t network) {
+    if (is_valid_multisig_version(network)) {
+        version = network;
+        return true;
+    }
+    zemu_log_stack("Multisig address version not supported");
+    return false;
+}
+
 uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     if (buffer_len < sizeof(answer_t)) {
         return 0;
@@ -107,6 +122,46 @@ uint16_t crypto_fillAddress_secp256k1(uint8_t *buffer, uint16_t buffer_len) {
     outLen = sizeof_field(answer_t, address);
     if (!is_valid_network_version(version)) version = COIN_VERSION_MAINNET_SINGLESIG;
     outLen = rs_c32_address(address_temp.hash_ripe, version, answer->address, outLen);
+
+    return PK_LEN_SECP256K1 + outLen;
+}
+
+uint16_t crypto_fillAddress_multisig(uint8_t *buffer, uint16_t buffer_len) {
+    if (buffer_len < sizeof(answer_t)) {
+        return 0;
+    }
+
+    if (multisig_data.hash_mode != MULTISIG_HASH_MODE_P2SH && multisig_data.hash_mode != MULTISIG_HASH_MODE_P2SH_NONSEQ) {
+        return 0;
+    }
+    if (!is_valid_multisig_version(version)) {
+        return 0;
+    }
+    if (multisig_data.num_pubkeys < MULTISIG_MIN_PUBKEYS || multisig_data.num_pubkeys > MULTISIG_MAX_PUBKEYS) {
+        return 0;
+    }
+
+    MEMZERO(buffer, buffer_len);
+    answer_t *const answer = (answer_t *)buffer;
+
+    // Derive this device's own compressed public key and return it alongside
+    // the address, so the host/user can confirm the device participates.
+    uint8_t device_pubkey[PK_LEN_SECP256K1] = {0};
+    if (crypto_extractPublicKey(hdPath, HDPATH_LEN_DEFAULT, device_pubkey, sizeof(device_pubkey)) != zxerr_ok) {
+        return 0;
+    }
+    MEMCPY(answer->publicKey, device_pubkey, PK_LEN_SECP256K1);
+
+    // The Rust side splices our derived key into the ordered cosigner set,
+    // builds the redeem script, computes Hash160, and c32-encodes the address.
+    const uint8_t num_cosigners = (uint8_t)(multisig_data.num_pubkeys - 1);
+    size_t outLen = sizeof_field(answer_t, address);
+    outLen = rs_multisig_c32_address(device_pubkey, multisig_data.pubkeys, num_cosigners,
+                                     multisig_data.device_key_index, multisig_data.num_required, version,
+                                     answer->address, outLen);
+    if (outLen == 0) {
+        return 0;
+    }
 
     return PK_LEN_SECP256K1 + outLen;
 }

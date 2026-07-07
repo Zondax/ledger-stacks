@@ -165,6 +165,81 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     THROW(APDU_CODE_OK);
 }
 
+__Z_INLINE void handleGetAddrMultisig(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // The device's own derivation path comes first, validated as a standard
+    // Stacks path (mainnet/testnet). This also sets `hdPath`.
+    extract_default_path(rx, OFFSET_DATA);
+
+    const uint8_t requireConfirmation = G_io_apdu_buffer[OFFSET_P1];
+    const uint8_t version_byte = G_io_apdu_buffer[OFFSET_P2];
+
+    // P2 carries the c32 multisig version byte (mainnet=20 / testnet=21)
+    if (!set_multisig_version(version_byte)) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+
+    // Multisig header follows the 20-byte path:
+    //   hash_mode (1) | m (1) | n (1) | device_key_index (1) | cosigner keys ((n-1) * 33)
+    const uint32_t path_bytes = sizeof(uint32_t) * HDPATH_LEN_DEFAULT;
+    uint32_t offset = OFFSET_DATA + path_bytes;
+
+    if (rx < offset + 4) {
+        THROW(APDU_CODE_WRONG_LENGTH);
+    }
+
+    const uint8_t hash_mode = G_io_apdu_buffer[offset++];
+    const uint8_t num_required = G_io_apdu_buffer[offset++];
+    const uint8_t num_pubkeys = G_io_apdu_buffer[offset++];
+    const uint8_t device_key_index = G_io_apdu_buffer[offset++];
+
+    if (hash_mode != MULTISIG_HASH_MODE_P2SH && hash_mode != MULTISIG_HASH_MODE_P2SH_NONSEQ) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (num_pubkeys < MULTISIG_MIN_PUBKEYS || num_pubkeys > MULTISIG_MAX_PUBKEYS) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (num_required < MULTISIG_MIN_PUBKEYS || num_required > num_pubkeys) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (device_key_index >= num_pubkeys) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+
+    const uint32_t cosigner_bytes = (uint32_t)(num_pubkeys - 1) * PK_LEN_SECP256K1;
+    if (rx - offset < cosigner_bytes) {
+        THROW(APDU_CODE_WRONG_LENGTH);
+    }
+
+    MEMZERO(&multisig_data, sizeof(multisig_data));
+    multisig_data.hash_mode = hash_mode;
+    multisig_data.num_required = num_required;
+    multisig_data.num_pubkeys = num_pubkeys;
+    multisig_data.device_key_index = device_key_index;
+    if (cosigner_bytes > 0) {
+        MEMCPY(multisig_data.pubkeys, &G_io_apdu_buffer[offset], cosigner_bytes);
+    }
+
+    if (requireConfirmation) {
+        review_pending = true;
+        if (app_fill_address_multisig() == 0) {
+            review_pending = false;
+            THROW(APDU_CODE_DATA_INVALID);
+        }
+
+        view_review_init(addr_multisig_getItem, addr_multisig_getNumItems, app_reply_address);
+        view_review_show(REVIEW_ADDRESS);
+
+        *flags |= IO_ASYNCH_REPLY;
+        return;
+    }
+
+    *tx = app_fill_address_multisig();
+    if (*tx == 0) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    THROW(APDU_CODE_OK);
+}
+
 __Z_INLINE void handleGetAuthPubKey(__Z_UNUSED volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
     extract_identity_path(rx, OFFSET_DATA);
 
@@ -265,6 +340,14 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                         THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
                     }
                     handleGetAddrSecp256K1(flags, tx, rx);
+                    break;
+                }
+
+                case INS_GET_ADDR_MULTISIG: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
+                    handleGetAddrMultisig(flags, tx, rx);
                     break;
                 }
 
