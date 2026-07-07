@@ -92,6 +92,56 @@ The general structure of commands and responses is as follows:
 
 ---
 
+### INS_GET_ADDR_MULTISIG
+
+Derives and (optionally) displays a Stacks **multisig (P2SH) address** for
+on-device verification. The device derives its own public key from the supplied
+path and splices it into the ordered cosigner set at `device_key_index`, builds
+the Bitcoin-style multisig redeem script (`OP_m · (len·pubkey)ⁿ · OP_n ·
+OP_CHECKMULTISIG`), takes `Hash160 = RIPEMD160(SHA256(script))`, and c32-encodes
+it with the multisig version byte.
+
+Supports both **sequential P2SH** (`0x01`) and **non-sequential P2SH** (`0x05`)
+hash modes — they derive the same address and differ only in transaction
+signing — with **compressed** cosigner public keys, sized to fit a single APDU
+(`n ≤ 7`).
+
+#### Command
+
+| Field            | Type      | Content                                    | Expected               |
+| ---------------- | --------- | ------------------------------------------ | ---------------------- |
+| CLA              | byte (1)  | Application Identifier                     | 0x09                   |
+| INS              | byte (1)  | Instruction ID                             | 0x07                   |
+| P1               | byte (1)  | Request user confirmation                  | No = 0, Yes = 1        |
+| P2               | byte (1)  | c32 multisig version byte                  | 20 (mainnet) / 21 (testnet) |
+| L                | byte (1)  | Bytes in payload                           | (depends)              |
+| Path             | byte (20) | Device derivation path (5 × 4-byte LE)     |                        |
+| HashMode         | byte (1)  | Multisig hash mode                         | 0x01 (P2SH) / 0x05 (P2SH non-seq) |
+| m                | byte (1)  | Required signatures (threshold)            | 1 ≤ m ≤ n              |
+| n                | byte (1)  | Total participating keys                   | 1 ≤ n ≤ 7              |
+| DeviceKeyIndex   | byte (1)  | Position of this device's key in the set   | 0 ≤ index < n          |
+| CosignerKeys     | byte (?)  | (n-1) × 33-byte compressed cosigner pubkeys, in order, excluding the device slot |  |
+
+#### Response
+
+| Field          | Type      | Content                  | Note                     |
+| -------------- | --------- | ------------------------ | ------------------------ |
+| PK             | byte (33) | This device's public key |                          |
+| ADDR_HUMAN     | byte (??) | Multisig address string  | c32-encoded (SM…/SN…)    |
+| SW1-SW2        | byte (2)  | Return code              | see list of return codes |
+
+#### Notes
+
+- The device deriving its own key (rather than trusting a host-supplied one)
+  guarantees the displayed multisig address actually includes this device.
+- Key order matters for P2SH (both sequential and non-sequential): the cosigner
+  keys must be supplied in the exact order they occupy in the multisig, omitting
+  the device's own slot.
+- Follow-ups: P2WSH / P2WSH-non-sequential hash modes, uncompressed keys, and
+  chunked transport for larger key sets.
+
+---
+
 ### INS_GET_AUTH_PUBKEY
 
 #### Command
