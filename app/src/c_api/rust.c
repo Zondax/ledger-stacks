@@ -28,3 +28,17 @@ void _zemu_log_stack(char *buffer) {
 void hash_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
     crypto_sha256_one_shot(out, CX_SHA256_SIZE, in, in_len);
 }
+
+// Computes RIPEMD-160 of `in` into `out` (20 bytes). Used by the Rust multisig
+// address derivation to form Hash160 = RIPEMD160(SHA256(redeem_script)).
+void hash_ripemd160(uint8_t *in, uint32_t in_len, uint8_t *out) {
+#if defined(LEDGER_SPECIFIC)
+    cx_ripemd160_t ctx;
+    cx_ripemd160_init_no_throw(&ctx);
+    cx_hash_no_throw(&ctx.header, CX_LAST, in, in_len, out, CX_RIPEMD160_SIZE);
+#else
+    (void)in;
+    (void)in_len;
+    (void)out;
+#endif
+}

@@ -68,6 +68,21 @@ typedef enum {
 
 #define COIN_VERSION_MAINNET_SINGLESIG 22
 #define COIN_VERSION_TESTNET_SINGLESIG 26
+#define COIN_VERSION_MAINNET_MULTISIG  20
+#define COIN_VERSION_TESTNET_MULTISIG  21
+
+// Multisig address derivation limits.
+// Stacks multisig (P2SH) addresses are the Hash160 of a Bitcoin-style
+// redeem script. OP_CHECKMULTISIG supports up to 15 keys, but for now we
+// only accept what fits in a single APDU (path + header + (n-1) cosigner
+// pubkeys), which is plenty for the common 2-of-3 / 3-of-5 / 4-of-7 cases.
+#define MULTISIG_MIN_PUBKEYS    1u
+#define MULTISIG_MAX_PUBKEYS    7u
+// Sequential (0x01) and non-sequential (0x05) P2SH multisig derive the *same*
+// address (identical redeem script / Hash160); they differ only in how the
+// transaction is later signed. We accept both for address verification.
+#define MULTISIG_HASH_MODE_P2SH         0x01u
+#define MULTISIG_HASH_MODE_P2SH_NONSEQ  0x05u
 
 #define INS_GET_VERSION            0x00
 #define INS_GET_ADDR_SECP256K1     0x01
@@ -76,6 +91,7 @@ typedef enum {
 #define INS_SIGN_JWT_SECP256K1     0x04
 #define INS_SIGN_STRUCTURED_MSG    0x05
 #define INS_GET_MASTER_FINGERPRINT 0x06
+#define INS_GET_ADDR_MULTISIG      0x07
 
 #ifdef __cplusplus
 }
