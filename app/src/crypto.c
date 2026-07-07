@@ -156,9 +156,8 @@ uint16_t crypto_fillAddress_multisig(uint8_t *buffer, uint16_t buffer_len) {
     // builds the redeem script, computes Hash160, and c32-encodes the address.
     const uint8_t num_cosigners = (uint8_t)(multisig_data.num_pubkeys - 1);
     size_t outLen = sizeof_field(answer_t, address);
-    outLen = rs_multisig_c32_address(device_pubkey, multisig_data.pubkeys, num_cosigners,
-                                     multisig_data.device_key_index, multisig_data.num_required, version,
-                                     answer->address, outLen);
+    outLen = rs_multisig_c32_address(device_pubkey, multisig_data.pubkeys, num_cosigners, multisig_data.device_key_index,
+                                     multisig_data.num_required, version, answer->address, outLen);
     if (outLen == 0) {
         return 0;
     }
