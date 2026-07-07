@@ -34,8 +34,10 @@ void hash_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
 void hash_ripemd160(uint8_t *in, uint32_t in_len, uint8_t *out) {
 #if defined(LEDGER_SPECIFIC)
     cx_ripemd160_t ctx;
-    cx_ripemd160_init_no_throw(&ctx);
-    cx_hash_no_throw(&ctx.header, CX_LAST, in, in_len, out, CX_RIPEMD160_SIZE);
+    if (cx_ripemd160_init_no_throw(&ctx) != CX_OK ||
+        cx_hash_no_throw(&ctx.header, CX_LAST, in, in_len, out, CX_RIPEMD160_SIZE) != CX_OK) {
+        MEMZERO(out, CX_RIPEMD160_SIZE);
+    }
 #else
     (void)in;
     (void)in_len;
