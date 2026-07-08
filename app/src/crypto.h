@@ -37,15 +37,18 @@ extern address_kind_e addressKind;
 extern uint8_t version;
 
 // Holds the parameters of an in-flight multisig address request.
-// `pubkeys` stores the (num_pubkeys - 1) cosigner compressed public keys, in
+// `pubkeys` points at the (num_pubkeys - 1) cosigner compressed public keys, in
 // the order they appear in the multisig, excluding the slot the device's own
-// derived key occupies (see `device_key_index`).
+// derived key occupies (see `device_key_index`). The keys are NOT copied: this
+// borrows the reassembled chunk buffer (`tx_get_buffer()`), the same way
+// `tx_parse()` points the transaction parser at it. The address is derived
+// synchronously while that buffer is still live. NULL when num_pubkeys == 1.
 typedef struct {
-    uint8_t hash_mode;         // currently only MULTISIG_HASH_MODE_P2SH
+    uint8_t hash_mode;         // MULTISIG_HASH_MODE_P2SH or ..._P2SH_NONSEQ
     uint8_t num_required;      // m: required signatures
     uint8_t num_pubkeys;       // n: total participating keys
     uint8_t device_key_index;  // position of this device's key in the ordered set
-    uint8_t pubkeys[MULTISIG_MAX_PUBKEYS * PK_LEN_SECP256K1];
+    const uint8_t *pubkeys;    // borrowed, (n-1) * PK_LEN_SECP256K1 bytes
 } multisig_data_t;
 
 extern multisig_data_t multisig_data;

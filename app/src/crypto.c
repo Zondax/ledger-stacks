@@ -140,6 +140,11 @@ uint16_t crypto_fillAddress_multisig(uint8_t *buffer, uint16_t buffer_len) {
     if (multisig_data.num_pubkeys < MULTISIG_MIN_PUBKEYS || multisig_data.num_pubkeys > MULTISIG_MAX_PUBKEYS) {
         return 0;
     }
+    // The cosigner keys are borrowed from the chunk buffer, so they must be
+    // present whenever there is more than just this device's own key.
+    if (multisig_data.num_pubkeys > 1 && multisig_data.pubkeys == NULL) {
+        return 0;
+    }
 
     MEMZERO(buffer, buffer_len);
     answer_t *const answer = (answer_t *)buffer;
