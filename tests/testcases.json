@@ -366,5 +366,30 @@
       "11 | Fungi. Code : SentLe",
       "12 | Stx amount : 0.001000"
     ]
+  },
+  {
+    "index": 10,
+    "name": "Transfer_to_contract",
+    "blob": "8080000000040060dbb32efe0c56e1d418c020f4cb71c556b6a60d000000000000000000000000000000b400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003020000000000061a453c3f5d22ace598400c7c20ca99d5b3990af8120b6d792d636f6e74726163740000000000000001546869732069732061206d656d6f0000000000000000000000000000000000000000",
+    "output": [
+      "0 | Origin [1/2] : ST1GDQCSEZR65DREM33021X6BE72NDDN61MTP2",
+      "0 | Origin [2/2] : WN3",
+      "1 | Nonce : 0",
+      "2 | Fee (uSTX) : 180",
+      "3 | Amount uSTX : 1",
+      "4 | To [1/2] : ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSP",
+      "4 | To [2/2] : PWK.my-contract",
+      "5 | Memo : This is a memo"
+    ],
+    "output_expert": [
+      "0 | Origin [1/2] : ST1GDQCSEZR65DREM33021X6BE72NDDN61MTP2",
+      "0 | Origin [2/2] : WN3",
+      "1 | Nonce : 0",
+      "2 | Fee (uSTX) : 180",
+      "3 | Amount uSTX : 1",
+      "4 | To [1/2] : ST12KRFTX4APEB6201HY21JMSTPSSJ2QR28MSP",
+      "4 | To [2/2] : PWK.my-contract",
+      "5 | Memo : This is a memo"
+    ]
   }
 ]

@@ -80,6 +80,9 @@ typedef enum {
     parser_invalid_token_transfer_principal = 43,
     parser_recursion_limit = 44,
     parser_invalid_pox_code = 45,
+    // Transaction carries data the device cannot display and blind signing is disabled.
+    // Mirrors ParserError::BlindsignModeRequired in app/rust/src/parser/error.rs.
+    parser_blindsign_mode_required = 46,
 } parser_error_t;
 typedef struct {
     const uint8_t *buffer;
