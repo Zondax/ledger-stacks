@@ -20,7 +20,7 @@
     "Ledger"
   ],
   "dependencies": {
-    "@zondax/ledger-stacks": "^1.1.2",
+    "@zondax/ledger-stacks": "^1.2.0",
     "@zondax/zemu": "^0.67.4"
   },
   "devDependencies": {
@@ -35,6 +35,7 @@
     "@typescript-eslint/eslint-plugin": "^8.60.0",
     "@typescript-eslint/parser": "^8.60.0",
     "bn.js": "^5.2.3",
+    "c32check": "^2.0.0",
     "crypto-js": "4.2.0",
     "elliptic": "^6.6.1",
     "eslint": "^10.4.1",
