@@ -19,8 +19,9 @@ use crate::parser::parser_common::{C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, PUBKEY
 /// OP_CHECKMULTISIG opcode.
 const OP_CHECKMULTISIG: u8 = 0xae;
 
-/// Maximum number of participating keys we accept (fits a single APDU).
-pub const MULTISIG_MAX_PUBKEYS: usize = 7;
+/// Maximum number of participating keys. The 520-byte P2SH redeem-script limit
+/// caps a Stacks multisig at 15 compressed keys (matches stacks.js).
+pub const MULTISIG_MAX_PUBKEYS: usize = 15;
 
 /// Worst-case redeem script: OP_m | (len-byte | pubkey) * n | OP_n | OP_CHECKMULTISIG
 const SCRIPT_MAX_LEN: usize = 1 + MULTISIG_MAX_PUBKEYS * (1 + PUBKEY_LEN) + 2;
@@ -286,6 +287,38 @@ mod test {
         }
     }
 
+    // 8-of-15 mainnet, device at index 7. Reference produced with
+    // @stacks/transactions.createMultiSigSpendingCondition(P2SH, 8, orderedKeys, 0, 0),
+    // orderedKeys = compressed pubkeys for private keys 1..=15.
+    #[test]
+    fn multisig_address_15_keys() {
+        let device = hex::decode("022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01").unwrap();
+        // The 14 cosigner keys (private keys 1..=7 and 9..=15), device slot omitted.
+        let cosigners = hex::decode(concat!(
+            "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+            "03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556",
+            "025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc",
+            "03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe",
+            "03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7",
+            "03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb",
+            "03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a",
+            "03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8",
+            "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+            "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e",
+        ))
+        .unwrap();
+
+        let hash = multisig_p2sh_hash160(&device, &cosigners, 7, 8).unwrap();
+        assert_eq!(hex::encode(hash), "0d938bca9aea68afbe76b74fe8cbc609d159986b");
+
+        let addr = multisig_c32_address(&device, &cosigners, 7, 8, 20).unwrap();
+        assert_eq!(std::str::from_utf8(&addr).unwrap(), "SM6S72YAKBN6HBXYETVMZT6BRR4X2PCRDFXAD26S");
+    }
+
     #[test]
     fn rejects_invalid_parameters() {
         let device = hex::decode(C).unwrap();
@@ -298,7 +331,7 @@ mod test {
         // device index out of range
         assert!(multisig_p2sh_hash160(&device, &one, 2, 1).is_err());
         // too many keys
-        let many = concat_keys(&[A, A, A, A, A, A, A]); // n = 8 > MAX
+        let many = concat_keys(&[A; 15]); // n = 16 > MAX (15)
         assert!(multisig_p2sh_hash160(&device, &many, 0, 1).is_err());
         // malformed device key
         assert!(multisig_p2sh_hash160(&[0u8; 10], &one, 0, 1).is_err());
