@@ -1665,11 +1665,6 @@ describe('Standard', function () {
       const app = new StacksApp(sim.getTransport())
 
       const blob = Buffer.from(DLMM_CORE_V1_1_DEPLOYMENT, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
@@ -1956,11 +1951,6 @@ describe('Standard', function () {
       console.log('Serialized transaction length:', serializeTx.length, 'chars (~', (serializeTx.length / 2 / 1024).toFixed(2), 'KB)')
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
@@ -2062,9 +2052,13 @@ describe('Standard', function () {
       const blob = Buffer.from(rawHex, 'hex')
       dlmmHash160(pk.publicKey.toString('hex')).copy(blob, 7)
 
+      // This contract call passes a tuple argument, which the device renders as "is Tuple"
+      // rather than a value, so it must be blind-signed.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(dpath, blob)
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_aggregated_${b.name}`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_aggregated_${b.name}`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       expect(signature.returnCode).toEqual(0x9000)
