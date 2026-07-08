@@ -224,9 +224,11 @@ __Z_INLINE void handleGetAddrMultisig(volatile uint32_t *flags, volatile uint32_
     multisig_data.num_required = num_required;
     multisig_data.num_pubkeys = num_pubkeys;
     multisig_data.device_key_index = device_key_index;
-    if (cosigner_bytes > 0) {
-        MEMCPY(multisig_data.pubkeys, data + MULTISIG_HEADER_LEN, cosigner_bytes);
-    }
+    // Borrow the cosigner keys straight out of the reassembled chunk buffer
+    // rather than copying them, the same way tx_parse() points the transaction
+    // parser at it. The address is derived synchronously below, before anything
+    // can reuse the buffer.
+    multisig_data.pubkeys = (cosigner_bytes > 0) ? (data + MULTISIG_HEADER_LEN) : NULL;
 
     if (requireConfirmation) {
         review_pending = true;
