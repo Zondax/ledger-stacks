@@ -141,6 +141,54 @@ describe('Multisig address', function () {
     }
   })
 
+  // 14 fixed, valid compressed cosigner keys (compressed pubkeys for private keys 1..14).
+  const COSIGNERS_14 = [
+    '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+    '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5',
+    '02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9',
+    '02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13',
+    '022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4',
+    '03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556',
+    '025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc',
+    '03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe',
+    '03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7',
+    '03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb',
+    '03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a',
+    '03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8',
+    '03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4',
+    '02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e',
+  ]
+
+  test.concurrent.each(models)('multisig addr 8-of-15 mainnet (chunked transport)', async function (m) {
+    const sim = new Zemu(m.path)
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport() as any)
+
+      const pk = await app.getAddressAndPubKey(DEVICE_PATH, AddressVersion.MainnetSingleSig)
+      const deviceKey = pk.publicKey.toString('hex')
+
+      // Device spliced into the 14 cosigners at index 3 -> 15 total keys, 8 required.
+      const deviceIndex = 3
+      const orderedKeys = [...COSIGNERS_14.slice(0, deviceIndex), deviceKey, ...COSIGNERS_14.slice(deviceIndex)]
+      const expectedAddr = expectedMultisigAddress(C32_VERSION_MAINNET_MULTISIG, 8, orderedKeys)
+
+      // 15 keys exceed one APDU, so this exercises the chunked transport path.
+      const response = await app.getMultisigAddressAndPubKey(DEVICE_PATH, C32_VERSION_MAINNET_MULTISIG as any, {
+        numRequired: 8,
+        deviceKeyIndex: deviceIndex,
+        cosignerPublicKeys: COSIGNERS_14,
+      })
+      console.log('15-key multisig address:', response.address, 'expected:', expectedAddr)
+
+      expect(response.returnCode).toEqual(0x9000)
+      expect(response.publicKey.toString('hex')).toEqual(deviceKey)
+      expect(response.address).toEqual(expectedAddr)
+    } finally {
+      await sim.close()
+    }
+  })
+
   test.concurrent.each(models)('multisig addr rejects bad hash mode', async function (m) {
     const sim = new Zemu(m.path)
     try {
