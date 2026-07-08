@@ -268,6 +268,18 @@ impl<'a> Transaction<'a> {
         Ok(false)
     }
 
+    /// Whether this transaction commits to data the device cannot show the user.
+    ///
+    /// Drives the blind-signing gate in `parser_parse`: when true, the app refuses to sign unless
+    /// the user has explicitly enabled blind signing, and then warns before signing.
+    ///
+    /// Deliberately independent of `should_hide_sip10_details`: hiding the SIP-10 base items and
+    /// post-conditions changes *which* items are listed, never whether an argument's value can be
+    /// rendered.
+    pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
+        self.payload.requires_blindsign()
+    }
+
     pub fn num_items(&self) -> Result<u8, ParserError> {
         let mut num_items_post_conditions = self.post_conditions.num_items();
 

@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <zxmacros.h>
 
+#include "app_mode.h"
 #include "coin.h"
 #include "parser_txdef.h"
 #include "rslib.h"
@@ -62,7 +63,24 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
     }
 
     parser_error_t err = _read(ctx, &parser_state);
-    return err;
+    if (err != parser_ok) {
+        return err;
+    }
+
+    // Blind-signing gate. A transaction whose every item renders in full is reviewed normally,
+    // even when the user has blind signing switched on -- so clear the flag zxlib would otherwise
+    // use to show the "Accept risk" screen. Otherwise the user must have opted in: calling
+    // app_mode_blindsign() both reports the setting and arms that warning screen.
+    uint8_t requires_blindsign = 0;
+    CHECK_PARSER_ERR(_tx_requires_blindsign(&parser_state, &requires_blindsign))
+
+    if (!requires_blindsign) {
+        app_mode_skip_blindsign_ui();
+    } else if (!app_mode_blindsign()) {
+        return parser_blindsign_mode_required;
+    }
+
+    return parser_ok;
 }
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
@@ -241,6 +259,8 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Invalid non fungible code";
         case parser_invalid_pox_code:
             return "Invalid PoX code";
+        case parser_blindsign_mode_required:
+            return "Blind signing must be enabled";
         case parser_invalid_asset_info:
             return "Invalid asset info";
         case parser_invalid_post_condition:

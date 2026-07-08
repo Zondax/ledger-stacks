@@ -106,6 +106,37 @@ pub unsafe extern "C" fn _getItem(
     }
 }
 
+/// Sets `*requires` to 1 when the parsed object commits to data the device cannot display.
+///
+/// Only transactions can be blind-signed; messages, JWTs and structured messages have their own
+/// review flows and always report 0.
+#[no_mangle]
+pub unsafe extern "C" fn _tx_requires_blindsign(
+    tx_t: *const parse_tx_t,
+    requires: *mut u8,
+) -> u32 {
+    if requires.is_null() {
+        return ParserError::NoData as _;
+    }
+    *requires = 0;
+
+    let Some(obj) = parsed_obj_from_state(tx_t as _) else {
+        return ParserError::ContextMismatch as _;
+    };
+
+    match obj.transaction() {
+        Some(tx) => match tx.requires_blindsign() {
+            Ok(value) => {
+                *requires = value as u8;
+                ParserError::ParserOk as _
+            }
+            Err(e) => e as _,
+        },
+        // Not a transaction: nothing to gate.
+        None => ParserError::ParserOk as _,
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn _auth_flag(tx_t: *const parse_tx_t, auth_flag: *mut u8) -> u32 {
     if let Some(tx) = parsed_obj_from_state(tx_t as _).and_then(|obj| obj.transaction()) {

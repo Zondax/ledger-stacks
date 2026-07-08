@@ -46,8 +46,11 @@ uint8_t *tx_get_buffer();
 
 /// Parse message stored in transaction buffer
 /// This function should be called as soon as full buffer data is loaded.
+/// \param error_code Receives the parser_error_t. Callers need it to distinguish
+///        parser_blindsign_mode_required, which is surfaced through a dedicated UI flow
+///        rather than an immediate APDU error.
 /// \return It returns NULL if data is valid or error message otherwise.
-const char *tx_parse();
+const char *tx_parse(uint8_t *error_code);
 
 /// Return the number of items in the transaction
 zxerr_t tx_getNumItems(uint8_t *num_items);

@@ -178,22 +178,31 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
         THROW(APDU_CODE_OK);
     }
 
-    const char *error_msg = tx_parse();
+    uint8_t error_code = parser_ok;
+    const char *error_msg = tx_parse(&error_code);
 
     if (error_msg != NULL) {
-        int error_msg_length = strlen(error_msg);
-        MEMCPY(G_io_apdu_buffer, error_msg, error_msg_length);
-        *tx += (error_msg_length);
-        THROW(APDU_CODE_DATA_INVALID);
+        if (error_code == parser_blindsign_mode_required) {
+            // The transaction carries data we cannot display and the user has not opted in.
+            // Show the dedicated screen instead of failing the APDU outright; dismissing it
+            // (or rejecting from the settings prompt on NBGL) calls app_reply_error() for us.
+            *flags |= IO_ASYNCH_REPLY;
+            view_blindsign_error_show();
+        } else {
+            int error_msg_length = strlen(error_msg);
+            MEMCPY(G_io_apdu_buffer, error_msg, error_msg_length);
+            *tx += (error_msg_length);
+            THROW(APDU_CODE_DATA_INVALID);
+        }
+    } else {
+        zemu_log_stack("tx_parse done\n");
+
+        CHECK_APP_CANARY()
+        review_pending = true;
+        view_review_init(tx_getItem, tx_getNumItems, app_sign);
+        view_review_show(REVIEW_TXN);
+        *flags |= IO_ASYNCH_REPLY;
     }
-
-    zemu_log_stack("tx_parse done\n");
-
-    CHECK_APP_CANARY()
-    review_pending = true;
-    view_review_init(tx_getItem, tx_getNumItems, app_sign);
-    view_review_show(REVIEW_TXN);
-    *flags |= IO_ASYNCH_REPLY;
 }
 
 __Z_INLINE void handleSignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {

@@ -118,10 +118,16 @@ set(RUST_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/app/rust)
 set(RUST_TARGET_DIR ${RUST_SOURCE_DIR}/target)
 set(RUST_LIB_NAME rslib)
 
+# Rebuild whenever a Rust source or the manifest changes. Without these DEPENDS the custom command
+# only fires when librslib.a is absent, so edits to the parser silently link a stale archive and the
+# C++ tests validate the previous build. cargo itself is incremental, so a no-op rerun is cheap.
+file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS ${RUST_SOURCE_DIR}/src/*.rs)
+
 # Add custom command to build Rust library
 add_custom_command(
     OUTPUT ${RUST_TARGET_DIR}/debug/lib${RUST_LIB_NAME}.a
     COMMAND cargo build --features cpp_test
+    DEPENDS ${RUST_SOURCES} ${RUST_SOURCE_DIR}/Cargo.toml
     WORKING_DIRECTORY ${RUST_SOURCE_DIR}
     COMMENT "Building Rust library"
     VERBATIM
