@@ -72,12 +72,12 @@ typedef enum {
 #define COIN_VERSION_TESTNET_MULTISIG  21
 
 // Multisig address derivation limits.
-// Stacks multisig (P2SH) addresses are the Hash160 of a Bitcoin-style
-// redeem script. OP_CHECKMULTISIG supports up to 15 keys, but for now we
-// only accept what fits in a single APDU (path + header + (n-1) cosigner
-// pubkeys), which is plenty for the common 2-of-3 / 3-of-5 / 4-of-7 cases.
+// Stacks multisig (P2SH) addresses are the Hash160 of a Bitcoin-style redeem
+// script. The 520-byte redeem-script limit caps a P2SH multisig at 15
+// compressed keys (matches stacks.js), so 15 is the protocol maximum. The
+// header + (n-1) cosigner keys are received over chunked transport.
 #define MULTISIG_MIN_PUBKEYS 1u
-#define MULTISIG_MAX_PUBKEYS 7u
+#define MULTISIG_MAX_PUBKEYS 15u
 // Sequential (0x01) and non-sequential (0x05) P2SH multisig derive the *same*
 // address (identical redeem script / Hash160); they differ only in how the
 // transaction is later signed. We accept both for address verification.

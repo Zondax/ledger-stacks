@@ -103,26 +103,41 @@ it with the multisig version byte.
 
 Supports both **sequential P2SH** (`0x01`) and **non-sequential P2SH** (`0x05`)
 hash modes — they derive the same address and differ only in transaction
-signing — with **compressed** cosigner public keys, sized to fit a single APDU
-(`n ≤ 7`).
+signing — with **compressed** cosigner public keys, up to the protocol maximum
+of `n ≤ 15` (the 520-byte redeem-script limit).
 
-#### Command
+Larger key sets exceed a single APDU, so the command uses **chunked transport**
+(like signing): `P1` is the chunk type and `P2` is `0`. The **INIT** chunk carries
+the device path; the **ADD/LAST** chunks carry the multisig header and cosigner
+keys. The c32 version byte and the confirm flag travel in the payload header.
 
-| Field            | Type      | Content                                    | Expected               |
-| ---------------- | --------- | ------------------------------------------ | ---------------------- |
-| CLA              | byte (1)  | Application Identifier                     | 0x09                   |
-| INS              | byte (1)  | Instruction ID                             | 0x07                   |
-| P1               | byte (1)  | Request user confirmation                  | No = 0, Yes = 1        |
-| P2               | byte (1)  | c32 multisig version byte                  | 20 (mainnet) / 21 (testnet) |
-| L                | byte (1)  | Bytes in payload                           | (depends)              |
-| Path             | byte (20) | Device derivation path (5 × 4-byte LE)     |                        |
-| HashMode         | byte (1)  | Multisig hash mode                         | 0x01 (P2SH) / 0x05 (P2SH non-seq) |
-| m                | byte (1)  | Required signatures (threshold)            | 1 ≤ m ≤ n              |
-| n                | byte (1)  | Total participating keys                   | 1 ≤ n ≤ 7              |
-| DeviceKeyIndex   | byte (1)  | Position of this device's key in the set   | 0 ≤ index < n          |
-| CosignerKeys     | byte (?)  | (n-1) × 33-byte compressed cosigner pubkeys, in order, excluding the device slot |  |
+#### Command — INIT chunk (P1 = 0x00)
 
-#### Response
+| Field | Type      | Content                                | Expected |
+| ----- | --------- | -------------------------------------- | -------- |
+| CLA   | byte (1)  | Application Identifier                  | 0x09     |
+| INS   | byte (1)  | Instruction ID                         | 0x07     |
+| P1    | byte (1)  | Chunk type = INIT                      | 0x00     |
+| P2    | byte (1)  | Unused                                 | 0x00     |
+| Path  | byte (20) | Device derivation path (5 × 4-byte LE) |          |
+
+#### Command — ADD / LAST chunks (P1 = 0x01 / 0x02)
+
+The following payload is concatenated across the ADD/LAST chunks (split at 250 bytes):
+
+| Field          | Type      | Content                                   | Expected                    |
+| -------------- | --------- | ----------------------------------------- | --------------------------- |
+| P1             | byte (1)  | Chunk type = ADD (0x01) / LAST (0x02)     |                             |
+| P2             | byte (1)  | Unused                                     | 0x00                        |
+| Confirm        | byte (1)  | Request user confirmation                  | No = 0, Yes = 1             |
+| Version        | byte (1)  | c32 multisig version byte                  | 20 (mainnet) / 21 (testnet) |
+| HashMode       | byte (1)  | Multisig hash mode                         | 0x01 (P2SH) / 0x05 (non-seq)|
+| m              | byte (1)  | Required signatures (threshold)            | 1 ≤ m ≤ n                   |
+| n              | byte (1)  | Total participating keys                   | 1 ≤ n ≤ 15                  |
+| DeviceKeyIndex | byte (1)  | Position of this device's key in the set   | 0 ≤ index < n               |
+| CosignerKeys   | byte (?)  | (n-1) × 33-byte compressed cosigner pubkeys, in order, excluding the device slot | |
+
+#### Response (on the LAST chunk)
 
 | Field          | Type      | Content                  | Note                     |
 | -------------- | --------- | ------------------------ | ------------------------ |
@@ -137,8 +152,7 @@ signing — with **compressed** cosigner public keys, sized to fit a single APDU
 - Key order matters for P2SH (both sequential and non-sequential): the cosigner
   keys must be supplied in the exact order they occupy in the multisig, omitting
   the device's own slot.
-- Follow-ups: P2WSH / P2WSH-non-sequential hash modes, uncompressed keys, and
-  chunked transport for larger key sets.
+- Follow-ups: P2WSH / P2WSH-non-sequential hash modes and uncompressed keys.
 
 ---
 
