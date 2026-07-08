@@ -62,10 +62,9 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
         return parser_init_context_empty;
     }
 
-    parser_error_t err = _read(ctx, &parser_state);
-    if (err != parser_ok) {
-        return err;
-    }
+    // Note: CHECK_PARSER_ERR declares its own `err` in a nested block, so do not keep one in
+    // scope here -- it would shadow it and trip -Wshadow (-Werror on device builds).
+    CHECK_PARSER_ERR(_read(ctx, &parser_state))
 
     // Blind-signing gate. A transaction whose every item renders in full is reviewed normally,
     // even when the user has blind signing switched on -- so clear the flag zxlib would otherwise
