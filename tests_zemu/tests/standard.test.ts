@@ -788,12 +788,17 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -992,12 +997,17 @@ describe('Standard', function () {
       console.log('serialized transaction length {}', serializeTx.length)
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-call_with_string_args`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-call_with_string_args`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1097,12 +1107,17 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1587,12 +1602,17 @@ describe('Standard', function () {
       const bufferReader = new BytesReader(blob)
       const transaction = deserializeTransaction(bufferReader)
 
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_standard_smart_contract_tx`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_standard_smart_contract_tx`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature: ')
@@ -1645,12 +1665,17 @@ describe('Standard', function () {
       const app = new StacksApp(sim.getTransport())
 
       const blob = Buffer.from(DLMM_CORE_V1_1_DEPLOYMENT, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_core_deployment`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_core_deployment`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature: ')
@@ -1725,12 +1750,17 @@ describe('Standard', function () {
       console.log('Serialized transaction length:', serializeTx.length)
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_contract_deploy`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_contract_deploy`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature:', signature)
@@ -1926,12 +1956,17 @@ describe('Standard', function () {
       console.log('Serialized transaction length:', serializeTx.length, 'chars (~', (serializeTx.length / 2 / 1024).toFixed(2), 'KB)')
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_large_contract_deploy`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_large_contract_deploy`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature:', signature)
