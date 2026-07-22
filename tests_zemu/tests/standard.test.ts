@@ -19,6 +19,8 @@ import StacksApp from '@zondax/ledger-stacks'
 import { APP_SEED, models, SIP10_DATA } from './common'
 import { DLMM_CORE_V1_1_DEPLOYMENT, STANDARD_DEPLOYMENT } from './contracts'
 import { encode } from 'varuint-bitcoin'
+import * as fs from 'fs'
+import * as path from 'path'
 
 import {
   AddressVersion,
@@ -49,7 +51,9 @@ import {
   trueCV,
   falseCV,
   FungibleConditionCode,
+  PostConditionMode,
   Pc,
+  postConditionToHex,
   BytesReader,
   deserializeTransaction,
 } from '@stacks/transactions'
@@ -68,6 +72,60 @@ function bigintToLeBuffer(value: bigint, length: number): Buffer {
     value = value >> 8n
   }
   return buf
+}
+
+// SIP-044 (epoch 4.0) introduces two post-condition type IDs that @stacks/transactions
+// cannot build yet (it only emits STX/FT/NFT). We hand-patch the serialized bytes of a
+// known-good STX (0x00) post-condition into the new layouts:
+//   - staking (0x03): byte-identical to STX (principal + fungible code + 8-byte amount),
+//     so only the type ID byte changes.
+//   - PoX (0x04): principal + 1-byte PoX code, no amount — swap the type byte and replace
+//     the trailing [code + 8-byte amount] with the single PoX code byte (8 bytes shorter).
+// The same patch is applied to both the wire blob sent to the device and the signBegin()
+// pre-image used to recompute the expected sighash, so the device signature still verifies.
+type PostConditionPatch = { kind: 'staking' } | { kind: 'pox'; code: number }
+
+function patchStxPostCondition(buf: Buffer, stxPcBytes: Buffer, patch: PostConditionPatch): Buffer {
+  const offset = buf.indexOf(stxPcBytes)
+  if (offset < 0) {
+    throw new Error('STX post-condition bytes not found in serialized transaction')
+  }
+  const pcLen = stxPcBytes.length
+
+  let newPc: Buffer
+  if (patch.kind === 'staking') {
+    newPc = Buffer.from(stxPcBytes)
+    newPc[0] = 0x03
+  } else {
+    // principal occupies everything between the type byte and the [code(1) + amount(8)] tail
+    const principal = stxPcBytes.subarray(1, pcLen - 9)
+    newPc = Buffer.concat([Buffer.from([0x04]), principal, Buffer.from([patch.code])])
+  }
+
+  return Buffer.concat([buf.subarray(0, offset), newPc, buf.subarray(offset + pcLen)])
+}
+
+// Recompute the pre-sign sighash for a hand-patched (staking/PoX) transaction. The device
+// signs the patched bytes, but @stacks/transactions can't deserialize the new type IDs, so
+// transaction.signBegin() would hash the original STX post-condition. signBegin() equals
+// sha512_256(serialize(tx with fee=0, nonce=0)) (the cleared sighash serialization), so we
+// rebuild that cleared serialization, apply the same post-condition patch, hash it, then
+// fold the real fee/nonce back in via sigHashPreSign — exactly the device's computation.
+async function patchedPreSignHash(
+  txOptions: any,
+  stxPcBytes: Buffer,
+  patch: PostConditionPatch,
+  transaction: any,
+): Promise<string> {
+  const clearedTx = await makeUnsignedContractCall({ ...txOptions, fee: 0n, nonce: 0n })
+  const clearedPatched = patchStxPostCondition(Buffer.from(clearedTx.serialize(), 'hex'), stxPcBytes, patch)
+  const curSigHash = sha512_256(clearedPatched)
+  return sigHashPreSign(
+    curSigHash,
+    transaction.auth.authType,
+    transaction.auth.spendingCondition?.fee,
+    transaction.auth.spendingCondition?.nonce,
+  )
 }
 
 // Helper function to create STX post conditions with the new Pc API
@@ -730,12 +788,17 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -934,12 +997,17 @@ describe('Standard', function () {
       console.log('serialized transaction length {}', serializeTx.length)
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-call_with_string_args`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-call_with_string_args`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1039,12 +1107,17 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1075,6 +1148,261 @@ describe('Standard', function () {
       expect(signature.postSignHash.toString('hex')).toEqual(hash.toString('hex'))
 
       //Verify signature
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-040 (epoch 3.4): non-fungible "MaybeSent" (MaySend, 0x12) post-condition.
+  // Asserts the app parses and signs a tx carrying the new NFT condition code and
+  // renders it on the existing non-fungible post-condition screen.
+  test.concurrent.each(models)(`sign_nft_may_send_post_condition`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      // MaybeSent / MaySend (0x12): optionally transfer the NFT — always satisfied.
+      const postConditions = [
+        Pc.principal(postConditionAddress)
+          .willMaybeSendAsset()
+          .nft('SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE.my-nft::my-asset', uintCV(12)),
+      ]
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer-nft',
+        functionArgs: [uintCV(12), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditions,
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = Buffer.from(transaction.serialize(), 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_nft_may_send_post_condition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-040 (epoch 3.4): "Originator" post-condition mode (0x03). Asserts the app
+  // accepts and signs a tx whose mode is Originator (previously rejected as invalid).
+  test.concurrent.each(models)(`sign_originator_post_condition_mode`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      const postConditions = [Pc.principal(postConditionAddress).willSendGte(1000000n).ustx()]
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer',
+        functionArgs: [uintCV(20000), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditionMode: PostConditionMode.Originator,
+        postConditions,
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = Buffer.from(transaction.serialize(), 'hex')
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_originator_post_condition_mode`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-044 (epoch 4.0): staking post-condition (type 0x03). Same body as the STX
+  // post-condition; asserts the app parses and signs it and renders the new staking screen.
+  test.concurrent.each(models)(`sign_staking_post_condition`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      // Built as STX (0x00) then patched to staking (0x03) — identical body.
+      const stxPc = Pc.principal(postConditionAddress).willSendGte(1000000n).ustx()
+      const stxPcBytes = Buffer.from(postConditionToHex(stxPc), 'hex')
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer',
+        functionArgs: [uintCV(20000), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditions: [stxPc],
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = patchStxPostCondition(Buffer.from(transaction.serialize(), 'hex'), stxPcBytes, { kind: 'staking' })
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_staking_post_condition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = await patchedPreSignHash(txOptions, stxPcBytes, { kind: 'staking' }, transaction)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const signature1 = signature.signatureVRS.toString('hex')
+      const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
+      // @ts-ignore
+      const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
+      expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-044 (epoch 4.0): PoX post-condition (type 0x04). Principal + 1-byte PoX code, no
+  // amount; asserts the app parses and signs it and renders the PoX screen (PoX required).
+  test.concurrent.each(models)(`sign_pox_post_condition`, async function (m) {
+    const sim = new Zemu(m.path)
+    const network = STACKS_TESTNET
+    const path = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      expect(pkResponse.errorMessage).toEqual('No errors')
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const recipient = standardPrincipalCV('ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5')
+      const fee = 10n
+      const nonce = 0n
+      const [contract_address, contract_name] = 'SP000000000000000000002Q6VF78.long_args_contract'.split('.')
+
+      const postConditionAddress = 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE'
+      // Built as STX (0x00) then patched to PoX (0x04) with code 0x32 (PoX required).
+      const stxPc = Pc.principal(postConditionAddress).willSendGte(1000000n).ustx()
+      const stxPcBytes = Buffer.from(postConditionToHex(stxPc), 'hex')
+      const POX_MUST = 0x32
+
+      const txOptions = {
+        contractAddress: contract_address,
+        contractName: contract_name,
+        functionName: 'transfer',
+        functionArgs: [uintCV(20000), recipient],
+        network: network,
+        fee: fee,
+        nonce: nonce,
+        publicKey: devicePublicKey,
+        postConditions: [stxPc],
+      }
+
+      const transaction = await makeUnsignedContractCall(txOptions)
+      const blob = patchStxPostCondition(Buffer.from(transaction.serialize(), 'hex'), stxPcBytes, {
+        kind: 'pox',
+        code: POX_MUST,
+      })
+      const signatureRequest = app.sign(path, blob)
+
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_pox_post_condition`)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+
+      const txSigHashPreSign = await patchedPreSignHash(txOptions, stxPcBytes, { kind: 'pox', code: POX_MUST }, transaction)
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
       const ec = new EC('secp256k1')
       const signature1 = signature.signatureVRS.toString('hex')
       const signature1_obj = { r: signature1.substr(2, 64), s: signature1.substr(66, 64) }
@@ -1274,12 +1602,17 @@ describe('Standard', function () {
       const bufferReader = new BytesReader(blob)
       const transaction = deserializeTransaction(bufferReader)
 
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_standard_smart_contract_tx`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_standard_smart_contract_tx`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature: ')
@@ -1332,12 +1665,17 @@ describe('Standard', function () {
       const app = new StacksApp(sim.getTransport())
 
       const blob = Buffer.from(DLMM_CORE_V1_1_DEPLOYMENT, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_core_deployment`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_core_deployment`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature: ')
@@ -1412,12 +1750,17 @@ describe('Standard', function () {
       console.log('Serialized transaction length:', serializeTx.length)
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_contract_deploy`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_contract_deploy`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature:', signature)
@@ -1613,12 +1956,17 @@ describe('Standard', function () {
       console.log('Serialized transaction length:', serializeTx.length, 'chars (~', (serializeTx.length / 2 / 1024).toFixed(2), 'KB)')
 
       const blob = Buffer.from(serializeTx, 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_large_contract_deploy`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_multisig_1_1_large_contract_deploy`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log('Signature:', signature)
@@ -1675,6 +2023,96 @@ describe('Standard', function () {
       // Serialize final transaction
       const txBytes = transaction.serialize()
       console.log('Final signed transaction length:', txBytes.length, 'chars')
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // SIP-040 post-condition handling — issue #224 (HODLMM Zest/STX "remove liquidity"
+  // failed on Ledger with "Data invalid"). These transactions carry 84 post-conditions
+  // (81x NFT MaySend + 2x FT + 1x STX, Deny mode). Identical MaySend NFT conditions are
+  // collapsed into one "Count: N" display item so the screen count stays under the
+  // device's display-item ceiling.
+  // Real captured unsigned transaction blobs (issue #224), keyed by label.
+  const dlmmFixtures: Record<string, string> = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, 'dlmm_post_conditions.json'), 'utf8'),
+  )
+  const dlmmBlobs = Object.keys(dlmmFixtures).map((name) => ({ name }))
+  const dlmmCases = models.flatMap((m) => dlmmBlobs.map((b) => ({ m, b })))
+
+  // hash160(pubkey) = ripemd160(sha256(pubkey))
+  function dlmmHash160(pubkeyHex: string): Buffer {
+    const sha = Buffer.from(sha256(Buffer.from(pubkeyHex, 'hex')), 'hex')
+    return new RIPEMD160().update(sha).digest()
+  }
+
+  test.concurrent.each(dlmmCases)('sign_dlmm_aggregated_post_conditions', async function ({ m, b }) {
+    const sim = new Zemu(m.path)
+    const dpath = "m/44'/5757'/0'/0/0"
+    const rawHex = dlmmFixtures[b.name]
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pk = await app.getAddressAndPubKey(dpath, AddressVersion.MainnetSingleSig)
+      expect(pk.returnCode).toEqual(0x9000)
+
+      // The blob origin is the reporter's key, which would fail the device signer check,
+      // so patch the 20-byte signer hash (offset 7) to the test device's key hash160 —
+      // isolating parse/display/sign from auth. Deterministic => stable snapshots.
+      const blob = Buffer.from(rawHex, 'hex')
+      dlmmHash160(pk.publicKey.toString('hex')).copy(blob, 7)
+
+      // This contract call passes a tuple argument, which the device renders as "is Tuple"
+      // rather than a value, so it must be blind-signed.
+      await sim.toggleBlindSigning()
+
+      const signatureRequest = app.sign(dpath, blob)
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_dlmm_aggregated_${b.name}`, true, 0, undefined, true)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // Safety: a transaction with too many *distinct* (non-aggregatable) post-conditions
+  // must be REJECTED, never signed with conditions the device couldn't display. 70 FT
+  // conditions => 280 display items, over the u8/255 ceiling. Built with the device's own
+  // key as origin so this isn't an auth failure — the reject is the display-overflow path.
+  test.concurrent.each(models)('rejects_too_many_post_conditions', async function (m) {
+    const sim = new Zemu(m.path)
+    const dpath = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pk = await app.getAddressAndPubKey(dpath, AddressVersion.TestnetSingleSig)
+      expect(pk.returnCode).toEqual(0x9000)
+      const devicePublicKey = pk.publicKey.toString('hex')
+
+      const postConditions = []
+      for (let i = 0; i < 70; i++) {
+        postConditions.push(
+          Pc.principal('SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE')
+            .willSendGte(1n)
+            .ft('SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token', 'sbtc'),
+        )
+      }
+      const tx = await makeUnsignedContractCall({
+        contractAddress: 'SP000000000000000000002Q6VF78',
+        contractName: 'long_args_contract',
+        functionName: 'transfer',
+        functionArgs: [uintCV(1)],
+        network: STACKS_TESTNET,
+        fee: 10n,
+        nonce: 0n,
+        publicKey: devicePublicKey,
+        postConditions,
+      })
+
+      const sig = await app.sign(dpath, Buffer.from(tx.serialize(), 'hex'))
+      expect(sig.returnCode).not.toEqual(0x9000)
     } finally {
       await sim.close()
     }

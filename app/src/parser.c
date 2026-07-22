@@ -16,9 +16,11 @@
 
 #include "./parser.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <zxmacros.h>
 
+#include "app_mode.h"
 #include "coin.h"
 #include "parser_txdef.h"
 #include "rslib.h"
@@ -34,8 +36,16 @@ static zxerr_t parser_deallocate();
 
 parser_tx_t parser_state;
 // This buffer will store parser_state.
-// Its size corresponds to ParsedObj (Rust struct), which is at maximum 456 bytes
-#define PARSER_BUFFER_SIZE 456
+// Its size must be >= size_of::<ParsedObj>() (Rust). The post-condition list is stored
+// inline (NUM_SUPPORTED_POST_CONDITIONS slices), so the struct grows with that cap *and*
+// with pointer width: each slice is 8 bytes on the 32-bit device but 16 on a 64-bit host
+// (unit tests), making the same struct ~2x larger there. 2048 covers the device layout;
+// the host needs more, so size per pointer width to avoid overflowing parser_allocate().
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define PARSER_BUFFER_SIZE 4096
+#else
+#define PARSER_BUFFER_SIZE 2048
+#endif
 // Ensure 8-byte alignment for ARM64 and other 64-bit architectures
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE] __attribute__((aligned(8)));
 
@@ -52,8 +62,24 @@ parser_error_t parser_parse(parser_context_t *ctx, const uint8_t *data, size_t d
         return parser_init_context_empty;
     }
 
-    parser_error_t err = _read(ctx, &parser_state);
-    return err;
+    // Note: CHECK_PARSER_ERR declares its own `err` in a nested block, so do not keep one in
+    // scope here -- it would shadow it and trip -Wshadow (-Werror on device builds).
+    CHECK_PARSER_ERR(_read(ctx, &parser_state))
+
+    // Blind-signing gate. A transaction whose every item renders in full is reviewed normally,
+    // even when the user has blind signing switched on -- so clear the flag zxlib would otherwise
+    // use to show the "Accept risk" screen. Otherwise the user must have opted in: calling
+    // app_mode_blindsign() both reports the setting and arms that warning screen.
+    uint8_t requires_blindsign = 0;
+    CHECK_PARSER_ERR(_tx_requires_blindsign(&parser_state, &requires_blindsign))
+
+    if (!requires_blindsign) {
+        app_mode_skip_blindsign_ui();
+    } else if (!app_mode_blindsign()) {
+        return parser_blindsign_mode_required;
+    }
+
+    return parser_ok;
 }
 
 parser_error_t parser_validate(const parser_context_t *ctx) {
@@ -230,6 +256,10 @@ const char *parser_getErrorDescription(parser_error_t err) {
             return "Invalid fungible code type";
         case parser_invalid_non_fungible_code:
             return "Invalid non fungible code";
+        case parser_invalid_pox_code:
+            return "Invalid PoX code";
+        case parser_blindsign_mode_required:
+            return "Blind signing must be enabled";
         case parser_invalid_asset_info:
             return "Invalid asset info";
         case parser_invalid_post_condition:

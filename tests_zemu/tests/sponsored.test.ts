@@ -74,12 +74,17 @@ describe('Sponsored', function () {
       })
 
       const blob = Buffer.from(transaction.serialize(), 'hex')
+      // This transaction carries data the device cannot display (opaque contract-call
+      // arguments, or a contract deploy whose Clarity source is never shown), so the app
+      // refuses to sign it unless the user has opted into blind signing.
+      await sim.toggleBlindSigning()
+
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_sponsored_smart_contract_tx`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_sponsored_smart_contract_tx`, true, 0, undefined, true)
 
       const signature = await signatureRequest
       console.log(signature)

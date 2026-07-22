@@ -27,6 +27,11 @@ transaction_type_t _transaction_type(const parser_tx_t *v);
 
 parser_error_t _auth_flag(const parser_tx_t *v, uint8_t *auth_flag);
 
+// Sets *requires to 1 when the transaction commits to data the device cannot display
+// (opaque contract-call arguments, or a contract deploy whose Clarity source is never shown).
+// Always 0 for non-transaction payloads.
+parser_error_t _tx_requires_blindsign(const parser_tx_t *v, uint8_t *requires);
+
 parser_error_t _structured_msg_hash(const parser_tx_t *v, uint8_t *out, uint16_t out_len);
 
 uint8_t _is_multisig(const parser_tx_t *v);

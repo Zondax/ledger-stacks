@@ -24,13 +24,12 @@ pub const C32_ADDRESS_VERSION_TESTNET_MULTISIG: u8 = 21;
 
 const C32_CHARACTERS: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-#[allow(non_snake_case)]
 #[no_mangle]
 pub extern "C" fn rs_c32_address(
     input: *const u8,
     version: u8,
     output: *mut u8,
-    outLen: u16,
+    out_len: u16,
 ) -> u16 {
     if input.is_null() | output.is_null() {
         return 0;
@@ -41,11 +40,11 @@ pub extern "C" fn rs_c32_address(
             core::slice::from_raw_parts(input, HASH160_LEN);
         if let Ok(res) = c32_address(version, raw) {
             let encoded_len = res.len();
-            if (outLen as usize) < encoded_len {
+            if (out_len as usize) < encoded_len {
                 return 0;
             }
             // Initialize our output with null bytes
-            output.write_bytes(0, outLen as usize);
+            output.write_bytes(0, out_len as usize);
 
             output.copy_from_nonoverlapping(res.as_ptr(), encoded_len);
             return encoded_len as u16;

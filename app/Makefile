@@ -132,6 +132,12 @@ DEFINES += PRODUCTION_BUILD=$(PRODUCTION_BUILD)
 DEFINES += HAVE_HASH HAVE_BLAKE2
 INCLUDES_PATH += $(BOLOS_SDK)/lib_cxng/src
 
+# Contract-call arguments of type Buffer/List/Tuple/StringUtf8 (and the inner value of
+# OptionalSome/ResponseOk/ResponseErr) are not rendered on device, and a contract deploy never
+# shows its Clarity source. Those transactions are blind-signed, so expose the blind-signing
+# setting (off by default) and its warning screens. See parser_parse() for the per-transaction gate.
+DEFINES += APP_BLINDSIGN_MODE_ENABLED
+
 ########################################
 #           Rust configuration         #
 ########################################
@@ -164,7 +170,7 @@ $(OBJECT_FILES): | rust
 .PHONY: rust
 rust:
 	cd rust && RUSTC_BOOTSTRAP=1 CARGO_HOME="$(CURDIR)/rust/.cargo" TARGET_NAME=$(TARGET_NAME) \
-	cargo build --release --target $(RUST_TARGET)
+	cargo build -Z build-std=core --release --target $(RUST_TARGET)
 
 .PHONY: rust_clean
 rust_clean:

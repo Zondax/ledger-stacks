@@ -1,5 +1,3 @@
-#![allow(non_camel_case_types, non_snake_case, clippy::missing_safety_doc)]
-
 use crate::bolos::c_zemu_log_stack;
 
 use super::{error::ParserError, transaction::Transaction, Message};
@@ -33,6 +31,23 @@ pub union Obj<'a> {
 pub struct ParsedObj<'a> {
     tag: Tag,
     obj: Obj<'a>,
+}
+
+// Must stay <= PARSER_BUFFER_SIZE in app/src/parser.c. Compile-time guard so growing
+// NUM_SUPPORTED_POST_CONDITIONS can't silently overflow the C-side parser buffer.
+// Gated to the 32-bit device target: on a 64-bit host every slice pointer is twice as
+// wide, so the host struct is ~2x larger and would trip this without reflecting the
+// real (device) layout. parser_allocate() also checks this at runtime.
+//
+// Wrapped in a module so the single `#[cfg]` gates both the named bound and the
+// assertion (the constant would otherwise be dead code on 64-bit builds).
+#[cfg(target_pointer_width = "32")]
+mod parsed_obj_size_guard {
+    use super::ParsedObj;
+
+    // Mirror of PARSER_BUFFER_SIZE in app/src/parser.c (see comment above).
+    const MAX_PARSED_OBJ_SIZE: usize = 2048;
+    const _: () = assert!(core::mem::size_of::<ParsedObj>() <= MAX_PARSED_OBJ_SIZE);
 }
 
 impl<'a> ParsedObj<'a> {

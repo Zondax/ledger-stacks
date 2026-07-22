@@ -1,11 +1,10 @@
-#![allow(clippy::missing_safety_doc)]
 use super::{error::ParserError, read_varint};
-use crate::zxformat::{pageString, Writer};
+use crate::zxformat::{page_string, Writer};
 use core::fmt::Write;
 use nom::bytes::complete::take;
 
 // The lenght of \x17Stacks Signed Message:
-const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".as_bytes().len();
+const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".len();
 // Truncates an ascii
 // message to around this size, as we need to change special characters
 // like /t or /r with spaces.
@@ -155,7 +154,7 @@ impl<'a> ByteString<'a> {
             .write_str("Sign Message")
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
-        pageString(out_value, &msg[..copy_len], page_idx)
+        page_string(out_value, &msg[..copy_len], page_idx)
     }
 }
 
