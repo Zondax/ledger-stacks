@@ -3,6 +3,7 @@ mod error;
 mod ffi;
 mod jwt;
 mod message;
+mod multisig;
 mod parsed_obj;
 mod parser_common;
 mod post_conditions;

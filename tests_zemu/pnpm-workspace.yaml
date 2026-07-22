@@ -1,3 +1,9 @@
+# Pin jest-mock to a version that exposes ModuleMocker.clearMocksOnScope, which
+# jest-runtime@30.4.x calls. Without this, a stale hoisted jest-mock@30.3.0 makes
+# the whole zemu suite fail to load ("clearMocksOnScope is not a function").
+overrides:
+  jest-mock: 30.4.1
+
 allowBuilds:
   cpu-features: false
   keccak: true
