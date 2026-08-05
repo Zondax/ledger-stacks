@@ -1,6 +1,3 @@
-#![allow(non_camel_case_types, non_upper_case_globals, non_snake_case)]
-#![allow(clippy::upper_case_acronyms)]
-
 use arrayvec::CapacityError;
 use nom::error::ErrorKind;
 
@@ -61,8 +58,13 @@ pub enum ParserError {
     CryptoError = 42,
     InvalidTokenTransferPrincipal = 43,
     RecursionLimit = 44,
+    InvalidPoxCode = 45,
+    /// The transaction carries data the device cannot display, and the user has not enabled
+    /// blind signing. Mirrors `parser_blindsign_mode_required` in parser_common.h.
+    BlindsignModeRequired = 46,
     // TODO: Remove
-    InvalidUnicode,
+    // Explicit discriminant so adding variants above never silently renumbers it.
+    InvalidUnicode = 47,
 }
 impl From<ErrorKind> for ParserError {
     fn from(err: ErrorKind) -> Self {

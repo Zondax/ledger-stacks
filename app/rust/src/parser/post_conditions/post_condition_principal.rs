@@ -82,18 +82,6 @@ impl<'a> PostConditionPrincipal<'a> {
         }
     }
 
-    pub fn is_origin(&self) -> bool {
-        matches!(self, Self::Origin)
-    }
-
-    pub fn is_standard(&self) -> bool {
-        matches!(self, Self::Standard(..))
-    }
-
-    pub fn is_contract(&self) -> bool {
-        matches!(self, Self::Contract(..))
-    }
-
     pub fn origin_address(
     ) -> Result<arrayvec::ArrayVec<[u8; C32_ENCODED_ADDRS_LENGTH]>, ParserError> {
         let mut output: ArrayVec<[_; C32_ENCODED_ADDRS_LENGTH]> = ArrayVec::new();
@@ -112,10 +100,4 @@ impl<'a> PostConditionPrincipal<'a> {
         }
     }
 
-    pub fn get_contract_name(&'a self) -> Option<&'a [u8]> {
-        match self {
-            Self::Contract(_, name) => Some(name.name()),
-            _ => None,
-        }
-    }
 }

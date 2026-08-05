@@ -148,6 +148,19 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
+    /// Whether this payload contains data the device will sign but cannot display in full.
+    ///
+    /// A contract deploy shows only the contract *name* -- the Clarity source code it commits to
+    /// is never rendered -- so it is always blind. A token transfer renders every one of its three
+    /// items. A contract call depends on its argument types.
+    pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
+        match self {
+            Self::TokenTransfer(_) => Ok(false),
+            Self::SmartContract(_) | Self::VersionedSmartContract(_) => Ok(true),
+            Self::ContractCall(ref call) => call.requires_blindsign(),
+        }
+    }
+
     pub fn get_items(
         &self,
         display_idx: u8,

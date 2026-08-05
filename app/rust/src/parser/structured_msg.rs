@@ -1,8 +1,6 @@
-#![allow(clippy::missing_safety_doc)]
-
 use crate::{
     bolos::c_zemu_log_stack,
-    zxformat::{pageString, Writer},
+    zxformat::{page_string, Writer},
 };
 use core::fmt::Write;
 
@@ -85,11 +83,11 @@ impl<'a> Domain<'a> {
                 let chain_id = value.uint().ok_or(ParserError::UnexpectedValue)?;
                 let num = chain_id.numtoa_str(10, &mut buff).as_bytes();
 
-                pageString(out_value, num, page_idx)
+                page_string(out_value, num, page_idx)
             } else {
                 let string = value.string_ascii().ok_or(ParserError::UnexpectedValue)?;
 
-                pageString(out_value, string.content(), page_idx)
+                page_string(out_value, string.content(), page_idx)
             }
         } else {
             Err(ParserError::UnexpectedNumberItems)
@@ -254,7 +252,7 @@ impl<'a> StructuredMsg<'a> {
                 encode_to_slice(&hash[..], &mut hex[..])
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
-                pageString(out_value, &hex[..], page_idx)
+                page_string(out_value, &hex[..], page_idx)
             }
 
             _ => Err(ParserError::UnexpectedNumberItems),
