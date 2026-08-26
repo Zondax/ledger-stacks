@@ -467,6 +467,62 @@ mod test {
         assert_eq!(read(&mut pcs, 3, total), "155");
     }
 
+    /// The cap is inclusive: exactly NUM_SUPPORTED_POST_CONDITIONS conditions parse. Pinned so
+    /// the boundary is tested from both sides, not only the rejecting one below.
+    #[test]
+    fn test_at_cap_is_accepted() {
+        let owned: Vec<Vec<u8>> = (0..NUM_SUPPORTED_POST_CONDITIONS)
+            .map(|_| ft_cond())
+            .collect();
+        let bytes = block(&owned);
+        let (rem, conditions) = PostConditions::from_bytes(&bytes).expect("at the cap must parse");
+        assert!(rem.is_empty());
+        assert_eq!(conditions.num_conditions(), NUM_SUPPORTED_POST_CONDITIONS);
+        // 512 * 4 display items is far past the u8 index; the count saturates rather than
+        // wrapping, and it is `Transaction::num_items` that refuses the transaction.
+        assert_eq!(conditions.num_items(), u8::MAX);
+    }
+
+    // A MaySend NFT condition in its own aggregation group: the asset issuer hash is what sets
+    // the group apart, since the key is (principal, asset-info, code).
+    fn maysend_nft_in_group(group: u8) -> Vec<u8> {
+        let mut v = vec![2u8, 2, 1];
+        v.extend_from_slice(&[1u8; 20]); // principal key hash
+        v.push(1); // asset issuer address version
+        v.extend_from_slice(&[group; 20]); // asset issuer key hash -- the distinguishing part
+        v.push(13);
+        v.extend_from_slice(b"contract-name");
+        v.push(11);
+        v.extend_from_slice(b"hello-asset");
+        v.push(3); // clarity value: bool true
+        v.push(0x12); // NonfungibleConditionCode::MaySend
+        v
+    }
+
+    /// The group-opener table holds MAX_NFT_GROUPS entries. Exactly that many distinct MaySend
+    /// groups parse; one more fails at parse with ValueOutOfRange. In practice the display
+    /// ceiling trips first (86 singleton groups are already 258 items), so this only pins that
+    /// the table bound is a clean rejection rather than a silent truncation.
+    #[test]
+    fn test_nft_group_table_bound() {
+        let at_bound: Vec<Vec<u8>> = (0..MAX_NFT_GROUPS as u8)
+            .map(maysend_nft_in_group)
+            .collect();
+        let bytes = block(&at_bound);
+        let (_, conditions) =
+            PostConditions::from_bytes(&bytes).expect("MAX_NFT_GROUPS distinct groups must parse");
+        assert_eq!(conditions.num_conditions(), MAX_NFT_GROUPS);
+
+        let over: Vec<Vec<u8>> = (0..MAX_NFT_GROUPS as u8 + 1)
+            .map(maysend_nft_in_group)
+            .collect();
+        let bytes = block(&over);
+        assert!(matches!(
+            PostConditions::from_bytes(&bytes),
+            Err(nom::Err::Error(ParserError::ValueOutOfRange))
+        ));
+    }
+
     #[test]
     fn test_above_cap_is_rejected() {
         // The cap is a time bound now, not a memory one, but it still rejects at parse.
