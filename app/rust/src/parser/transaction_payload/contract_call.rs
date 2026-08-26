@@ -1280,6 +1280,13 @@ mod test {
         b
     }
 
+    /// A string-utf8 the device fonts cannot render.
+    fn string_utf8_non_ascii() -> Vec<u8> {
+        let mut b = vec![0x0e, 0, 0, 0, 3];
+        b.extend_from_slice("\u{20ac}".as_bytes());
+        b
+    }
+
     fn string_utf8() -> Vec<u8> {
         let mut b = vec![0x0e, 0, 0, 0, 3];
         b.extend_from_slice("abc".as_bytes());
@@ -1679,6 +1686,82 @@ mod test {
             .map(|_| uint(1))
             .collect();
         assert!(requires_blindsign(&over_budget));
+    }
+
+    /// The gate is fail-closed. Every way the walk can end badly -- a value with no rendering, a
+    /// key path that outgrew the budget, nesting past the depth limit, more leaves than the
+    /// budget allows -- lands in the same place: `flat_items` is empty, and an empty `flat_items`
+    /// is exactly what `requires_blindsign` reports. Nothing falls through to being displayed.
+    #[test]
+    fn test_every_walk_failure_gates() {
+        let mut too_deep = uint(1);
+        for _ in 0..TX_DEPTH_LIMIT {
+            too_deep = list_of(&[too_deep]);
+        }
+
+        let cases: Vec<(&str, Vec<Vec<u8>>)> = vec![
+            ("non-ascii string-utf8", vec![string_utf8_non_ascii()]),
+            ("oversized buffer", vec![buffer_of(MAX_BUFFER_BYTES_TO_SHOW + 1)]),
+            ("string past the render budget", vec![string_ascii(MAX_VALUE_TEXT + 1)]),
+            (
+                "key path past the budget",
+                vec![tuple_of(&[("a".repeat(MAX_KEY_PATH).as_str(), uint(1))])],
+            ),
+            ("nesting past the depth limit", vec![too_deep]),
+            (
+                "more leaves than the budget",
+                (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1)
+                    .map(|_| uint(1))
+                    .collect(),
+            ),
+            // An opaque leaf buried inside a container gates the whole call, not just itself:
+            // flattening is all or nothing, so a partial view is never shown.
+            (
+                "opaque leaf inside a tuple",
+                vec![tuple_of(&[("ok", uint(1)), ("bad", string_utf8_non_ascii())])],
+            ),
+        ];
+
+        for (name, args) in cases {
+            let bytes = contract_call_payload(&args);
+            let (_, call) =
+                TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
+            assert!(call.flat_items().is_none(), "{}: should not flatten", name);
+            assert!(
+                call.requires_blindsign().expect("gate must decide"),
+                "{}: should be gated",
+                name
+            );
+        }
+    }
+
+    /// The converse, and the reason the fallback rendering is never a silent one: whenever the
+    /// arguments *do* flatten, the item count is sound, so no path reports a short count and
+    /// quietly drops the rest.
+    #[test]
+    fn test_flattening_implies_a_sound_item_count() {
+        let args = vec![
+            uint(1),
+            tuple_of(&[("a", contract_principal()), ("b", buffer())]),
+            list_of(&[uint(1), uint(2), uint(3)]),
+        ];
+        let bytes = contract_call_payload(&args);
+        let (_, call) =
+            TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
+
+        let leaves = call.flat_items().expect("arguments must flatten");
+        assert!(!call.requires_blindsign().expect("gate must decide"));
+
+        let mode = DisplayMode {
+            hide_sip10_details: false,
+            flatten_args: true,
+        };
+        assert_eq!(
+            call.num_items(mode).expect("count must be sound"),
+            leaves + CONTRACT_CALL_BASE_ITEMS
+        );
+        // ...and every counted item renders.
+        assert_eq!(flattened(&args).len(), leaves as usize);
     }
 
     /// Nesting past the parser's depth limit is gated, not walked.
