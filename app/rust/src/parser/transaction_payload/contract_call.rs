@@ -44,12 +44,12 @@ pub const MAX_ARG_DISPLAY_ITEMS: u8 = 200;
 /// and the transaction is gated.
 ///
 /// Fixed rather than taken from the output buffer, so the gate does not depend on which device is
-/// signing: the same transaction reviews the same way on a Nano and a Stax. It is deliberately
-/// wider than the smallest key line (Nano S+/X fit 17 characters), because real Clarity field
-/// names -- `min-amount-out`, `token-in` -- run past that and would otherwise gate ordinary
-/// swaps, which is the whole problem this rendering exists to fix. Where the path does not fit
-/// the device, the *key* is cut to length by `render_flat_arg`; the value is always shown in
-/// full, which is what the user is actually approving.
+/// signing: the same transaction reviews the same way on a Nano and a Stax. Every shipped target
+/// hands the parser a 64-byte key buffer (zxlib `MAX_CHARS_PER_KEY_LINE`; the 18-byte line is
+/// the retired Nano S), so a path this long always arrives in full, and a Nano X/S+ then elides
+/// the middle *visually* when it is too wide for the screen. It is wide enough for real Clarity
+/// field names -- `min-amount-out`, `token-in` -- which would otherwise gate ordinary swaps, the
+/// problem this rendering exists to fix.
 const MAX_KEY_PATH: usize = 32;
 
 /// The key of a flattened leaf -- `arg3.a`, `arg0[2].amount` -- built up as the walk descends and
@@ -885,9 +885,9 @@ impl<'a> TransactionContractCall<'a> {
     /// Renders a single contract-call argument value into `out_value`.
     ///
     /// Builds the complete display text first, then pages it out. A value whose text does not fit
-    /// the render budget -- or that has no faithful rendering at all -- falls back to a type
-    /// placeholder, which is exactly the case `arg_is_fully_displayable` gates behind the
-    /// blind-signing opt-in. The two share [`Self::write_value_text`], so they cannot disagree.
+    /// the render budget -- or that has no faithful rendering at all -- falls back to
+    /// [`Self::render_opaque`], which is exactly the case `arg_is_fully_displayable` gates behind
+    /// the blind-signing opt-in. The two share [`Self::write_value_text`], so they cannot disagree.
     fn render_value(value: &Value, out_value: &mut [u8], page_idx: u8) -> Result<u8, ParserError> {
         let mut text = [0u8; MAX_VALUE_TEXT];
         let written = {
@@ -897,7 +897,37 @@ impl<'a> TransactionContractCall<'a> {
 
         match written {
             Ok(len) => zxformat::page_string(out_value, &text[..len], page_idx),
-            Err(_) => zxformat::page_string(out_value, Self::type_placeholder(value), page_idx),
+            Err(_) => Self::render_opaque(value, out_value, page_idx),
+        }
+    }
+
+    /// What the blind-signing review shows for a value `write_value_text` could not render.
+    ///
+    /// Text that is merely too long is shown up to the render budget with an explicit `...`, so
+    /// the user still sees what the previous version showed them (its first characters) and now
+    /// also sees that it was cut. Everything else is a type placeholder.
+    fn render_opaque(value: &Value, out_value: &mut [u8], page_idx: u8) -> Result<u8, ParserError> {
+        const ELLIPSIS: &[u8] = b"...";
+
+        if let Some(content) = Self::overlong_ascii_text(value) {
+            let mut text = [0u8; MAX_VALUE_TEXT + ELLIPSIS.len()];
+            text[..MAX_VALUE_TEXT].copy_from_slice(&content[..MAX_VALUE_TEXT]);
+            text[MAX_VALUE_TEXT..].copy_from_slice(ELLIPSIS);
+            return zxformat::page_string(out_value, &text, page_idx);
+        }
+
+        zxformat::page_string(out_value, Self::type_placeholder(value), page_idx)
+    }
+
+    /// The content of a string argument that is ASCII -- so it *could* be shown -- but longer
+    /// than the render budget. `None` for anything else.
+    fn overlong_ascii_text<'b>(value: &Value<'b>) -> Option<&'b [u8]> {
+        match value.value_id() {
+            ValueId::StringAscii | ValueId::StringUtf8 => {
+                let content = value.payload().get(4..)?;
+                (content.is_ascii() && content.len() > MAX_VALUE_TEXT).then_some(content)
+            }
+            _ => None,
         }
     }
 
@@ -1092,6 +1122,10 @@ impl<'a> TransactionContractCall<'a> {
 
                 match written {
                     Ok(len) => zxformat::page_string(out_value, &text[..len], page_idx),
+                    // A memo that is only too long still shows its start; anything else is opaque.
+                    Err(_) if Self::overlong_ascii_text(&inner).is_some() => {
+                        Self::render_opaque(&inner, out_value, page_idx)
+                    }
                     Err(_) => {
                         zxformat::page_string(out_value, "Complex memo value".as_bytes(), page_idx)
                     }
@@ -1140,9 +1174,11 @@ impl<'a> TransactionContractCall<'a> {
 
         let value = walker.found.ok_or(ParserError::DisplayIdxOutOfRange)?;
 
-        // Cut the key to the device's key line rather than failing: a Nano fits 17 characters,
-        // a Stax 63. Truncating a label is a legible loss -- the value beside it is still shown
-        // in full -- where erroring here would make the transaction unsignable outright.
+        // Cut the key to the caller's buffer rather than failing. Every shipped device passes 64
+        // bytes, more than MAX_KEY_PATH, so this only engages for a smaller caller (the host
+        // validator walks items with 30-byte buffers). Truncating a label is a legible loss --
+        // the value beside it is still shown in full -- where erroring would make the
+        // transaction unsignable outright.
         let path = walker.found_path.as_bytes();
         let room = out_key.len().saturating_sub(1);
         let copied = path.len().min(room);
@@ -1346,8 +1382,8 @@ mod test {
 
     fn render(bytes: &[u8]) -> String {
         let value = parse(bytes);
-        // One byte over the budget so a maximal value still lands on a single page here.
-        let mut out = [0u8; MAX_VALUE_TEXT + 1];
+        // Room for a maximal value plus the `...` an over-long string carries, on one page.
+        let mut out = [0u8; MAX_VALUE_TEXT + 4];
         TransactionContractCall::render_value(&value, &mut out, 0).expect("render_value failed");
         let end = out.iter().position(|&c| c == 0).unwrap_or(out.len());
         String::from_utf8(out[..end].to_vec()).expect("rendered value must be utf8")
@@ -1464,9 +1500,22 @@ mod test {
         assert!(displayable(&long));
         assert_eq!(render(&long).len(), 200);
 
-        // Beyond the render budget it is opaque rather than truncated: the gate fires, and the
-        // user is told the device cannot show it instead of being shown a fraction of it.
-        assert!(!displayable(&string_ascii(MAX_VALUE_TEXT + 1)));
+        // Beyond the render budget it is opaque, and the gate fires. The blind-signing review
+        // still shows its start -- what the previous version showed, silently cut at 56 -- and
+        // now says so.
+        let over = string_ascii(MAX_VALUE_TEXT + 1);
+        assert!(!displayable(&over));
+        let shown = render(&over);
+        assert_eq!(shown.len(), MAX_VALUE_TEXT + 3);
+        assert!(shown.starts_with(&"a".repeat(MAX_VALUE_TEXT)));
+        assert!(shown.ends_with("..."));
+
+        // Non-ASCII text gets no prefix: there is nothing the fonts can show.
+        let content = "\u{20ac}".repeat(MAX_VALUE_TEXT / 3 + 1);
+        let mut euro = vec![0x0e];
+        euro.extend_from_slice(&(content.len() as u32).to_be_bytes());
+        euro.extend_from_slice(content.as_bytes());
+        assert_eq!(render(&euro), "is StringUtf8");
     }
 
     /// An empty `string-ascii` made `page_string` fail with NoData, which failed the whole parse:
