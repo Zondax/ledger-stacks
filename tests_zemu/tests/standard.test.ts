@@ -2029,11 +2029,13 @@ describe('Standard', function () {
   })
 
   // SIP-040 post-condition handling — issue #224 (HODLMM Zest/STX "remove liquidity"
-  // failed on Ledger with "Data invalid"). These transactions carry 84 post-conditions
-  // (81x NFT MaySend + 2x FT + 1x STX, Deny mode). Identical MaySend NFT conditions are
-  // collapsed into one "Count: N" display item so the screen count stays under the
-  // device's display-item ceiling.
-  // Real captured unsigned transaction blobs (issue #224), keyed by label.
+  // failed on Ledger with "Data invalid"). These transactions carry one post-condition per
+  // liquidity bin: 84 (81x NFT MaySend + 2x FT + 1x STX, Deny mode) for the two blobs from
+  // #224, and 158 (155x NFT MaySend + 2x FT + 1x STX) for the 145-bin position in issue
+  // #238, which the 128-condition parse cap then still rejected. Identical MaySend NFT
+  // conditions are collapsed into one "Count: N" display item so the screen count stays
+  // under the device's display-item ceiling, whatever the position width.
+  // Real captured unsigned transaction blobs, keyed by label.
   const dlmmFixtures: Record<string, string> = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, 'dlmm_post_conditions.json'), 'utf8'),
   )

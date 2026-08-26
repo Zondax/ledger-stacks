@@ -33,22 +33,16 @@ pub struct ParsedObj<'a> {
     obj: Obj<'a>,
 }
 
-// Must stay <= PARSER_BUFFER_SIZE in app/src/parser.c. Compile-time guard so growing
-// NUM_SUPPORTED_POST_CONDITIONS can't silently overflow the C-side parser buffer.
-// Gated to the 32-bit device target: on a 64-bit host every slice pointer is twice as
-// wide, so the host struct is ~2x larger and would trip this without reflecting the
-// real (device) layout. parser_allocate() also checks this at runtime.
+// Must stay <= PARSER_BUFFER_SIZE in app/src/parser.c: a compile-time guard so this
+// struct can never silently outgrow the C-side parser buffer. Post-conditions are held
+// as one slice over the whole serialized block rather than one slice each, so the size
+// no longer scales with NUM_SUPPORTED_POST_CONDITIONS. The bound holds on the host too
+// (a 64-bit build is larger, every pointer being twice as wide), so unlike before it
+// needs no `#[cfg]`. parser_allocate() also checks this at runtime.
 //
-// Wrapped in a module so the single `#[cfg]` gates both the named bound and the
-// assertion (the constant would otherwise be dead code on 64-bit builds).
-#[cfg(target_pointer_width = "32")]
-mod parsed_obj_size_guard {
-    use super::ParsedObj;
-
-    // Mirror of PARSER_BUFFER_SIZE in app/src/parser.c (see comment above).
-    const MAX_PARSED_OBJ_SIZE: usize = 2048;
-    const _: () = assert!(core::mem::size_of::<ParsedObj>() <= MAX_PARSED_OBJ_SIZE);
-}
+// Mirror of PARSER_BUFFER_SIZE in app/src/parser.c.
+const MAX_PARSED_OBJ_SIZE: usize = 1024;
+const _: () = assert!(core::mem::size_of::<ParsedObj>() <= MAX_PARSED_OBJ_SIZE);
 
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
@@ -532,11 +526,8 @@ mod test {
         assert_eq!(&json.recipient, address);
 
         // Check postconditions
-        assert_eq!(1, transaction.post_conditions.conditions.len());
-        let conditions = transaction.post_conditions.get_postconditions();
-        let post_condition = TransactionPostCondition::from_bytes(conditions[0])
-            .unwrap()
-            .1;
+        assert_eq!(1, transaction.post_conditions.num_conditions());
+        let post_condition = transaction.post_conditions.first_post_condition().unwrap();
         assert!(post_condition.is_stx());
         let condition_code = post_condition.fungible_condition_code().unwrap();
         assert_eq!(condition_code, FungibleConditionCode::SentGe);
@@ -707,11 +698,8 @@ mod test {
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
         assert_eq!(json.sender, origin_addr);
 
-        let post_conditions = transaction.post_conditions.get_postconditions();
-        assert_eq!(post_conditions.len(), 1);
-        let condition = TransactionPostCondition::from_bytes(post_conditions[0])
-            .unwrap()
-            .1;
+        assert_eq!(transaction.post_conditions.num_conditions(), 1);
+        let condition = transaction.post_conditions.first_post_condition().unwrap();
         assert!(condition.is_fungible());
         let addr = condition.get_principal_address().unwrap();
         let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
@@ -807,11 +795,8 @@ mod test {
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
         assert_eq!(json.sender, origin_addr);
 
-        let post_conditions = transaction.post_conditions.get_postconditions();
-        assert_eq!(post_conditions.len(), 7);
-        let condition = TransactionPostCondition::from_bytes(post_conditions[0])
-            .unwrap()
-            .1;
+        assert_eq!(transaction.post_conditions.num_conditions(), 7);
+        let condition = transaction.post_conditions.first_post_condition().unwrap();
         assert!(condition.is_fungible());
         let addr = condition.get_principal_address().unwrap();
         let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
