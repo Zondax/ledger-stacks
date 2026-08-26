@@ -47,31 +47,12 @@ impl<'a> Arguments<'a> {
             .map_err(|_| ParserError::UnexpectedError)
     }
 
-    /// Returns true if every argument satisfies `pred`, short-circuiting on the first failure.
+    /// The serialized argument values, with the leading `be_u32` count already skipped.
     ///
-    /// Walks the argument list once (O(n)); prefer this over calling [`Self::argument_at`] in a
-    /// loop, which re-walks from the first argument on every lookup (O(n^2)).
-    pub fn all<F>(&self, pred: F) -> Result<bool, ParserError>
-    where
-        F: Fn(&Value<'a>) -> bool,
-    {
-        check_canary!();
-
-        let num_args = self.num_args()?;
-        // skip the first 4-bytes holding the argument count
-        let mut leftover = self.0.get(4..).ok_or(ParserError::NoData)?;
-
-        for _ in 0..num_args {
-            let (rem, value) = Value::from_bytes::<TX_DEPTH_LIMIT>(leftover)
-                .map_err(|_| ParserError::InvalidArgumentId)?;
-            leftover = rem;
-
-            if !pred(&value) {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+    /// Handed out so a caller can walk the arguments itself -- the flattening walk descends into
+    /// each value and cannot express that as a per-argument predicate.
+    pub fn values(&self) -> Result<&'a [u8], ParserError> {
+        self.0.get(4..).ok_or(ParserError::NoData)
     }
 
     pub fn argument_at(&self, at: usize) -> Result<Value<'a>, ParserError> {

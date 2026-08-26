@@ -8,9 +8,9 @@ use crate::{
     parser::{
         c32,
         ffi::token_info::{get_token_info, TokenInfo, TOKEN_SYMBOL_MAX_LEN},
-        transaction_payload::arguments::Arguments,
+        transaction_payload::{arguments::Arguments, DisplayMode},
         ApduPanic, ClarityName, ContractName, ParserError, PrincipalData, StacksAddress, Value,
-        ValueId, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN,
+        ValueId, C32_ENCODED_ADDRS_LENGTH, HASH160_LEN, TX_DEPTH_LIMIT,
     },
     zxformat::{self, format_u128_decimals, MAX_U128_FORMATTED_SIZE_DECIMAL},
 };
@@ -32,6 +32,265 @@ const MAX_WRAPPER_DEPTH: u8 = 3;
 
 /// Lowercase hex digits, for rendering buffers without a scratch buffer.
 const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
+/// Most display items a contract call's arguments may expand to when flattened. Bounds the walk
+/// so a crafted argument -- 256 entries per container, eight levels deep -- cannot be counted to
+/// an astronomical total, and keeps the per-screen walk cheap. Whether that many items actually
+/// fit is decided per transaction by `Transaction::flatten_args`, since post-conditions and
+/// arguments share the same u8 display index.
+pub const MAX_ARG_DISPLAY_ITEMS: u8 = 200;
+
+/// Longest key a flattened leaf may carry, in bytes. A leaf whose path outgrows this is opaque,
+/// and the transaction is gated.
+///
+/// Fixed rather than taken from the output buffer, so the gate does not depend on which device is
+/// signing: the same transaction reviews the same way on a Nano and a Stax. It is deliberately
+/// wider than the smallest key line (Nano S+/X fit 17 characters), because real Clarity field
+/// names -- `min-amount-out`, `token-in` -- run past that and would otherwise gate ordinary
+/// swaps, which is the whole problem this rendering exists to fix. Where the path does not fit
+/// the device, the *key* is cut to length by `render_flat_arg`; the value is always shown in
+/// full, which is what the user is actually approving.
+const MAX_KEY_PATH: usize = 32;
+
+/// The key of a flattened leaf -- `arg3.a`, `arg0[2].amount` -- built up as the walk descends and
+/// rolled back as it returns.
+#[derive(Clone, Copy)]
+struct KeyPath {
+    buf: [u8; MAX_KEY_PATH],
+    len: usize,
+}
+
+impl KeyPath {
+    const fn new() -> Self {
+        Self {
+            buf: [0; MAX_KEY_PATH],
+            len: 0,
+        }
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+
+    /// Appends a segment. Failing here means the path outgrew the key line, which makes the leaf
+    /// undisplayable and gates the transaction -- the same answer as a value that cannot render.
+    fn push(&mut self, bytes: &[u8]) -> Result<(), ParserError> {
+        let end = self
+            .len
+            .checked_add(bytes.len())
+            .ok_or(ParserError::ValueOutOfRange)?;
+        self.buf
+            .get_mut(self.len..end)
+            .ok_or(ParserError::UnexpectedBufferEnd)?
+            .copy_from_slice(bytes);
+        self.len = end;
+        Ok(())
+    }
+
+    fn push_index(&mut self, index: u32) -> Result<(), ParserError> {
+        let mut buff = [0u8; 10];
+        self.push(index.numtoa_str(10, &mut buff).as_bytes())
+    }
+
+    fn truncate(&mut self, len: usize) {
+        self.len = len;
+    }
+}
+
+/// Carries the state of a walk over a contract call's arguments: either counting the display
+/// items they expand to, or locating the one the device is about to render.
+struct Walker<'a> {
+    /// Leaves passed so far; the display item count once the walk finishes.
+    seen: u8,
+    /// The leaf to stop at, or `None` to count them all.
+    target: Option<u8>,
+    /// The leaf at `target`, once reached.
+    found: Option<Value<'a>>,
+    /// Path to the value currently being visited.
+    path: KeyPath,
+    /// Path to `found`.
+    found_path: KeyPath,
+}
+
+impl<'a> Walker<'a> {
+    fn counting() -> Self {
+        Self {
+            seen: 0,
+            target: None,
+            found: None,
+            path: KeyPath::new(),
+            found_path: KeyPath::new(),
+        }
+    }
+
+    fn seeking(target: u8) -> Self {
+        Self {
+            target: Some(target),
+            ..Self::counting()
+        }
+    }
+
+    /// Whether the walk can stop early.
+    fn done(&self) -> bool {
+        self.found.is_some()
+    }
+
+    fn record(&mut self, value: &Value<'a>) -> Result<(), ParserError> {
+        if self.target == Some(self.seen) {
+            self.found = Some(*value);
+            self.found_path = self.path;
+        }
+        self.seen = self
+            .seen
+            .checked_add(1)
+            .ok_or(ParserError::ValueOutOfRange)?;
+        if self.seen > MAX_ARG_DISPLAY_ITEMS {
+            return Err(ParserError::ValueOutOfRange);
+        }
+        Ok(())
+    }
+}
+
+/// The `be_u32` element count leading a List or Tuple payload.
+fn container_count(payload: &[u8]) -> Result<u32, ParserError> {
+    let count = payload.get(..4).ok_or(ParserError::UnexpectedBufferEnd)?;
+    Ok(u32::from_be_bytes([count[0], count[1], count[2], count[3]]))
+}
+
+/// Whether this value is a container the walk descends into rather than rendering whole.
+///
+/// An *empty* container is not: `List: []` is the complete value, and descending would drop the
+/// argument from the display entirely.
+fn is_populated_container(value: &Value) -> Result<bool, ParserError> {
+    match value.value_id() {
+        ValueId::List | ValueId::Tuple => Ok(container_count(value.payload())? > 0),
+        _ => Ok(false),
+    }
+}
+
+/// Walks every argument in order.
+fn walk_args<'a>(args: &Arguments<'a>, walker: &mut Walker<'a>) -> Result<(), ParserError> {
+    let num_args = args.num_args()?;
+    let mut rest = args.values()?;
+
+    for idx in 0..num_args {
+        let (rem, value) =
+            Value::from_bytes::<TX_DEPTH_LIMIT>(rest).map_err(|_| ParserError::InvalidArgumentId)?;
+        rest = rem;
+
+        let mark = walker.path.len;
+        walker.path.push(b"arg")?;
+        walker.path.push_index(idx)?;
+        walk_value(&value, walker, 0)?;
+        walker.path.truncate(mark);
+
+        if walker.done() {
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
+/// Walks one value, descending into containers so that every leaf becomes its own display item.
+///
+/// An `Err` means the arguments cannot be flattened at all -- a leaf the device cannot render, a
+/// key path that outgrew the key line, nesting past `TX_DEPTH_LIMIT`, or more leaves than the
+/// budget allows. The caller falls back to one item per argument and gates the transaction.
+fn walk_value<'a>(
+    value: &Value<'a>,
+    walker: &mut Walker<'a>,
+    depth: u8,
+) -> Result<(), ParserError> {
+    check_canary!();
+
+    if depth >= TX_DEPTH_LIMIT {
+        return Err(ParserError::RecursionLimit);
+    }
+
+    // Descend through a `Some`/`Ok`/`Err` only when it wraps a container: `Some(u1)` is a leaf
+    // that `write_value_text` renders in full, but `Some((tuple ...))` would otherwise be opaque.
+    let mut value = *value;
+    if matches!(
+        value.value_id(),
+        ValueId::OptionalSome | ValueId::ResponseOk | ValueId::ResponseErr
+    ) {
+        let inner_bytes = value.payload();
+        if inner_bytes.is_empty() {
+            return Err(ParserError::UnexpectedBufferEnd);
+        }
+        let inner = Value(inner_bytes);
+        if is_populated_container(&inner)? {
+            walker.path.push(match value.value_id() {
+                ValueId::OptionalSome => b".some".as_slice(),
+                ValueId::ResponseOk => b".ok".as_slice(),
+                _ => b".err".as_slice(),
+            })?;
+            value = inner;
+        }
+    }
+
+    let payload = value.payload();
+
+    match value.value_id() {
+        // `[count: 4][values..]`
+        ValueId::List if is_populated_container(&value)? => {
+            let count = container_count(payload)?;
+            let mut rest = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
+
+            for idx in 0..count {
+                let (rem, item) = Value::from_bytes::<TX_DEPTH_LIMIT>(rest)
+                    .map_err(|_| ParserError::InvalidArgumentId)?;
+                rest = rem;
+
+                let mark = walker.path.len;
+                walker.path.push(b"[")?;
+                walker.path.push_index(idx)?;
+                walker.path.push(b"]")?;
+                walk_value(&item, walker, depth + 1)?;
+                walker.path.truncate(mark);
+
+                if walker.done() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // `[count: 4][(name_len, name, value)..]`
+        ValueId::Tuple if is_populated_container(&value)? => {
+            let count = container_count(payload)?;
+            let mut rest = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
+
+            for _ in 0..count {
+                let (rem, name) =
+                    ClarityName::from_bytes(rest).map_err(|_| ParserError::UnexpectedValue)?;
+                let (rem, item) = Value::from_bytes::<TX_DEPTH_LIMIT>(rem)
+                    .map_err(|_| ParserError::InvalidArgumentId)?;
+                rest = rem;
+
+                let mark = walker.path.len;
+                walker.path.push(b".")?;
+                walker.path.push(name.0)?;
+                walk_value(&item, walker, depth + 1)?;
+                walker.path.truncate(mark);
+
+                if walker.done() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // A leaf. It has to render, or there is nothing to flatten into.
+        _ => {
+            if !TransactionContractCall::arg_is_fully_displayable(&value) {
+                return Err(ParserError::UnexpectedType);
+            }
+            walker.record(&value)?;
+        }
+    }
+
+    Ok(())
+}
 // The items in contract_call transactions are
 // contract_address, contract_name and function_name
 pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
@@ -76,6 +335,11 @@ enum ContractType {
 #[cfg_attr(test, derive(Debug))]
 pub struct TransactionContractCallWrapper<'a> {
     contract_type: ContractType,
+    /// Display items the arguments expand to when flattened, or `None` when they cannot be.
+    ///
+    /// Computed once, here, because `num_items` runs on every screen the device draws: walking
+    /// the argument bytes each time would cost O(payload) per page turn on a Nano.
+    flat_items: Option<u8>,
     tx: TransactionContractCall<'a>,
 }
 
@@ -91,8 +355,24 @@ impl<'a> TransactionContractCallWrapper<'a> {
         } else {
             ContractType::Other
         };
+
+        // A SIP-10 transfer always renders through render_sip10_transfer_args, which shows a
+        // fixed Amount / From / To / Memo; there is nothing to flatten.
+        let flat_items = if contract_type == ContractType::SIP10 {
+            None
+        } else {
+            tx.flat_item_count().ok()
+        };
+
         check_canary!();
-        Ok((rem, Self { contract_type, tx }))
+        Ok((
+            rem,
+            Self {
+                contract_type,
+                flat_items,
+                tx,
+            },
+        ))
     }
 
     pub fn sip10_token_info(&self) -> Option<TokenInfo<'static>> {
@@ -117,34 +397,60 @@ impl<'a> TransactionContractCallWrapper<'a> {
         self.tx.num_args()
     }
 
-    pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
-        self.tx.num_items(hide_sip10_details)
+    /// Display items the arguments expand to when flattened, or `None` when they cannot be.
+    ///
+    /// Whether that many items actually *fit* is not decided here: post-conditions and arguments
+    /// share one u8 display index, so only the transaction can tell. See
+    /// `Transaction::flatten_args`.
+    pub fn flat_items(&self) -> Option<u8> {
+        self.flat_items
     }
 
-    /// A contract call must be blind-signed when any argument shown to the user renders as a
-    /// type placeholder rather than its actual value.
-    ///
-    /// Mirrors how [`Self::get_contract_call_items`] dispatches *arguments*: a SIP-10 transfer
-    /// always renders them through `render_sip10_transfer_args`, whatever `hide_sip10_details`
-    /// says -- that flag only controls whether the base items and post-conditions are shown, not
-    /// how the arguments themselves are displayed. Keying this off `hide_sip10_details` would
-    /// wrongly gate a SIP-10 transfer whose memo the device renders perfectly well.
-    pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
-        let args = self.tx.function_args()?;
+    pub fn is_sip10_transfer(&self) -> bool {
+        self.contract_type == ContractType::SIP10
+    }
 
-        if self.contract_type == ContractType::SIP10 {
-            // render_sip10_transfer_args shows exactly Amount / From / To / Memo. It type-checks
-            // the first three and errors if they are not a uint and two principals, so the memo
-            // is the only item that can silently degrade (to "Complex memo value").
-            if self.tx.num_args()? != SIP10_TRANSFER_ARGS {
-                return Ok(true);
+    pub fn num_items(&self, mode: DisplayMode) -> Result<u8, ParserError> {
+        self.tx
+            .num_items(mode.hide_sip10_details, self.arg_items(mode)?)
+    }
+
+    /// Items the arguments contribute: one per leaf when flattening, otherwise one per argument.
+    fn arg_items(&self, mode: DisplayMode) -> Result<u8, ParserError> {
+        match self.flat_items {
+            Some(items) if mode.flatten_args => Ok(items),
+            _ => {
+                let raw_args = self.tx.num_args()?;
+                if raw_args > u8::MAX as u32 {
+                    return Err(ParserError::ValueOutOfRange);
+                }
+                Ok(raw_args as u8)
             }
-            let memo = args.argument_at(SIP10_MEMO_ARG_IDX)?;
-            return Ok(!TransactionContractCall::memo_is_fully_displayable(&memo));
+        }
+    }
+
+    /// Whether this contract call commits to data the device cannot show.
+    ///
+    /// For a SIP-10 transfer that is a question about the memo, the one item
+    /// `render_sip10_transfer_args` can degrade. For everything else it is a question about
+    /// whether the arguments flatten into one item per leaf -- worked out at parse time.
+    ///
+    /// Note this does not consider whether those items *fit*: post-conditions and arguments share
+    /// one u8 display index, so only the transaction can answer that. `Transaction::requires_blindsign`
+    /// is the authority, and is strictly more conservative than this.
+    pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
+        if self.contract_type != ContractType::SIP10 {
+            return Ok(self.flat_items.is_none());
         }
 
-        args.all(TransactionContractCall::arg_is_fully_displayable)
-            .map(|all_displayable| !all_displayable)
+        // render_sip10_transfer_args shows exactly Amount / From / To / Memo. It type-checks the
+        // first three and errors if they are not a uint and two principals, so the memo is the
+        // only item that can silently degrade (to "Complex memo value").
+        if self.tx.num_args()? != SIP10_TRANSFER_ARGS {
+            return Ok(true);
+        }
+        let memo = self.tx.function_args()?.argument_at(SIP10_MEMO_ARG_IDX)?;
+        Ok(!TransactionContractCall::memo_is_fully_displayable(&memo))
     }
 
     pub fn get_contract_call_items(
@@ -153,10 +459,10 @@ impl<'a> TransactionContractCallWrapper<'a> {
         out_key: &mut [u8],
         out_value: &mut [u8],
         page_idx: u8,
-        hide_sip10_details: bool,
+        mode: DisplayMode,
     ) -> Result<u8, ParserError> {
         // display_idx was already normalized
-        if hide_sip10_details && self.contract_type == ContractType::SIP10 {
+        if mode.hide_sip10_details && self.contract_type == ContractType::SIP10 {
             return self
                 .tx
                 .render_sip10_transfer_args(display_idx, out_key, out_value, page_idx);
@@ -170,12 +476,21 @@ impl<'a> TransactionContractCallWrapper<'a> {
 
         let display_idx = display_idx - CONTRACT_CALL_BASE_ITEMS;
 
-        if self.contract_type == ContractType::SIP10 {
-            self.tx
-                .render_sip10_transfer_args(display_idx, out_key, out_value, page_idx)
-        } else {
-            self.tx
-                .render_contract_call_args(display_idx, out_key, out_value, page_idx)
+        match (&self.contract_type, self.flat_items) {
+            (ContractType::SIP10, _) => {
+                self.tx
+                    .render_sip10_transfer_args(display_idx, out_key, out_value, page_idx)
+            }
+            // One item per leaf, keyed by the path that reaches it.
+            (_, Some(_)) if mode.flatten_args => {
+                self.tx
+                    .render_flat_arg(display_idx, out_key, out_value, page_idx)
+            }
+            // Fallback: one item per argument, a type placeholder for anything structured. The
+            // transaction is gated, so the user has accepted that it cannot all be shown.
+            _ => self
+                .tx
+                .render_contract_call_args(display_idx, out_key, out_value, page_idx),
         }
     }
 
@@ -392,13 +707,13 @@ impl<'a> TransactionContractCall<'a> {
             // An empty container hides nothing -- `[]` *is* the complete value. A populated one
             // has no faithful single-screen rendering, and stays opaque until arguments are
             // flattened into one item per leaf.
-            ValueId::List => match Self::container_count(payload)? {
+            ValueId::List => match container_count(payload)? {
                 0 => writer
                     .write_str("List: []")
                     .map_err(|_| ParserError::UnexpectedBufferEnd),
                 _ => Err(ParserError::UnexpectedType),
             },
-            ValueId::Tuple => match Self::container_count(payload)? {
+            ValueId::Tuple => match container_count(payload)? {
                 0 => writer
                     .write_str("Tuple: {}")
                     .map_err(|_| ParserError::UnexpectedBufferEnd),
@@ -468,13 +783,6 @@ impl<'a> TransactionContractCall<'a> {
         writer
             .write_str(text)
             .map_err(|_| ParserError::UnexpectedBufferEnd)
-    }
-
-    /// The `be_u32` element count leading a List or Tuple payload.
-    fn container_count(payload: &[u8]) -> Result<u32, ParserError> {
-        let count = payload.get(..4).ok_or(ParserError::UnexpectedBufferEnd)?;
-        // wont panic: the slice is exactly 4 bytes long
-        Ok(u32::from_be_bytes([count[0], count[1], count[2], count[3]]))
     }
 
     /// The text shown in place of a value [`Self::write_value_text`] cannot render. Kept
@@ -777,21 +1085,67 @@ impl<'a> TransactionContractCall<'a> {
         }
     }
 
-    pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
-        // contract-address, contract-name, function-name
-        // + the number of arguments
-        let raw_args = self.num_args()?;
-        if raw_args > u8::MAX as u32 {
-            return Err(ParserError::ValueOutOfRange);
-        }
-        let num_args = raw_args as u8;
+    /// Total items, given how many the arguments contribute -- which depends on whether they are
+    /// flattened, a decision the transaction makes and passes down.
+    pub fn num_items(&self, hide_sip10_details: bool, arg_items: u8) -> Result<u8, ParserError> {
         if hide_sip10_details {
-            Ok(num_args)
+            Ok(arg_items)
         } else {
-            num_args
+            // + contract-address, contract-name, function-name
+            arg_items
                 .checked_add(CONTRACT_CALL_BASE_ITEMS)
                 .ok_or(ParserError::ValueOutOfRange)
         }
+    }
+
+    /// How many display items the arguments expand to when every leaf gets its own.
+    ///
+    /// `Err` means they cannot be flattened; see [`walk_value`] for what disqualifies them.
+    fn flat_item_count(&self) -> Result<u8, ParserError> {
+        let args = self.function_args()?;
+        let mut walker = Walker::counting();
+        walk_args(&args, &mut walker)?;
+        Ok(walker.seen)
+    }
+
+    /// Renders the `display_idx`-th leaf of the flattened arguments, keyed by the path that
+    /// reaches it.
+    fn render_flat_arg(
+        &self,
+        display_idx: u8,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let args = self.function_args()?;
+        let mut walker = Walker::seeking(display_idx);
+        walk_args(&args, &mut walker)?;
+
+        let value = walker.found.ok_or(ParserError::DisplayIdxOutOfRange)?;
+
+        // Cut the key to the device's key line rather than failing: a Nano fits 17 characters,
+        // a Stax 63. Truncating a label is a legible loss -- the value beside it is still shown
+        // in full -- where erroring here would make the transaction unsignable outright.
+        let path = walker.found_path.as_bytes();
+        let room = out_key.len().saturating_sub(1);
+        let copied = path.len().min(room);
+        out_key
+            .get_mut(..copied)
+            .ok_or(ParserError::UnexpectedBufferEnd)?
+            .copy_from_slice(&path[..copied]);
+        out_key
+            .get_mut(copied..)
+            .ok_or(ParserError::UnexpectedBufferEnd)?
+            .iter_mut()
+            .for_each(|byte| *byte = 0);
+
+        // An un-nested first uint argument of a PoX stack-stx/delegate-stx call keeps its
+        // friendlier key, exactly as it does without flattening.
+        if walker.found_path.as_bytes() == b"arg0" && value.value_id() == ValueId::UInt {
+            self.label_stacking_value(out_key)?;
+        }
+
+        Self::render_value(&value, out_value, page_idx)
     }
 
     fn get_base_items(
@@ -1152,10 +1506,189 @@ mod test {
         // A small buffer argument, rendered as hex.
         assert!(!requires_blindsign(&[buffer()]));
 
-        // A populated tuple still is gated -- the bitflow swap waits on argument flattening.
-        assert!(requires_blindsign(&[tuple()]));
-        // ...and so does a value the render budget cannot hold.
+        // A populated tuple is flattened into one item per leaf, so it is not gated either.
+        assert!(!requires_blindsign(&[tuple()]));
+
+        // A value the render budget cannot hold still is.
         assert!(requires_blindsign(&[string_ascii(MAX_VALUE_TEXT + 1)]));
+    }
+
+    /// Renders the flattened arguments, one `(key, value)` per display item.
+    fn flattened(args: &[Vec<u8>]) -> Vec<(String, String)> {
+        let bytes = contract_call_payload(args);
+        let (_, call) =
+            TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
+        let count = call.flat_items().expect("arguments must flatten");
+
+        (0..count)
+            .map(|idx| {
+                let mut key = [0u8; MAX_KEY_PATH + 1];
+                let mut value = [0u8; MAX_VALUE_TEXT + 1];
+                call.get_contract_call_items(
+                    idx + CONTRACT_CALL_BASE_ITEMS,
+                    &mut key,
+                    &mut value,
+                    0,
+                    DisplayMode {
+                        hide_sip10_details: false,
+                        flatten_args: true,
+                    },
+                )
+                .expect("every counted item must render");
+                (cstr(&key), cstr(&value))
+            })
+            .collect()
+    }
+
+    fn cstr(buf: &[u8]) -> String {
+        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        String::from_utf8(buf[..end].to_vec()).expect("rendered text must be utf8")
+    }
+
+    /// `[0x0c][1 pair][name][value]`
+    fn tuple_of(pairs: &[(&str, Vec<u8>)]) -> Vec<u8> {
+        let mut b = vec![0x0c];
+        b.extend_from_slice(&(pairs.len() as u32).to_be_bytes());
+        for (name, value) in pairs {
+            b.push(name.len() as u8);
+            b.extend_from_slice(name.as_bytes());
+            b.extend_from_slice(value);
+        }
+        b
+    }
+
+    /// `[0x0b][count][values..]`
+    fn list_of(items: &[Vec<u8>]) -> Vec<u8> {
+        let mut b = vec![0x0b];
+        b.extend_from_slice(&(items.len() as u32).to_be_bytes());
+        for item in items {
+            b.extend_from_slice(item);
+        }
+        b
+    }
+
+    /// A tuple argument becomes one display item per field, keyed by the path that reaches it.
+    /// This is the bitflow swap: two tuples of contract principals, nothing else, and it used to
+    /// demand blind signing on the strength of the word "Tuple".
+    #[test]
+    fn test_tuple_arguments_flatten_into_one_item_per_field() {
+        let items = flattened(&[
+            uint(10000),
+            uint(2),
+            vec![0x09],
+            tuple_of(&[("a", contract_principal()), ("b", contract_principal())]),
+            tuple_of(&[("a", contract_principal())]),
+        ]);
+
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(
+            keys,
+            ["arg0", "arg1", "arg2", "arg3.a", "arg3.b", "arg4.a"]
+        );
+        assert_eq!(items[0].1, "10000");
+        assert_eq!(items[2].1, "Option: None");
+        assert!(items[3].1.ends_with(".some-contract"));
+    }
+
+    /// List entries are keyed by index, and nesting composes.
+    #[test]
+    fn test_lists_and_nesting_are_keyed_by_path() {
+        let items = flattened(&[list_of(&[uint(1), uint(2)])]);
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["arg0[0]", "arg0[1]"]);
+        assert_eq!(items[1].1, "2");
+
+        let nested = flattened(&[tuple_of(&[(
+            "xs",
+            list_of(&[tuple_of(&[("n", uint(7))])]),
+        )])]);
+        assert_eq!(nested.len(), 1);
+        assert_eq!(nested[0].0, "arg0.xs[0].n");
+        assert_eq!(nested[0].1, "7");
+    }
+
+    /// `Some((tuple ...))` is descended into rather than left opaque, but `Some(u1)` stays a
+    /// single item -- `write_value_text` shows it in full already.
+    #[test]
+    fn test_wrappers_around_containers_are_descended() {
+        let items = flattened(&[wrap(0x0a, tuple_of(&[("n", uint(7))]))]);
+        assert_eq!(items[0].0, "arg0.some.n");
+        assert_eq!(items[0].1, "7");
+
+        let scalar = flattened(&[wrap(0x0a, uint(7))]);
+        assert_eq!(scalar[0].0, "arg0");
+        assert_eq!(scalar[0].1, "Some(7)");
+    }
+
+    /// An empty container is one item, not zero. Descending into it would drop the argument from
+    /// the review entirely, and the user would never see that it was passed.
+    #[test]
+    fn test_empty_container_stays_a_single_item() {
+        let items = flattened(&[list_of(&[]), uint(1)]);
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["arg0", "arg1"]);
+        assert_eq!(items[0].1, "List: []");
+    }
+
+    /// A path is allowed up to MAX_KEY_PATH; past that the leaf is opaque and the transaction is
+    /// gated, rather than the walk running on an unbounded key buffer.
+    #[test]
+    fn test_key_path_budget_is_enforced() {
+        let name = "a".repeat(MAX_KEY_PATH - "arg0.".len());
+        let fits = tuple_of(&[(name.as_str(), uint(1))]);
+        assert_eq!(flattened(&[fits])[0].0.len(), MAX_KEY_PATH);
+
+        let longer = "a".repeat(MAX_KEY_PATH - "arg0.".len() + 1);
+        assert!(requires_blindsign(&[tuple_of(&[(longer.as_str(), uint(1))])]));
+    }
+
+    /// A key too long for the device is cut to the key line. The value beside it is still shown
+    /// in full -- that is what the user approves -- so this loses a label, not data.
+    #[test]
+    fn test_key_is_truncated_to_the_device_key_line() {
+        let bytes = contract_call_payload(&[tuple_of(&[("min-amount-out", uint(7))])]);
+        let (_, call) =
+            TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
+
+        // A Nano key line: 17 characters and a terminator.
+        let mut key = [0u8; 18];
+        let mut value = [0u8; MAX_VALUE_TEXT + 1];
+        call.get_contract_call_items(
+            CONTRACT_CALL_BASE_ITEMS,
+            &mut key,
+            &mut value,
+            0,
+            DisplayMode {
+                hide_sip10_details: false,
+                flatten_args: true,
+            },
+        )
+        .expect("item must render");
+
+        assert_eq!(cstr(&key), "arg0.min-amount-o");
+        assert_eq!(cstr(&value), "7");
+    }
+
+    /// The walk stops counting rather than following a crafted argument to an astronomical total.
+    #[test]
+    fn test_item_budget_is_enforced() {
+        let at_budget: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS).map(|_| uint(1)).collect();
+        assert!(!requires_blindsign(&at_budget));
+
+        let over_budget: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1)
+            .map(|_| uint(1))
+            .collect();
+        assert!(requires_blindsign(&over_budget));
+    }
+
+    /// Nesting past the parser's depth limit is gated, not walked.
+    #[test]
+    fn test_depth_limit_is_enforced() {
+        let mut nested = uint(1);
+        for _ in 0..TX_DEPTH_LIMIT {
+            nested = list_of(&[nested]);
+        }
+        assert!(requires_blindsign(&[nested]));
     }
 
     /// The SIP-10 memo path unwraps `Some(..)` and renders the inner value bare, where the

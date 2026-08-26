@@ -136,9 +136,10 @@ TEST_P(JsonTestsA, CheckUIOutput_CurrentTX) {
 // Blind-signing gate
 //
 // parser_parse() refuses to sign a transaction whose items the device cannot render, unless the
-// user has explicitly enabled blind signing. Fixtures below are reused from testcases.json: the
-// Contract_call_* cases with tuple/buffer/string-utf8 arguments render placeholders ("is Tuple",
-// "is Buffer", ...) and must be gated; everything else renders in full and must not be.
+// user has explicitly enabled blind signing. Fixtures below are reused from testcases.json.
+// Structured arguments are flattened into one display item per leaf, so a tuple or a list is no
+// longer a reason to gate; what is left are values with no faithful rendering at all, such as a
+// non-ASCII string-utf8.
 ///////////////////////////////////////////////////////////////////////////////
 
 class BlindSignGate : public ::testing::Test {
@@ -169,15 +170,13 @@ class BlindSignGate : public ::testing::Test {
 
 TEST_F(BlindSignGate, OpaqueArgsRejectedWhenDisabled) {
     app_mode_set_blindsign(0);
-    // tuple + buffer + optional-some arguments
-    EXPECT_EQ(parse("Contract_call_long_args"), parser_blindsign_mode_required);
-    // string-utf8 argument
+    // A non-ASCII string-utf8 argument: the device fonts cannot show it.
     EXPECT_EQ(parse("Contract_call_string_args"), parser_blindsign_mode_required);
 }
 
 TEST_F(BlindSignGate, OpaqueArgsAllowedWhenEnabled) {
     app_mode_set_blindsign(1);
-    EXPECT_EQ(parse("Contract_call_long_args"), parser_ok);
+    EXPECT_EQ(parse("Contract_call_string_args"), parser_ok);
     // The "Accept risk and sign" review must be armed for this transaction.
     EXPECT_TRUE(app_mode_blindsign_required());
 }
@@ -186,6 +185,15 @@ TEST_F(BlindSignGate, FullyDisplayableTxNotGated) {
     app_mode_set_blindsign(0);
     EXPECT_EQ(parse("Transfer"), parser_ok);
     EXPECT_EQ(parse("Contract_call"), parser_ok);
+}
+
+// Structured arguments are shown one display item per leaf, so carrying a tuple is no longer a
+// reason to gate. Contract_call_long_args holds a nested tuple, a list, a buffer and an optional;
+// flattened it renders 31 items, every one of them a value the user can read.
+TEST_F(BlindSignGate, StructuredArgsNotGatedOnceFlattened) {
+    app_mode_set_blindsign(0);
+    EXPECT_EQ(parse("Contract_call_long_args"), parser_ok);
+    EXPECT_EQ(parse("Contract_call_post_conditions"), parser_ok);
 }
 
 // Regression guard: a user who switches blind signing on must still get the *normal* review for

@@ -788,17 +788,14 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`, true, 0, undefined, true)
+      // Its tuple, list and optional arguments are shown one item per leaf, so this reviews
+      // normally -- no blind-signing opt-in.
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1107,17 +1104,14 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`, true, 0, undefined, true)
+      // Its tuple, list and optional arguments are shown one item per leaf, so this reviews
+      // normally -- no blind-signing opt-in.
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`)
 
       const signature = await signatureRequest
       console.log(signature)
