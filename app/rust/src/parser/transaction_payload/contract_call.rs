@@ -15,7 +15,23 @@ use crate::{
     zxformat::{self, format_u128_decimals, MAX_U128_FORMATTED_SIZE_DECIMAL},
 };
 
-pub const MAX_STRING_ASCII_TO_SHOW: usize = 60;
+/// The display text of one value is built in a fixed stack buffer before being paged out, and
+/// this is that buffer's size. It is the render budget: a value whose text does not fit is not
+/// displayable, so the transaction falls back to the blind-signing gate instead of being shown
+/// truncated. Whatever does fit, `page_string` spreads over as many pages as the device needs --
+/// `pageCount` is a u8, so 255 pages, far more than this buffer can fill.
+pub const MAX_VALUE_TEXT: usize = 256;
+
+/// Buffers up to this many bytes render as `0x..` hex. Past that the hex is more screens of
+/// noise than a user will read, and gating is the honest answer.
+pub const MAX_BUFFER_BYTES_TO_SHOW: usize = 64;
+
+/// How many `Some`/`Ok`/`Err` wrappers deep `write_value_text` unwraps before treating the value
+/// as opaque. Bounds its recursion, which runs on the device stack.
+const MAX_WRAPPER_DEPTH: u8 = 3;
+
+/// Lowercase hex digits, for rendering buffers without a scratch buffer.
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
 // The items in contract_call transactions are
 // contract_address, contract_name and function_name
 pub const CONTRACT_CALL_BASE_ITEMS: u8 = 3;
@@ -271,79 +287,240 @@ impl<'a> TransactionContractCall<'a> {
         Ok(())
     }
 
-    /// Whether `render_contract_call_args` below can show this value in full, or only degrades
-    /// to a type placeholder such as `"is Tuple"`.
+    /// Whether the device can show this value in full.
     ///
-    /// SINGLE SOURCE OF TRUTH for the blind-signing gate. The arms here must mirror the
-    /// placeholder arms of [`Self::render_contract_call_args`] exactly: if a value renders as a
-    /// placeholder, the user is signing bytes they cannot see, and the transaction must be gated.
-    /// `test_displayable_predicate_matches_renderer` enforces the correspondence mechanically, so
-    /// teaching the renderer a new type without moving it here fails the build.
+    /// SINGLE SOURCE OF TRUTH for the blind-signing gate -- and it is the renderer itself:
+    /// a value is displayable exactly when [`Self::write_value_text`] can write its text into
+    /// the render budget. There is no second list of types to keep in step; teaching the
+    /// renderer a new type teaches the gate at the same moment.
     pub fn arg_is_fully_displayable(value: &Value) -> bool {
+        let mut text = [0u8; MAX_VALUE_TEXT];
+        let mut writer = zxformat::Writer::new(&mut text);
+        Self::write_value_text(value, &mut writer, 0).is_ok()
+    }
+
+    /// Writes the full display text of `value` into `writer`.
+    ///
+    /// `Err` means the value is opaque: either the device has no faithful way to show it (a
+    /// populated tuple or list, a non-ASCII UTF-8 string, an oversized buffer) or its text does
+    /// not fit the render budget. Callers render a type placeholder instead, and the transaction
+    /// is gated behind the blind-signing opt-in.
+    ///
+    /// `depth` counts `Some`/`Ok`/`Err` wrappers already unwrapped, bounding the recursion.
+    fn write_value_text(
+        value: &Value,
+        writer: &mut zxformat::Writer<'_>,
+        depth: u8,
+    ) -> Result<(), ParserError> {
+        use core::fmt::Write as _;
+
+        check_canary!();
+        let payload = value.payload();
+
         match value.value_id() {
+            ValueId::Int => {
+                let value = value.int().ok_or(ParserError::UnexpectedError)?;
+                let mut buff = [0u8; 41]; // 40 digits + possible sign
+
+                // Handle i128::MIN specially as numtoa has a bug with it
+                // (it causes underflow when computing the absolute value)
+                let text = if value == i128::MIN {
+                    "-170141183460469231731687303715884105728"
+                } else {
+                    value.numtoa_str(10, &mut buff)
+                };
+                writer.write_str(text).map_err(|_| ParserError::UnexpectedBufferEnd)
+            }
+            ValueId::UInt => {
+                let value = value.uint().ok_or(ParserError::UnexpectedError)?;
+                let mut buff = [0u8; 39];
+                writer
+                    .write_str(value.numtoa_str(10, &mut buff))
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)
+            }
+            ValueId::BoolTrue => writer
+                .write_str("Bool: true")
+                .map_err(|_| ParserError::UnexpectedBufferEnd),
+            ValueId::BoolFalse => writer
+                .write_str("Bool: false")
+                .map_err(|_| ParserError::UnexpectedBufferEnd),
+            ValueId::OptionalNone => writer
+                .write_str("Option: None")
+                .map_err(|_| ParserError::UnexpectedBufferEnd),
+            ValueId::StandardPrincipal => {
+                let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
+                let address = principal.encoded_address()?;
+                Self::write_ascii(writer, address.as_ref())
+            }
+            ValueId::ContractPrincipal => {
+                let (_, principal) = PrincipalData::contract_principal_from_bytes(payload)?;
+                let address = principal.encoded_address()?;
+                // should not fail as this was parsed in previous step
+                let contract_name = principal.contract_name().apdu_unwrap();
+
+                Self::write_ascii(writer, address.as_ref())?;
+                writer
+                    .write_char('.')
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                Self::write_ascii(writer, contract_name.name())
+            }
+
+            // A `Some`/`Ok`/`Err` wrapper hides the part that matters, so unwrap it and show the
+            // inner value -- `Some(493568)` rather than `Option: Some`. The wrapper is kept in
+            // the text: the user must see that they are signing `(some u493568)` and not `u493568`.
+            ValueId::OptionalSome | ValueId::ResponseOk | ValueId::ResponseErr => {
+                if depth >= MAX_WRAPPER_DEPTH {
+                    return Err(ParserError::RecursionLimit);
+                }
+                if payload.is_empty() {
+                    return Err(ParserError::UnexpectedBufferEnd);
+                }
+                let tag = match value.value_id() {
+                    ValueId::OptionalSome => "Some(",
+                    ValueId::ResponseOk => "Ok(",
+                    _ => "Err(",
+                };
+                writer
+                    .write_str(tag)
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                Self::write_value_text(&Value(payload), writer, depth + 1)?;
+                writer
+                    .write_char(')')
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)
+            }
+
+            // An empty container hides nothing -- `[]` *is* the complete value. A populated one
+            // has no faithful single-screen rendering, and stays opaque until arguments are
+            // flattened into one item per leaf.
+            ValueId::List => match Self::container_count(payload)? {
+                0 => writer
+                    .write_str("List: []")
+                    .map_err(|_| ParserError::UnexpectedBufferEnd),
+                _ => Err(ParserError::UnexpectedType),
+            },
+            ValueId::Tuple => match Self::container_count(payload)? {
+                0 => writer
+                    .write_str("Tuple: {}")
+                    .map_err(|_| ParserError::UnexpectedBufferEnd),
+                _ => Err(ParserError::UnexpectedType),
+            },
+
+            // `[len: 4][bytes]`, rendered as hex so the user sees the actual bytes signed.
+            ValueId::Buffer => {
+                let bytes = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
+                if bytes.len() > MAX_BUFFER_BYTES_TO_SHOW {
+                    return Err(ParserError::ValueOutOfRange);
+                }
+                writer
+                    .write_str("0x")
+                    .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                for byte in bytes {
+                    writer
+                        .write_char(HEX_DIGITS[(byte >> 4) as usize] as char)
+                        .and_then(|_| writer.write_char(HEX_DIGITS[(byte & 0x0f) as usize] as char))
+                        .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+                }
+                Ok(())
+            }
+
+            // `[len: 4][chars]`. Written in full and paged; the parser has already checked that
+            // a StringAscii really is ASCII.
+            ValueId::StringAscii => {
+                let content = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
+                Self::write_text_content(writer, content)
+            }
+
+            // Device fonts cover ASCII, so a UTF-8 string whose bytes happen to be ASCII is shown
+            // like any other string. Anything else would render as mojibake or blanks, which is
+            // worse than admitting the device cannot show it.
+            ValueId::StringUtf8 => {
+                let content = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
+                if !content.is_ascii() {
+                    return Err(ParserError::UnexpectedType);
+                }
+                Self::write_text_content(writer, content)
+            }
+        }
+    }
+
+    /// Writes string content, standing in for the empty string so that `page_string` -- which
+    /// rejects an empty input -- is never handed nothing to page. Before this, an empty
+    /// `string-ascii` argument failed the whole parse and the transaction could not be signed.
+    fn write_text_content(
+        writer: &mut zxformat::Writer<'_>,
+        content: &[u8],
+    ) -> Result<(), ParserError> {
+        use core::fmt::Write as _;
+
+        if content.is_empty() {
+            return writer
+                .write_str("(empty)")
+                .map_err(|_| ParserError::UnexpectedBufferEnd);
+        }
+        Self::write_ascii(writer, content)
+    }
+
+    /// Writes bytes the parser has already established are ASCII.
+    fn write_ascii(writer: &mut zxformat::Writer<'_>, bytes: &[u8]) -> Result<(), ParserError> {
+        use core::fmt::Write as _;
+
+        let text = core::str::from_utf8(bytes).map_err(|_| ParserError::InvalidUnicode)?;
+        writer
+            .write_str(text)
+            .map_err(|_| ParserError::UnexpectedBufferEnd)
+    }
+
+    /// The `be_u32` element count leading a List or Tuple payload.
+    fn container_count(payload: &[u8]) -> Result<u32, ParserError> {
+        let count = payload.get(..4).ok_or(ParserError::UnexpectedBufferEnd)?;
+        // wont panic: the slice is exactly 4 bytes long
+        Ok(u32::from_be_bytes([count[0], count[1], count[2], count[3]]))
+    }
+
+    /// The text shown in place of a value [`Self::write_value_text`] cannot render. Kept
+    /// exhaustive so a new `ValueId` has to be given one.
+    fn type_placeholder(value: &Value) -> &'static [u8] {
+        match value.value_id() {
+            ValueId::Buffer => b"is Buffer",
+            ValueId::List => b"is List",
+            ValueId::Tuple => b"is Tuple",
+            ValueId::StringAscii => b"is StringAscii",
+            ValueId::StringUtf8 => b"is StringUtf8",
+            ValueId::OptionalSome => b"Option: Some",
+            ValueId::ResponseOk => b"Result: Ok",
+            ValueId::ResponseErr => b"Result: Err",
+            // Scalars always fit the render budget; unreachable in practice.
             ValueId::Int
             | ValueId::UInt
             | ValueId::BoolTrue
             | ValueId::BoolFalse
-            // "Option: None" *is* the complete value, not a placeholder.
             | ValueId::OptionalNone
             | ValueId::StandardPrincipal
-            | ValueId::ContractPrincipal => true,
-
-            // Rendered, but silently truncated past MAX_STRING_ASCII_TO_SHOW.
-            ValueId::StringAscii => Self::string_ascii_fits(value),
-
-            // Only the type name is rendered; the value itself is never shown to the user.
-            ValueId::Buffer
-            | ValueId::List
-            | ValueId::Tuple
-            | ValueId::StringUtf8
-            // These render as "Option: Some" / "Result: Ok" / "Result: Err" -- the inner
-            // value, which is the part that matters, is never displayed.
-            | ValueId::OptionalSome
-            | ValueId::ResponseOk
-            | ValueId::ResponseErr => false,
-        }
-    }
-
-    /// A StringAscii payload is `[len: 4][chars]`. The renderer truncates, without any ellipsis,
-    /// once the string exceeds MAX_STRING_ASCII_TO_SHOW, so anything longer hides data.
-    fn string_ascii_fits(value: &Value) -> bool {
-        match value.payload().len().checked_sub(4) {
-            Some(str_len) => str_len <= MAX_STRING_ASCII_TO_SHOW,
-            // Malformed (payload shorter than the length prefix); be conservative.
-            None => false,
+            | ValueId::ContractPrincipal => b"is Value",
         }
     }
 
     /// Whether [`Self::render_memo_value`] can show this memo in full.
     ///
-    /// Mirrors that function's match arms; see `arg_is_fully_displayable` for why this matters.
-    /// Note the memo path *unwraps* `OptionalSome`, which the generic argument path does not.
+    /// The memo path unwraps `Some(..)` and shows the inner value bare -- a memo is a payload,
+    /// not a Clarity expression the user reasons about -- where the generic argument path keeps
+    /// the `Some(..)` around it. Past that unwrap both go through `write_value_text`, so a
+    /// `(buff 34)` memo renders as hex instead of forcing the whole transfer to be blind-signed.
     pub fn memo_is_fully_displayable(memo: &Value) -> bool {
         match memo.value_id() {
             ValueId::OptionalNone => true,
-            ValueId::OptionalSome => {
-                let inner_bytes = memo.payload();
-                if inner_bytes.is_empty() {
-                    return false;
-                }
-                let inner = Value(inner_bytes);
-                match inner.value_id() {
-                    ValueId::UInt
-                    | ValueId::Int
-                    | ValueId::BoolTrue
-                    | ValueId::BoolFalse
-                    | ValueId::StandardPrincipal
-                    | ValueId::ContractPrincipal => true,
-                    ValueId::StringAscii => Self::string_ascii_fits(&inner),
-                    // Everything else renders as "Complex memo value".
-                    _ => false,
-                }
-            }
+            ValueId::OptionalSome => Self::memo_inner(memo)
+                .map(|inner| Self::arg_is_fully_displayable(&inner))
+                .unwrap_or(false),
             // render_memo_value errors on a non-Optional memo; be conservative.
             _ => false,
         }
+    }
+
+    /// The value carried inside a `Some(..)` memo.
+    fn memo_inner<'b>(memo: &Value<'b>) -> Option<Value<'b>> {
+        let inner = memo.payload();
+        (!inner.is_empty()).then_some(Value(inner))
     }
 
     fn render_contract_call_args(
@@ -382,110 +559,20 @@ impl<'a> TransactionContractCall<'a> {
 
     /// Renders a single contract-call argument value into `out_value`.
     ///
-    /// Kept as a standalone function so `arg_is_fully_displayable` can be checked against the
-    /// real rendering behaviour rather than a restatement of it -- see
-    /// `test_displayable_predicate_matches_renderer`.
-    fn render_value(
-        value: &Value,
-        out_value: &mut [u8],
-        page_idx: u8,
-    ) -> Result<u8, ParserError> {
-        // return the value content including the valueID
-        let payload = value.payload();
+    /// Builds the complete display text first, then pages it out. A value whose text does not fit
+    /// the render budget -- or that has no faithful rendering at all -- falls back to a type
+    /// placeholder, which is exactly the case `arg_is_fully_displayable` gates behind the
+    /// blind-signing opt-in. The two share [`Self::write_value_text`], so they cannot disagree.
+    fn render_value(value: &Value, out_value: &mut [u8], page_idx: u8) -> Result<u8, ParserError> {
+        let mut text = [0u8; MAX_VALUE_TEXT];
+        let written = {
+            let mut writer = zxformat::Writer::new(&mut text);
+            Self::write_value_text(value, &mut writer, 0).map(|_| writer.offset)
+        };
 
-        match value.value_id() {
-            ValueId::Int => {
-                let value = value.int().ok_or(ParserError::UnexpectedError)?;
-                let mut buff = [0u8; 41]; // 40 digits + possible sign
-
-                // Handle i128::MIN specially as numtoa has a bug with it
-                // (it causes underflow when computing the absolute value)
-                if value == i128::MIN {
-                    let min_str = b"-170141183460469231731687303715884105728";
-                    zxformat::page_string(out_value, min_str, page_idx)
-                } else {
-                    zxformat::page_string(
-                        out_value,
-                        value.numtoa_str(10, &mut buff).as_bytes(),
-                        page_idx,
-                    )
-                }
-            }
-            ValueId::UInt => {
-                let value = value.uint().ok_or(ParserError::UnexpectedError)?;
-                let mut buff = [0u8; 39];
-
-                zxformat::page_string(
-                    out_value,
-                    value.numtoa_str(10, &mut buff).as_bytes(),
-                    page_idx,
-                )
-            }
-            ValueId::BoolTrue => zxformat::page_string(out_value, "Bool: true".as_bytes(), page_idx),
-            ValueId::BoolFalse => {
-                zxformat::page_string(out_value, "Bool: false".as_bytes(), page_idx)
-            }
-            ValueId::OptionalNone => {
-                zxformat::page_string(out_value, "Option: None".as_bytes(), page_idx)
-            }
-            ValueId::OptionalSome => {
-                zxformat::page_string(out_value, "Option: Some".as_bytes(), page_idx)
-            }
-            ValueId::ResponseOk => {
-                zxformat::page_string(out_value, "Result: Ok".as_bytes(), page_idx)
-            }
-            ValueId::ResponseErr => {
-                zxformat::page_string(out_value, "Result: Err".as_bytes(), page_idx)
-            }
-            ValueId::StandardPrincipal => {
-                let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
-                let address = principal.encoded_address()?;
-                zxformat::page_string(out_value, &address[0..address.len()], page_idx)
-            }
-            ValueId::ContractPrincipal => {
-                // holds principal_encoded address + '.' + contract_name
-                let mut data = [0; C32_ENCODED_ADDRS_LENGTH + ClarityName::MAX_LEN as usize + 1];
-
-                let (_, principal) = PrincipalData::contract_principal_from_bytes(payload)?;
-                let address = principal.encoded_address()?;
-
-                // should not fail as this was parsed in previous step
-                let contract_name = principal.contract_name().apdu_unwrap();
-
-                data.get_mut(..address.len())
-                    .apdu_unwrap()
-                    .copy_from_slice(&address[0..address.len()]);
-
-                data[address.len()] = b'.';
-                let len = address.len() + 1;
-
-                // wont panic as we reserved enough space.
-                data.get_mut(len..len + contract_name.len())
-                    .apdu_unwrap()
-                    .copy_from_slice(contract_name.name());
-
-                zxformat::page_string(out_value, &data[0..len + contract_name.len()], page_idx)
-            }
-            ValueId::Buffer => zxformat::page_string(out_value, "is Buffer".as_bytes(), page_idx),
-            ValueId::List => zxformat::page_string(out_value, "is List".as_bytes(), page_idx),
-            ValueId::Tuple => zxformat::page_string(out_value, "is Tuple".as_bytes(), page_idx),
-            ValueId::StringAscii => {
-                // 4 bytes encode the length of the string
-                let len = if payload.len() - 4 > MAX_STRING_ASCII_TO_SHOW {
-                    MAX_STRING_ASCII_TO_SHOW
-                } else {
-                    payload.len()
-                };
-                zxformat::page_string(
-                    out_value,
-                    &payload[4..len], // omit the first 4-bytes as they are the string length
-                    page_idx,
-                )
-            }
-
-            ValueId::StringUtf8 => {
-                zxformat::page_string(out_value, "is StringUtf8".as_bytes(), page_idx)
-            }
+        match written {
+            Ok(len) => zxformat::page_string(out_value, &text[..len], page_idx),
+            Err(_) => zxformat::page_string(out_value, Self::type_placeholder(value), page_idx),
         }
     }
 
@@ -668,95 +755,21 @@ impl<'a> TransactionContractCall<'a> {
                 zxformat::page_string(out_value, "None".as_bytes(), page_idx)
             }
             ValueId::OptionalSome => {
-                // Extract the inner value, skipping the first byte which is the value ID
-                let inner_bytes = memo_value.payload();
-                if inner_bytes.is_empty() {
-                    return Err(ParserError::UnexpectedBufferEnd);
-                }
+                let inner = Self::memo_inner(memo_value).ok_or(ParserError::UnexpectedBufferEnd)?;
 
-                // Create a new Value from the inner bytes
-                let inner_value = Value(inner_bytes);
+                // A memo shows its inner value bare -- no `Some(..)` wrapper around it, unlike a
+                // contract-call argument, where the wrapper is part of what the user is signing.
+                let mut text = [0u8; MAX_VALUE_TEXT];
+                let written = {
+                    let mut writer = zxformat::Writer::new(&mut text);
+                    Self::write_value_text(&inner, &mut writer, 0).map(|_| writer.offset)
+                };
 
-                // Now render based on the type of the inner value
-                match inner_value.value_id() {
-                    ValueId::UInt => {
-                        let value = inner_value.uint().ok_or(ParserError::UnexpectedError)?;
-                        let mut buff = [0u8; 39];
-                        zxformat::page_string(
-                            out_value,
-                            value.numtoa_str(10, &mut buff).as_bytes(),
-                            page_idx,
-                        )
+                match written {
+                    Ok(len) => zxformat::page_string(out_value, &text[..len], page_idx),
+                    Err(_) => {
+                        zxformat::page_string(out_value, "Complex memo value".as_bytes(), page_idx)
                     }
-                    ValueId::Int => {
-                        let value = inner_value.int().ok_or(ParserError::UnexpectedError)?;
-                        let mut buff = [0u8; 41];
-                        // Handle i128::MIN specially as numtoa has a bug with it
-                        if value == i128::MIN {
-                            let min_str = b"-170141183460469231731687303715884105728";
-                            zxformat::page_string(out_value, min_str, page_idx)
-                        } else {
-                            zxformat::page_string(
-                                out_value,
-                                value.numtoa_str(10, &mut buff).as_bytes(),
-                                page_idx,
-                            )
-                        }
-                    }
-                    ValueId::BoolTrue => {
-                        zxformat::page_string(out_value, "true".as_bytes(), page_idx)
-                    }
-                    ValueId::BoolFalse => {
-                        zxformat::page_string(out_value, "false".as_bytes(), page_idx)
-                    }
-                    ValueId::StandardPrincipal => {
-                        let payload = inner_value.payload();
-                        let (_, principal) = PrincipalData::standard_from_bytes(payload)?;
-                        let address = principal.encoded_address()?;
-                        zxformat::page_string(out_value, &address[0..address.len()], page_idx)
-                    }
-                    ValueId::ContractPrincipal => {
-                        let payload = inner_value.payload();
-                        // holds principal_encoded address + '.' + contract_name
-                        let mut data =
-                            [0; C32_ENCODED_ADDRS_LENGTH + ClarityName::MAX_LEN as usize + 1];
-                        let (_, principal) = PrincipalData::contract_principal_from_bytes(payload)?;
-                        let address = principal.encoded_address()?;
-                        let contract_name = principal.contract_name().apdu_unwrap();
-
-                        data.get_mut(..address.len())
-                            .apdu_unwrap()
-                            .copy_from_slice(&address[0..address.len()]);
-
-                        data[address.len()] = b'.';
-                        let len = address.len() + 1;
-
-                        data.get_mut(len..len + contract_name.len())
-                            .apdu_unwrap()
-                            .copy_from_slice(contract_name.name());
-
-                        zxformat::page_string(
-                            out_value,
-                            &data[0..len + contract_name.len()],
-                            page_idx,
-                        )
-                    }
-                    ValueId::StringAscii => {
-                        // 4 bytes encode the length of the string
-                        let payload = inner_value.payload();
-                        let len = if payload.len() - 4 > MAX_STRING_ASCII_TO_SHOW {
-                            MAX_STRING_ASCII_TO_SHOW
-                        } else {
-                            payload.len()
-                        };
-                        zxformat::page_string(
-                            out_value,
-                            &payload[4..len], // omit the first 4-bytes as they are the string length
-                            page_idx,
-                        )
-                    }
-                    // For other types, just show a generic message
-                    _ => zxformat::page_string(out_value, "Complex memo value".as_bytes(), page_idx),
                 }
             }
             // If it's not an Optional type at all
@@ -835,15 +848,18 @@ mod test {
     use crate::parser::TX_DEPTH_LIMIT;
     use std::prelude::v1::*;
 
-    /// Exactly the strings `render_value` emits in place of a value it cannot show.
+    /// Exactly the strings `render_value` emits in place of a value it cannot show; mirrors
+    /// `type_placeholder`.
     const PLACEHOLDERS: &[&str] = &[
         "is Buffer",
         "is List",
         "is Tuple",
+        "is StringAscii",
         "is StringUtf8",
         "Option: Some",
         "Result: Ok",
         "Result: Err",
+        "is Value",
     ];
 
     fn int(v: i128) -> Vec<u8> {
@@ -861,6 +877,14 @@ mod test {
     fn buffer() -> Vec<u8> {
         let mut b = vec![0x02, 0, 0, 0, 3];
         b.extend_from_slice(b"abc");
+        b
+    }
+
+    /// `[0x02][len: 4][bytes]` of `len` filler bytes.
+    fn buffer_of(len: usize) -> Vec<u8> {
+        let mut b = vec![0x02];
+        b.extend_from_slice(&(len as u32).to_be_bytes());
+        b.resize(b.len() + len, 0xab);
         b
     }
 
@@ -944,7 +968,8 @@ mod test {
 
     fn render(bytes: &[u8]) -> String {
         let value = parse(bytes);
-        let mut out = [0u8; 200];
+        // One byte over the budget so a maximal value still lands on a single page here.
+        let mut out = [0u8; MAX_VALUE_TEXT + 1];
         TransactionContractCall::render_value(&value, &mut out, 0).expect("render_value failed");
         let end = out.iter().position(|&c| c == 0).unwrap_or(out.len());
         String::from_utf8(out[..end].to_vec()).expect("rendered value must be utf8")
@@ -971,8 +996,8 @@ mod test {
         }
     }
 
-    /// `arg_is_fully_displayable` matches exhaustively on ValueId, so a new variant breaks the
-    /// build there. This keeps the sample table above honest about covering every variant.
+    /// `write_value_text` matches exhaustively on ValueId, so a new variant breaks the build
+    /// there. This keeps the sample table above honest about covering every variant.
     #[test]
     fn test_samples_cover_every_value_id() {
         assert_eq!(samples().len(), 15);
@@ -981,34 +1006,174 @@ mod test {
     #[test]
     fn test_placeholders_are_the_opaque_types() {
         for (name, bytes) in samples() {
-            let opaque = matches!(
-                name,
-                "Buffer" | "List" | "Tuple" | "StringUtf8" | "OptionalSome" | "ResponseOk" | "ResponseErr"
-            );
+            // Every sample is small and simple, so only a populated container is left without a
+            // faithful rendering. Before the render budget replaced the type check, seven of the
+            // fifteen were opaque.
+            let opaque = matches!(name, "List" | "Tuple");
             assert_eq!(displayable(&bytes), !opaque, "{name} classified wrongly");
         }
     }
 
+    /// An empty container hides nothing -- `[]` is the whole value -- so it must not drag the
+    /// transaction into blind signing. This is the testnet false positive from the field report:
+    /// `arg0` was an empty list and the gate fired on the type alone.
     #[test]
-    fn test_string_ascii_truncation_requires_blindsign() {
-        // Rendered in full up to the cap...
-        assert!(displayable(&string_ascii(MAX_STRING_ASCII_TO_SHOW)));
-        // ...but silently truncated past it, with no ellipsis, so the user cannot see what
-        // they are signing.
-        assert!(!displayable(&string_ascii(MAX_STRING_ASCII_TO_SHOW + 1)));
+    fn test_empty_containers_are_displayable() {
+        let empty_list = vec![0x0b, 0, 0, 0, 0];
+        assert!(displayable(&empty_list));
+        assert_eq!(render(&empty_list), "List: []");
+
+        let empty_tuple = vec![0x0c, 0, 0, 0, 0];
+        assert!(displayable(&empty_tuple));
+        assert_eq!(render(&empty_tuple), "Tuple: {}");
+
+        // A populated one still is not, until arguments are flattened into one item per leaf.
+        assert!(!displayable(&list()));
+        assert!(!displayable(&tuple()));
     }
 
-    /// The SIP-10 memo path unwraps `Some(..)` and renders the inner value, which the generic
-    /// argument path does not. The two predicates must track their own renderers, not each other.
+    /// `Some`/`Ok`/`Err` show what they wrap. The wrapper stays in the text: approving
+    /// `(some u1)` is not the same as approving `u1`, and the user has to see which one it is.
+    #[test]
+    fn test_wrappers_are_unwrapped() {
+        assert_eq!(render(&wrap(0x0a, uint(1))), "Some(1)");
+        assert_eq!(render(&wrap(0x07, uint(1))), "Ok(1)");
+        assert_eq!(render(&wrap(0x08, int(-1))), "Err(-1)");
+        assert_eq!(render(&wrap(0x0a, vec![0x09])), "Some(Option: None)");
+
+        // The alexlab swap argument that forced blind signing on an ordinary swap.
+        assert!(displayable(&wrap(0x0a, uint(493568))));
+    }
+
+    /// The unwrap recurses on the device stack, so it is bounded rather than following a
+    /// crafted argument down as far as the value parser allows.
+    #[test]
+    fn test_wrapper_nesting_is_bounded() {
+        let mut nested = uint(1);
+        for _ in 0..MAX_WRAPPER_DEPTH {
+            nested = wrap(0x0a, nested);
+        }
+        assert!(
+            displayable(&nested),
+            "{} wrappers must still render",
+            MAX_WRAPPER_DEPTH
+        );
+
+        // One deeper is opaque -- gated, never unbounded recursion.
+        assert!(!displayable(&wrap(0x0a, nested)));
+    }
+
+    /// Buffers render as hex, so the user sees the bytes actually being signed.
+    #[test]
+    fn test_buffers_render_as_hex() {
+        assert!(displayable(&buffer()));
+        assert_eq!(render(&buffer()), "0x616263");
+
+        assert!(displayable(&buffer_of(MAX_BUFFER_BYTES_TO_SHOW)));
+
+        // Past the cap the hex is more screens of noise than a user will read, so it stays
+        // opaque and the transaction is gated.
+        let over_cap = buffer_of(MAX_BUFFER_BYTES_TO_SHOW + 1);
+        assert!(!displayable(&over_cap));
+        assert_eq!(render(&over_cap), "is Buffer");
+    }
+
+    /// Long strings are paged, not silently cut short. The old 60-char cap truncated with no
+    /// ellipsis -- and through an off-by-four on the length prefix, actually at 56 characters.
+    #[test]
+    fn test_long_strings_are_paged_not_truncated() {
+        let long = string_ascii(200);
+        assert!(displayable(&long));
+        assert_eq!(render(&long).len(), 200);
+
+        // Beyond the render budget it is opaque rather than truncated: the gate fires, and the
+        // user is told the device cannot show it instead of being shown a fraction of it.
+        assert!(!displayable(&string_ascii(MAX_VALUE_TEXT + 1)));
+    }
+
+    /// An empty `string-ascii` made `page_string` fail with NoData, which failed the whole parse:
+    /// the transaction could not be signed at all, blind signing enabled or not.
+    #[test]
+    fn test_empty_string_renders() {
+        let empty = string_ascii(0);
+        assert!(displayable(&empty));
+        assert_eq!(render(&empty), "(empty)");
+    }
+
+    /// A UTF-8 string whose bytes are ASCII renders like any other string. Anything else would
+    /// be mojibake in the device fonts, which is worse than admitting it cannot be shown.
+    #[test]
+    fn test_utf8_strings_render_when_ascii() {
+        assert!(displayable(&string_utf8()));
+        assert_eq!(render(&string_utf8()), "abc");
+
+        let mut euro = vec![0x0e, 0, 0, 0, 3];
+        euro.extend_from_slice("\u{20ac}".as_bytes());
+        assert!(!displayable(&euro));
+        assert_eq!(render(&euro), "is StringUtf8");
+    }
+
+    /// A contract-call payload: `[address][contract-name][function-name][arg count][args]`.
+    fn contract_call_payload(args: &[Vec<u8>]) -> Vec<u8> {
+        let mut b = vec![26]; // address version byte
+        b.extend_from_slice(&[0x11; 20]);
+        b.push(9);
+        b.extend_from_slice(b"swap-pool");
+        b.push(11);
+        b.extend_from_slice(b"swap-helper");
+        b.extend_from_slice(&(args.len() as u32).to_be_bytes());
+        for arg in args {
+            b.extend_from_slice(arg);
+        }
+        b
+    }
+
+    fn requires_blindsign(args: &[Vec<u8>]) -> bool {
+        let bytes = contract_call_payload(args);
+        let (_, call) =
+            TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
+        call.requires_blindsign().expect("the gate must reach a decision")
+    }
+
+    /// The gate is a property of the whole transaction, so exercise it through
+    /// `requires_blindsign` on a real contract-call payload rather than on values alone. These
+    /// are the argument shapes reported from the field as false positives: ordinary swaps that
+    /// demanded blind signing while hiding nothing.
+    #[test]
+    fn test_reported_false_positives_are_no_longer_gated() {
+        // testnet call whose only argument was an empty list.
+        assert!(!requires_blindsign(&[vec![0x0b, 0, 0, 0, 0]]));
+        // alexlab swap-helper, whose last argument is `(some u493568)`.
+        assert!(!requires_blindsign(&[
+            std_principal(),
+            uint(100000000),
+            wrap(0x0a, uint(493568)),
+        ]));
+        // A small buffer argument, rendered as hex.
+        assert!(!requires_blindsign(&[buffer()]));
+
+        // A populated tuple still is gated -- the bitflow swap waits on argument flattening.
+        assert!(requires_blindsign(&[tuple()]));
+        // ...and so does a value the render budget cannot hold.
+        assert!(requires_blindsign(&[string_ascii(MAX_VALUE_TEXT + 1)]));
+    }
+
+    /// The SIP-10 memo path unwraps `Some(..)` and renders the inner value bare, where the
+    /// generic argument path keeps the wrapper. Past that unwrap both go through
+    /// `write_value_text`, so they agree on what is displayable.
     #[test]
     fn test_memo_predicate_unwraps_optional_some() {
         let some_uint = wrap(0x0a, uint(1));
         assert!(TransactionContractCall::memo_is_fully_displayable(&parse(&some_uint)));
-        assert!(!TransactionContractCall::arg_is_fully_displayable(&parse(&some_uint)));
+        assert!(TransactionContractCall::arg_is_fully_displayable(&parse(&some_uint)));
 
-        // A (some (buff ..)) memo renders "Complex memo value" -- opaque.
+        // SIP-10 memos are `(optional (buff 34))`. Rendering the buffer as hex takes every
+        // sBTC transfer carrying one back out of blind signing.
         let some_buff = wrap(0x0a, buffer());
-        assert!(!TransactionContractCall::memo_is_fully_displayable(&parse(&some_buff)));
+        assert!(TransactionContractCall::memo_is_fully_displayable(&parse(&some_buff)));
+
+        let some_big_buff = wrap(0x0a, buffer_of(MAX_BUFFER_BYTES_TO_SHOW + 1));
+        assert!(!TransactionContractCall::memo_is_fully_displayable(&parse(&some_big_buff)));
 
         let none = vec![0x09u8];
         assert!(TransactionContractCall::memo_is_fully_displayable(&parse(&none)));

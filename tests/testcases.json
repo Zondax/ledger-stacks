@@ -132,7 +132,7 @@
       "10 | arg4 [2/2] : SS5.some-contract-name",
       "11 | arg5 : 20",
       "12 | arg6 : is Tuple",
-      "13 | arg7 : is Buffer"
+      "13 | arg7 : 0x6162636465666768"
     ],
     "output_expert": [
       "0 | Origin [1/2] : ST1GDQCSEZR65DREM33021X6BE72NDDN61MTP2",
@@ -151,7 +151,7 @@
       "10 | arg4 [2/2] : SS5.some-contract-name",
       "11 | arg5 : 20",
       "12 | arg6 : is Tuple",
-      "13 | arg7 : is Buffer"
+      "13 | arg7 : 0x6162636465666768"
     ]
   },
   {
@@ -166,8 +166,11 @@
       "3 | Contract address : SP000000000000000000002Q6VF78",
       "4 | Contract name : pox",
       "5 | Function name : stack-stx",
-      "6 | arg0 [1/2] : %s{Lorem} ipsum dolor sit amet, consec",
-      "6 | arg0 [2/2] : tetur adipiscing e",
+      "6 | arg0 [1/5] : %s{Lorem} ipsum dolor sit amet, consec",
+      "6 | arg0 [2/5] : tetur adipiscing elit. Etiam quis bibe",
+      "6 | arg0 [3/5] : ndum mauris. Sed ac placerat ante. Don",
+      "6 | arg0 [4/5] : ec sodales sapien id nulla convallis e",
+      "6 | arg0 [5/5] : gestas",
       "7 | arg1 : 2",
       "8 | arg2 : is StringUtf8",
       "9 | arg3 [1/2] : ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8Q",
@@ -181,8 +184,11 @@
       "3 | Contract address : SP000000000000000000002Q6VF78",
       "4 | Contract name : pox",
       "5 | Function name : stack-stx",
-      "6 | arg0 [1/2] : %s{Lorem} ipsum dolor sit amet, consec",
-      "6 | arg0 [2/2] : tetur adipiscing e",
+      "6 | arg0 [1/5] : %s{Lorem} ipsum dolor sit amet, consec",
+      "6 | arg0 [2/5] : tetur adipiscing elit. Etiam quis bibe",
+      "6 | arg0 [3/5] : ndum mauris. Sed ac placerat ante. Don",
+      "6 | arg0 [4/5] : ec sodales sapien id nulla convallis e",
+      "6 | arg0 [5/5] : gestas",
       "7 | arg1 : 2",
       "8 | arg2 : is StringUtf8",
       "9 | arg3 [1/2] : ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8Q",
@@ -210,7 +216,7 @@
       "10 | arg4 [2/2] : SS5.some-contract-name",
       "11 | arg5 : 20",
       "12 | arg6 : is Tuple",
-      "13 | arg7 : is Buffer",
+      "13 | arg7 : 0x6162636465666768",
       "14 | Principal [1/2] : SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQ",
       "14 | Principal [2/2] : FKE",
       "15 | Fungi. Code : SentGe",
@@ -241,7 +247,7 @@
       "10 | arg4 [2/2] : SS5.some-contract-name",
       "11 | arg5 : 20",
       "12 | arg6 : is Tuple",
-      "13 | arg7 : is Buffer",
+      "13 | arg7 : 0x6162636465666768",
       "14 | Principal [1/2] : SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQ",
       "14 | Principal [2/2] : FKE",
       "15 | Fungi. Code : SentGe",
