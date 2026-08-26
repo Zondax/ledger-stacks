@@ -340,6 +340,11 @@ pub struct TransactionContractCallWrapper<'a> {
     /// Computed once, here, because `num_items` runs on every screen the device draws: walking
     /// the argument bytes each time would cost O(payload) per page turn on a Nano.
     flat_items: Option<u8>,
+    /// Whether the fallback layout -- one display item per argument -- shows every argument in
+    /// full. True exactly when no argument is a populated container or otherwise opaque; this is
+    /// the predicate the gate used before arguments were flattened, and keeping it means no
+    /// transaction that reviewed normally then needs blind signing now.
+    single_items_render: bool,
     tx: TransactionContractCall<'a>,
 }
 
@@ -358,10 +363,14 @@ impl<'a> TransactionContractCallWrapper<'a> {
 
         // A SIP-10 transfer always renders through render_sip10_transfer_args, which shows a
         // fixed Amount / From / To / Memo; there is nothing to flatten.
-        let flat_items = if contract_type == ContractType::SIP10 {
-            None
+        let (flat_items, single_items_render) = if contract_type == ContractType::SIP10 {
+            (None, false)
         } else {
-            tx.flat_item_count().ok()
+            (
+                tx.flat_item_count().ok(),
+                tx.function_args()?
+                    .all(TransactionContractCall::arg_is_fully_displayable)?,
+            )
         };
 
         check_canary!();
@@ -370,6 +379,7 @@ impl<'a> TransactionContractCallWrapper<'a> {
             Self {
                 contract_type,
                 flat_items,
+                single_items_render,
                 tx,
             },
         ))
@@ -410,6 +420,11 @@ impl<'a> TransactionContractCallWrapper<'a> {
         self.contract_type == ContractType::SIP10
     }
 
+    /// Whether the one-item-per-argument layout renders every argument in full.
+    pub fn single_items_render(&self) -> bool {
+        self.single_items_render
+    }
+
     pub fn num_items(&self, mode: DisplayMode) -> Result<u8, ParserError> {
         self.tx
             .num_items(mode.hide_sip10_details, self.arg_items(mode)?)
@@ -432,15 +447,17 @@ impl<'a> TransactionContractCallWrapper<'a> {
     /// Whether this contract call commits to data the device cannot show.
     ///
     /// For a SIP-10 transfer that is a question about the memo, the one item
-    /// `render_sip10_transfer_args` can degrade. For everything else it is a question about
-    /// whether the arguments flatten into one item per leaf -- worked out at parse time.
+    /// `render_sip10_transfer_args` can degrade. For everything else it is gated only when
+    /// NEITHER layout shows everything: the arguments do not flatten into one item per leaf, and
+    /// the one-item-per-argument fallback would have to print a placeholder. Both worked out at
+    /// parse time.
     ///
     /// Note this does not consider whether those items *fit*: post-conditions and arguments share
     /// one u8 display index, so only the transaction can answer that. `Transaction::requires_blindsign`
     /// is the authority, and is strictly more conservative than this.
     pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
         if self.contract_type != ContractType::SIP10 {
-            return Ok(self.flat_items.is_none());
+            return Ok(self.flat_items.is_none() && !self.single_items_render);
         }
 
         // render_sip10_transfer_args shows exactly Amount / From / To / Memo. It type-checks the
@@ -1682,10 +1699,29 @@ mod test {
         let at_budget: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS).map(|_| uint(1)).collect();
         assert!(!requires_blindsign(&at_budget));
 
+        // Past the budget, a container cannot be flattened and has no other rendering.
         let over_budget: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1)
             .map(|_| uint(1))
             .collect();
-        assert!(requires_blindsign(&over_budget));
+        assert!(requires_blindsign(&[list_of(&over_budget)]));
+    }
+
+    /// Exceeding the leaf budget with bare scalars is NOT gated: the one-item-per-argument
+    /// layout shows each of them in full, exactly as it did before flattening existed. Gating
+    /// here would have made a transaction that reviewed normally on the previous version demand
+    /// blind signing on this one.
+    #[test]
+    fn test_scalars_past_the_leaf_budget_fall_back_without_gating() {
+        let many_scalars: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1)
+            .map(|_| uint(1))
+            .collect();
+        let bytes = contract_call_payload(&many_scalars);
+        let (_, call) =
+            TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
+
+        assert!(call.flat_items().is_none(), "over the leaf budget, so not flattened");
+        assert!(call.single_items_render(), "but every argument renders on its own");
+        assert!(!call.requires_blindsign().expect("gate must decide"));
     }
 
     /// The gate is fail-closed. Every way the walk can end badly -- a value with no rendering, a
@@ -1710,9 +1746,11 @@ mod test {
             ("nesting past the depth limit", vec![too_deep]),
             (
                 "more leaves than the budget",
-                (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1)
-                    .map(|_| uint(1))
-                    .collect(),
+                vec![list_of(
+                    &(0..MAX_ARG_DISPLAY_ITEMS as u16 + 1)
+                        .map(|_| uint(1))
+                        .collect::<Vec<_>>(),
+                )],
             ),
             // An opaque leaf buried inside a container gates the whole call, not just itself:
             // flattening is all or nothing, so a partial view is never shown.
@@ -1727,6 +1765,11 @@ mod test {
             let (_, call) =
                 TransactionContractCallWrapper::from_bytes(&bytes).expect("payload must parse");
             assert!(call.flat_items().is_none(), "{}: should not flatten", name);
+            assert!(
+                !call.single_items_render(),
+                "{}: the fallback must not claim to render it either",
+                name
+            );
             assert!(
                 call.requires_blindsign().expect("gate must decide"),
                 "{}: should be gated",

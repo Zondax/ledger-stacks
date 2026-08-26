@@ -18,6 +18,8 @@ use super::{ContractName, C32_ENCODED_ADDRS_LENGTH};
 // Re-exported so `Transaction` can budget its display items against the same constant the
 // contract-call renderer uses.
 pub use self::contract_call::CONTRACT_CALL_BASE_ITEMS;
+#[cfg(test)]
+pub use self::contract_call::{MAX_ARG_DISPLAY_ITEMS, MAX_VALUE_TEXT};
 
 /// How this transaction's items are laid out.
 ///

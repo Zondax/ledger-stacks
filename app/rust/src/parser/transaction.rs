@@ -292,7 +292,10 @@ impl<'a> Transaction<'a> {
                 if self.num_items().is_err() {
                     return Ok(false);
                 }
-                return Ok(!self.flatten_args()?);
+                // Gated only when neither layout shows everything. The fallback -- one item per
+                // argument -- is what the device showed before flattening existed, so a call it
+                // rendered in full then must not need blind signing now.
+                return Ok(!self.flatten_args()? && !call.single_items_render());
             }
         }
         self.payload.requires_blindsign()

@@ -925,3 +925,318 @@ mod test {
         assert!(msg.read(&bytes).is_err());
     }
 }
+
+/// The three ways a contract call can leave the parser, exercised end to end through
+/// `ParsedObj` -- the same object the C layer drives -- rather than through the payload alone.
+///
+///   review      every item renders; `requires_blindsign` is false and all items are readable
+///   blind sign  something cannot be shown; `requires_blindsign` is true, and the C layer then
+///               refuses unless the user has opted in
+///   rejected    the transaction does not parse, or its items overflow the display index; it
+///               cannot be signed at all, and enabling blind signing does not change that
+#[cfg(test)]
+mod gate_paths {
+    use super::*;
+    use crate::parser::transaction_payload::{MAX_ARG_DISPLAY_ITEMS, MAX_VALUE_TEXT};
+    use crate::parser::TX_DEPTH_LIMIT;
+    use std::prelude::v1::*;
+
+    /// The `Contract_call` fixture from tests/testcases.json: a standard single-sig `stack-stx`
+    /// call with no post-conditions and five scalar arguments. Everything up to the argument
+    /// count is a valid prefix for any argument list.
+    const CONTRACT_CALL_FIXTURE: &str = "8080000000040060dbb32efe0c56e1d418c020f4cb71c556b6a60d0000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000000216000000000000000000000000000000000000000003706f7809737461636b2d737478000000050100000000000000000000000000004e20051ad386442122c88878ae04c5726762477f4ef09ffe0100000000000000000000000000000002061ad386442122c88878ae04c5726762477f4ef09ffe12736f6d652d636f6e74726163742d6e616d65010000000000000000000000000000000a";
+    /// version(1) chain(4) auth(1+1+20+8+8+1+65) anchor(1) pc-mode(1) pc-count(4) payload-type(1)
+    /// address(21) "pox"(4) "stack-stx"(10)
+    const ARG_COUNT_OFFSET: usize = 151;
+    /// The `be_u32` post-condition count sits after anchor and post-condition mode.
+    const PC_COUNT_OFFSET: usize = 111;
+
+    fn contract_call_tx(args: &[Vec<u8>]) -> Vec<u8> {
+        let fixture = hex::decode(CONTRACT_CALL_FIXTURE).unwrap();
+        let mut tx = fixture[..ARG_COUNT_OFFSET].to_vec();
+        tx.extend_from_slice(&(args.len() as u32).to_be_bytes());
+        for arg in args {
+            tx.extend_from_slice(arg);
+        }
+        tx
+    }
+
+    /// Splices `count` copies of an STX post-condition (3 display items each) into a
+    /// contract-call transaction.
+    fn with_stx_post_conditions(tx: &[u8], count: u32) -> Vec<u8> {
+        // type(0=STX) principal-type(2=standard) version(1) hash(20) code(3=SentGe) amount(8)
+        let mut cond = vec![0x00, 0x02, 0x1a];
+        cond.extend_from_slice(&[0x11; 20]);
+        cond.push(0x03);
+        cond.extend_from_slice(&1u64.to_be_bytes());
+
+        let mut out = tx[..PC_COUNT_OFFSET].to_vec();
+        out.extend_from_slice(&count.to_be_bytes());
+        for _ in 0..count {
+            out.extend_from_slice(&cond);
+        }
+        out.extend_from_slice(&tx[PC_COUNT_OFFSET + 4..]);
+        out
+    }
+
+    fn uint(v: u128) -> Vec<u8> {
+        let mut b = vec![0x01];
+        b.extend_from_slice(&v.to_be_bytes());
+        b
+    }
+
+    fn tuple_of(pairs: &[(&str, Vec<u8>)]) -> Vec<u8> {
+        let mut b = vec![0x0c];
+        b.extend_from_slice(&(pairs.len() as u32).to_be_bytes());
+        for (name, value) in pairs {
+            b.push(name.len() as u8);
+            b.extend_from_slice(name.as_bytes());
+            b.extend_from_slice(value);
+        }
+        b
+    }
+
+    fn list_of(items: &[Vec<u8>]) -> Vec<u8> {
+        let mut b = vec![0x0b];
+        b.extend_from_slice(&(items.len() as u32).to_be_bytes());
+        for item in items {
+            b.extend_from_slice(item);
+        }
+        b
+    }
+
+    fn string_utf8(content: &str) -> Vec<u8> {
+        let mut b = vec![0x0e];
+        b.extend_from_slice(&(content.len() as u32).to_be_bytes());
+        b.extend_from_slice(content.as_bytes());
+        b
+    }
+
+    fn string_ascii(len: usize) -> Vec<u8> {
+        let mut b = vec![0x0d];
+        b.extend_from_slice(&(len as u32).to_be_bytes());
+        b.resize(b.len() + len, b'a');
+        b
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Outcome {
+        /// Rendered items as `(key, value)`, page 0 only.
+        Review(Vec<(String, String)>),
+        BlindSign,
+        Rejected,
+    }
+
+    fn cstr(buf: &[u8]) -> String {
+        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        String::from_utf8_lossy(&buf[..end]).into_owned()
+    }
+
+    /// Drives a transaction the way `parser_parse` + `parser_validate` do.
+    fn outcome(tx: &[u8]) -> Outcome {
+        let mut obj = match ParsedObj::from_bytes(tx) {
+            Ok(obj) => obj,
+            Err(_) => return Outcome::Rejected,
+        };
+        if obj.read(tx).is_err() {
+            return Outcome::Rejected;
+        }
+        let transaction = obj.transaction().expect("a contract call is a transaction");
+        if transaction.requires_blindsign().expect("the gate must decide") {
+            return Outcome::BlindSign;
+        }
+        // parser_validate: every item has to be fetchable, or the transaction is refused.
+        let Ok(count) = transaction.num_items() else {
+            return Outcome::Rejected;
+        };
+        let mut items = Vec::new();
+        for idx in 0..count {
+            let mut key = [0u8; 64];
+            let mut value = [0u8; MAX_VALUE_TEXT + 1];
+            if obj.get_item(idx, &mut key, &mut value, 0).is_err() {
+                return Outcome::Rejected;
+            }
+            items.push((cstr(&key), cstr(&value)));
+        }
+        Outcome::Review(items)
+    }
+
+    fn keys(items: &[(String, String)]) -> Vec<&str> {
+        items.iter().map(|(k, _)| k.as_str()).collect()
+    }
+
+    // ---- review ---------------------------------------------------------------------------
+
+    #[test]
+    fn review_flattens_structured_arguments() {
+        let tx = contract_call_tx(&[
+            uint(7),
+            tuple_of(&[("amount", uint(1)), ("ids", list_of(&[uint(2), uint(3)]))]),
+        ]);
+        let Outcome::Review(items) = outcome(&tx) else {
+            panic!("expected a normal review");
+        };
+        // origin, nonce, fee, contract address, contract name, function name, then the leaves
+        assert_eq!(
+            keys(&items)[6..],
+            ["stacked uSTX", "arg1.amount", "arg1.ids[0]", "arg1.ids[1]"]
+        );
+        assert_eq!(items[9].1, "3");
+    }
+
+    /// Scalars past the leaf budget: not flattened, but every argument renders on its own, so
+    /// the review is the one-item-per-argument layout the previous version showed.
+    #[test]
+    fn review_falls_back_to_one_item_per_argument() {
+        let args: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1).map(|i| uint(i as u128)).collect();
+        let tx = contract_call_tx(&args);
+        let Outcome::Review(items) = outcome(&tx) else {
+            panic!("expected a normal review");
+        };
+        assert_eq!(items.len(), 6 + args.len());
+        assert_eq!(items[6].0, "stacked uSTX");
+        assert_eq!(items[7].0, "arg1");
+        assert_eq!(items.last().unwrap().1, MAX_ARG_DISPLAY_ITEMS.to_string());
+    }
+
+    /// Flattened leaves that would not fit beside the post-conditions fall back to the single
+    /// layout when that renders everything -- the outcome the previous version produced.
+    #[test]
+    fn review_falls_back_when_leaves_do_not_fit_beside_post_conditions() {
+        // 150 leaves + 40 STX conditions * 3 items + 6 = 276: flattened does not fit.
+        // Single layout: 1 argument + 120 + 6 = 127: fits.
+        let leaves: Vec<Vec<u8>> = (0..150).map(|_| uint(1)).collect();
+        let tx = with_stx_post_conditions(&contract_call_tx(&[list_of(&leaves)]), 40);
+        // ...but a list is a container, so the single layout cannot show it: gated.
+        assert_eq!(outcome(&tx), Outcome::BlindSign);
+
+        // With scalars instead, the single layout shows them all and there is no gate.
+        let scalars: Vec<Vec<u8>> = (0..150).map(|_| uint(1)).collect();
+        let tx = with_stx_post_conditions(&contract_call_tx(&scalars), 30);
+        let Outcome::Review(items) = outcome(&tx) else {
+            panic!("expected a normal review");
+        };
+        assert_eq!(items.len(), 6 + 150 + 30 * 3);
+    }
+
+    // ---- blind sign ----------------------------------------------------------------------
+
+    #[test]
+    fn blindsign_when_a_leaf_cannot_be_rendered() {
+        // Non-ASCII text has no faithful rendering in the device fonts, whether bare...
+        let tx = contract_call_tx(&[uint(1), string_utf8("\u{20ac}")]);
+        assert_eq!(outcome(&tx), Outcome::BlindSign);
+        // ...or buried inside a tuple.
+        let tx = contract_call_tx(&[tuple_of(&[("ok", uint(1)), ("bad", string_utf8("\u{20ac}"))])]);
+        assert_eq!(outcome(&tx), Outcome::BlindSign);
+    }
+
+    #[test]
+    fn blindsign_when_a_value_exceeds_the_render_budget() {
+        let tx = contract_call_tx(&[string_ascii(MAX_VALUE_TEXT + 1)]);
+        assert_eq!(outcome(&tx), Outcome::BlindSign);
+    }
+
+    #[test]
+    fn blindsign_when_a_container_exceeds_the_leaf_budget() {
+        let leaves: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS as u16 + 1).map(|_| uint(1)).collect();
+        let tx = contract_call_tx(&[list_of(&leaves)]);
+        assert_eq!(outcome(&tx), Outcome::BlindSign);
+    }
+
+    // ---- rejected ------------------------------------------------------------------------
+
+    /// An argument the parser cannot decode fails the parse. That is a rejection, not a gate:
+    /// there is no blind-signing path for it, because the parser cannot even find where the
+    /// argument ends, and so cannot locate anything after it.
+    #[test]
+    fn rejected_when_an_argument_cannot_be_decoded() {
+        // An unknown Clarity type tag.
+        let tx = contract_call_tx(&[uint(1), vec![0x0f, 0x00]]);
+        assert_eq!(outcome(&tx), Outcome::Rejected);
+
+        // A buffer whose length prefix runs past the end of the transaction.
+        let mut truncated = vec![0x02];
+        truncated.extend_from_slice(&64u32.to_be_bytes());
+        truncated.extend_from_slice(&[0xab; 3]);
+        let tx = contract_call_tx(&[truncated]);
+        assert_eq!(outcome(&tx), Outcome::Rejected);
+
+        // A string-ascii carrying a non-ASCII byte.
+        let mut bad_ascii = vec![0x0d];
+        bad_ascii.extend_from_slice(&1u32.to_be_bytes());
+        bad_ascii.push(0xe2);
+        let tx = contract_call_tx(&[bad_ascii]);
+        assert_eq!(outcome(&tx), Outcome::Rejected);
+    }
+
+    fn nested_lists(depth: usize) -> Vec<u8> {
+        let mut nested = uint(1);
+        for _ in 0..depth {
+            nested = list_of(&[nested]);
+        }
+        nested
+    }
+
+    /// Nesting depth walks through all three outcomes, and in that order. Up to the display
+    /// limit the leaves are flattened and reviewed. One level past it the transaction still
+    /// parses -- the network would accept it -- but the display walk gives up, so it is gated:
+    /// the "valid but undisplayable" band where blind signing is the right answer. Past the
+    /// parser's own limit it is rejected outright, because the parser cannot find where the
+    /// argument ends and there is nothing to blind-sign.
+    #[test]
+    fn nesting_depth_runs_review_then_blindsign_then_rejected() {
+        let outcomes: Vec<(usize, Outcome)> = (1..=TX_DEPTH_LIMIT as usize + 3)
+            .map(|depth| (depth, outcome(&contract_call_tx(&[nested_lists(depth)]))))
+            .collect();
+
+        for (depth, result) in &outcomes {
+            match result {
+                Outcome::Review(items) => assert_eq!(
+                    items[6].0,
+                    std::format!("arg0{}", "[0]".repeat(*depth)),
+                    "depth {}: flattened key",
+                    depth
+                ),
+                Outcome::BlindSign | Outcome::Rejected => {}
+            }
+        }
+
+        // The order is monotone: once gated, never reviewed again; once rejected, never gated.
+        let rank = |o: &Outcome| match o {
+            Outcome::Review(_) => 0,
+            Outcome::BlindSign => 1,
+            Outcome::Rejected => 2,
+        };
+        for pair in outcomes.windows(2) {
+            assert!(rank(&pair[0].1) <= rank(&pair[1].1), "not monotone at {:?}", pair);
+        }
+
+        // ...and all three outcomes actually occur, at these depths. `walk_value` refuses a leaf
+        // at depth TX_DEPTH_LIMIT, so that many nested lists is the first to gate. The parser's
+        // own counter only advances for same-type nesting and rejects past TX_DEPTH_LIMIT, which
+        // works out to two levels further -- a two-level band where the transaction is valid,
+        // parses, and can only be blind-signed.
+        let first = |target: u8| outcomes.iter().find(|(_, o)| rank(o) == target).map(|(d, _)| *d);
+        assert_eq!(first(0), Some(1));
+        assert_eq!(first(1), Some(TX_DEPTH_LIMIT as usize), "display limit");
+        assert_eq!(first(2), Some(TX_DEPTH_LIMIT as usize + 2), "parser limit");
+    }
+
+    /// Too many display items for the u8 index is a rejection, and stays one: it must not be
+    /// turned into a blind-signing prompt, because enabling the setting would not make the
+    /// transaction signable.
+    #[test]
+    fn rejected_not_gated_when_items_overflow_the_display_index() {
+        // 85 STX conditions * 3 = 255 items on their own; with origin and base items, overflow.
+        let tx = with_stx_post_conditions(&contract_call_tx(&[uint(1)]), 85);
+        assert_eq!(outcome(&tx), Outcome::Rejected);
+
+        // The same with a flattenable tuple argument: still rejected, never "blind sign".
+        let tx = with_stx_post_conditions(
+            &contract_call_tx(&[tuple_of(&[("a", uint(1)), ("b", uint(2))])]),
+            85,
+        );
+        assert_eq!(outcome(&tx), Outcome::Rejected);
+    }
+}
