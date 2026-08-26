@@ -473,5 +473,50 @@
       "4 | To [2/2] : PWK.my-contract",
       "5 | Memo : This is a memo"
     ]
+  },
+  {
+    "index": 11,
+    "name": "SIP10_contract_non_transfer_not_hidden",
+    "blob": "8080000000040060dbb32efe0c56e1d418c020f4cb71c556b6a60d0000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030200000001000216bed38c2aadffa348931bcb542880ff79d607afec0100000000000003e80214f6decc7cfff2a413bd7cd4f53c25ad7fd1899acc0a736274632d746f6b656e046275726e000000040100000000000000000000000000004e200516bed38c2aadffa348931bcb542880ff79d607afec051ad386442122c88878ae04c5726762477f4ef09ffe0a0d0000000774785f6d656d6f",
+    "output": [
+      "0 | Origin [1/2] : ST1GDQCSEZR65DREM33021X6BE72NDDN61MTP2",
+      "0 | Origin [2/2] : WN3",
+      "1 | Nonce : 0",
+      "2 | Fee (uSTX) : 10",
+      "3 | Contract address [1/2] : SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82J",
+      "3 | Contract address [2/2] : FQ4",
+      "4 | Contract name : sbtc-token",
+      "5 | Function name : burn",
+      "6 | arg0 : 20000",
+      "7 | arg1 [1/2] : SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQ",
+      "7 | arg1 [2/2] : FKE",
+      "8 | arg2 [1/2] : ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8Q",
+      "8 | arg2 [2/2] : SS5",
+      "9 | arg3 : Some(tx_memo)",
+      "10 | Principal [1/2] : SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQ",
+      "10 | Principal [2/2] : FKE",
+      "11 | Fungi. Code : SentEq",
+      "12 | Stx amount : 0.001000"
+    ],
+    "output_expert": [
+      "0 | Origin [1/2] : ST1GDQCSEZR65DREM33021X6BE72NDDN61MTP2",
+      "0 | Origin [2/2] : WN3",
+      "1 | Nonce : 0",
+      "2 | Fee (uSTX) : 10",
+      "3 | Contract address [1/2] : SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82J",
+      "3 | Contract address [2/2] : FQ4",
+      "4 | Contract name : sbtc-token",
+      "5 | Function name : burn",
+      "6 | arg0 : 20000",
+      "7 | arg1 [1/2] : SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQ",
+      "7 | arg1 [2/2] : FKE",
+      "8 | arg2 [1/2] : ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8Q",
+      "8 | arg2 [2/2] : SS5",
+      "9 | arg3 : Some(tx_memo)",
+      "10 | Principal [1/2] : SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQ",
+      "10 | Principal [2/2] : FKE",
+      "11 | Fungi. Code : SentEq",
+      "12 | Stx amount : 0.001000"
+    ]
   }
 ]

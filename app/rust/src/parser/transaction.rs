@@ -237,6 +237,12 @@ impl<'a> Transaction<'a> {
 
     /// Checks if SIP-10 token transfer details should be hidden
     /// This includes postconditions and contract call base items (address, name, function)
+    ///
+    /// Only for a recognised SIP-10 *transfer*: that is the one call `render_sip10_transfer_args`
+    /// collapses to Amount / From / To / Memo, so it is the only one whose base items and
+    /// post-condition are redundant. Keying this on the contract alone -- as it used to -- hid the
+    /// post-conditions of any other function on a listed token, and since the renderer still spent
+    /// three indices on the base items, the last three arguments were never shown either.
     fn should_hide_sip10_details(&self) -> Result<bool, ParserError> {
         if self.post_conditions.num_items() == 0 {
             return Ok(false);
@@ -246,6 +252,10 @@ impl<'a> Transaction<'a> {
             TransactionPayload::ContractCall(call) => call,
             _ => return Ok(false),
         };
+
+        if !contract_call.is_sip10_transfer() {
+            return Ok(false);
+        }
 
         let token_info = match contract_call.sip10_token_info() {
             Some(info) => info,
@@ -352,7 +362,7 @@ impl<'a> Transaction<'a> {
 
         // nonce + origin + fee-rate + payload + post-conditions
         TX_ORIGIN_ITEMS
-            .checked_add(self.payload.num_items(mode))
+            .checked_add(self.payload.num_items(mode)?)
             .and_then(|res| res.checked_add(num_items_post_conditions))
             .ok_or(ParserError::ValueOutOfRange)
     }

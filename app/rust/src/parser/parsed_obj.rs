@@ -1223,6 +1223,30 @@ mod gate_paths {
         assert_eq!(first(2), Some(TX_DEPTH_LIMIT as usize + 2), "parser limit");
     }
 
+    /// The argument count walks off the end of the display index in one step: 249 scalar
+    /// arguments are the most a call can carry (255 items exactly), and everything past that is
+    /// rejected. It used to be worse than rejected -- at 253 and beyond the overflow inside the
+    /// payload was swallowed, the call reviewed as six items, and every argument was absent.
+    #[test]
+    fn rejected_when_arguments_overflow_the_display_index() {
+        let scalars = |n: usize| (0..n).map(|i| uint(i as u128)).collect::<Vec<_>>();
+
+        let Outcome::Review(items) = outcome(&contract_call_tx(&scalars(249))) else {
+            panic!("249 arguments fit the index exactly");
+        };
+        assert_eq!(items.len(), 255);
+        assert_eq!(items[254].0, "arg248");
+
+        for n in [250usize, 252, 253, 254, 300] {
+            assert_eq!(
+                outcome(&contract_call_tx(&scalars(n))),
+                Outcome::Rejected,
+                "{} arguments",
+                n
+            );
+        }
+    }
+
     /// Too many display items for the u8 index is a rejection, and stays one: it must not be
     /// turned into a blind-signing prompt, because enabling the setting would not make the
     /// transaction signable.

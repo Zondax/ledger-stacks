@@ -157,13 +157,15 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn num_items(&self, mode: DisplayMode) -> u8 {
+    /// An error here means the items do not fit the u8 display index, and it must propagate:
+    /// the transaction is refused. This used to fall back to CONTRACT_CALL_BASE_ITEMS, which
+    /// made a call with 253 or more arguments review as six items -- origin, nonce, fee and the
+    /// three base items -- with every argument silently absent and no blind-signing warning.
+    pub fn num_items(&self, mode: DisplayMode) -> Result<u8, ParserError> {
         match self {
-            Self::TokenTransfer(_) => 3,
-            Self::SmartContract(_) | Self::VersionedSmartContract(_) => 1,
-            Self::ContractCall(ref call) => {
-                call.num_items(mode).unwrap_or(CONTRACT_CALL_BASE_ITEMS)
-            }
+            Self::TokenTransfer(_) => Ok(3),
+            Self::SmartContract(_) | Self::VersionedSmartContract(_) => Ok(1),
+            Self::ContractCall(ref call) => call.num_items(mode),
         }
     }
 
@@ -189,7 +191,7 @@ impl<'a> TransactionPayload<'a> {
         total_items: u8,
         mode: DisplayMode,
     ) -> Result<u8, ParserError> {
-        let idx = self.num_items(mode) - (total_items - display_idx);
+        let idx = self.num_items(mode)? - (total_items - display_idx);
         match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
