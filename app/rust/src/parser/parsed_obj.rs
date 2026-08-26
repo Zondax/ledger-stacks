@@ -33,22 +33,16 @@ pub struct ParsedObj<'a> {
     obj: Obj<'a>,
 }
 
-// Must stay <= PARSER_BUFFER_SIZE in app/src/parser.c. Compile-time guard so growing
-// NUM_SUPPORTED_POST_CONDITIONS can't silently overflow the C-side parser buffer.
-// Gated to the 32-bit device target: on a 64-bit host every slice pointer is twice as
-// wide, so the host struct is ~2x larger and would trip this without reflecting the
-// real (device) layout. parser_allocate() also checks this at runtime.
+// Must stay <= PARSER_BUFFER_SIZE in app/src/parser.c: a compile-time guard so this
+// struct can never silently outgrow the C-side parser buffer. Post-conditions are held
+// as one slice over the whole serialized block rather than one slice each, so the size
+// no longer scales with NUM_SUPPORTED_POST_CONDITIONS. The bound holds on the host too
+// (a 64-bit build is larger, every pointer being twice as wide), so unlike before it
+// needs no `#[cfg]`. parser_allocate() also checks this at runtime.
 //
-// Wrapped in a module so the single `#[cfg]` gates both the named bound and the
-// assertion (the constant would otherwise be dead code on 64-bit builds).
-#[cfg(target_pointer_width = "32")]
-mod parsed_obj_size_guard {
-    use super::ParsedObj;
-
-    // Mirror of PARSER_BUFFER_SIZE in app/src/parser.c (see comment above).
-    const MAX_PARSED_OBJ_SIZE: usize = 2048;
-    const _: () = assert!(core::mem::size_of::<ParsedObj>() <= MAX_PARSED_OBJ_SIZE);
-}
+// Mirror of PARSER_BUFFER_SIZE in app/src/parser.c.
+const MAX_PARSED_OBJ_SIZE: usize = 1024;
+const _: () = assert!(core::mem::size_of::<ParsedObj>() <= MAX_PARSED_OBJ_SIZE);
 
 impl<'a> ParsedObj<'a> {
     pub fn from_bytes(data: &'a [u8]) -> Result<Self, ParserError> {
@@ -532,11 +526,8 @@ mod test {
         assert_eq!(&json.recipient, address);
 
         // Check postconditions
-        assert_eq!(1, transaction.post_conditions.conditions.len());
-        let conditions = transaction.post_conditions.get_postconditions();
-        let post_condition = TransactionPostCondition::from_bytes(conditions[0])
-            .unwrap()
-            .1;
+        assert_eq!(1, transaction.post_conditions.num_conditions());
+        let post_condition = transaction.post_conditions.first_post_condition().unwrap();
         assert!(post_condition.is_stx());
         let condition_code = post_condition.fungible_condition_code().unwrap();
         assert_eq!(condition_code, FungibleConditionCode::SentGe);
@@ -707,11 +698,8 @@ mod test {
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
         assert_eq!(json.sender, origin_addr);
 
-        let post_conditions = transaction.post_conditions.get_postconditions();
-        assert_eq!(post_conditions.len(), 1);
-        let condition = TransactionPostCondition::from_bytes(post_conditions[0])
-            .unwrap()
-            .1;
+        assert_eq!(transaction.post_conditions.num_conditions(), 1);
+        let condition = transaction.post_conditions.first_post_condition().unwrap();
         assert!(condition.is_fungible());
         let addr = condition.get_principal_address().unwrap();
         let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
@@ -807,11 +795,8 @@ mod test {
         let origin_addr = core::str::from_utf8(&origin_addr[..origin_addr.len()]).unwrap();
         assert_eq!(json.sender, origin_addr);
 
-        let post_conditions = transaction.post_conditions.get_postconditions();
-        assert_eq!(post_conditions.len(), 7);
-        let condition = TransactionPostCondition::from_bytes(post_conditions[0])
-            .unwrap()
-            .1;
+        assert_eq!(transaction.post_conditions.num_conditions(), 7);
+        let condition = transaction.post_conditions.first_post_condition().unwrap();
         assert!(condition.is_fungible());
         let addr = condition.get_principal_address().unwrap();
         let principal_addr = core::str::from_utf8(&addr[..addr.len()]).unwrap();
@@ -862,6 +847,56 @@ mod test {
         std::println!("tx: {:?}", msg);
     }
     
+    /// The transaction from issue #238 -- a 145-bin DLMM withdrawal carrying 158 post-conditions
+    /// (155 MaySend NFTs on one asset, two FT, one STX) -- as the zemu `wide-position` fixture.
+    /// Before #240 it was rejected at parse; the snapshots pin every screen, and this pins the
+    /// number: 26 display items, with the 155 NFTs collapsed into one aggregated block.
+    #[test]
+    fn test_issue_238_transaction_renders_26_items() {
+        let fixtures = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests_zemu/tests/dlmm_post_conditions.json"
+        ))
+        .expect("zemu fixture file");
+        let fixtures: serde_json::Value = serde_json::from_str(&fixtures).unwrap();
+        let bytes = hex::decode(fixtures["wide-position"].as_str().unwrap()).unwrap();
+
+        let mut obj = ParsedObj::from_bytes(&bytes).expect("must parse after #240");
+        obj.read(&bytes).unwrap();
+        let num_items = obj.transaction().unwrap().num_items().unwrap();
+        assert_eq!(num_items, 26);
+
+        let cstr = |buf: &[u8]| {
+            let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            String::from_utf8_lossy(&buf[..end]).into_owned()
+        };
+        let mut items = Vec::new();
+        for idx in 0..num_items {
+            let mut key = [0u8; 64];
+            let mut value = [0u8; 300];
+            obj.get_item(idx, &mut key, &mut value, 0)
+                .unwrap_or_else(|e| panic!("item {} must render: {:?}", idx, e));
+            items.push((cstr(&key), cstr(&value)));
+        }
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+
+        assert_eq!(
+            keys[..6],
+            ["Origin", "Nonce", "Fee (uSTX)", "Contract address", "Contract name", "Function name"]
+        );
+        assert_eq!(items[5].1, "withdraw-relative-liquidity-same-multi");
+        assert_eq!(keys[6..11], ["arg0", "arg1", "arg2", "arg3", "arg4"]);
+        // The 145-bin list is far past what fits one item per leaf, so it renders as its type.
+        assert_eq!(items[6].1, "is List");
+        // 155 conditions on one (principal, asset, MaySend) key are a single 4-item block.
+        assert_eq!(
+            keys[22..],
+            ["Principal", "Asset name", "NonFungi. Code", "Count"]
+        );
+        assert_eq!(items[24].1, "MaySend");
+        assert_eq!(items[25].1, "155");
+    }
+
     const MODE_FIXTURE_HEX: &str = "000000000104009ef3889fd070159edcd8ef88a0ec87cea1592c83000000000000000000000000000f42400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000060002169ef3889fd070159edcd8ef88a0ec87cea1592c830100000000000027100003167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f72650300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000102169ef3889fd070159edcd8ef88a0ec87cea1592c83168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e030000000000000000010316402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0f616d6d2d7661756c742d76322d303116402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c657804616c65780300000000011c908a02162ec1a2dc2904ebc8b408598116c75e42c51afa2617726f757465722d76656c61722d616c65782d762d312d320d737761702d68656c7065722d6100000007010000000000000000000000000000271001000000000000000000000000011c908a040c00000002016106167c5f674a8fd08efa61dd9b11121e046dd2c892730477737478016206168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e06167c5f674a8fd08efa61dd9b11121e046dd2c8927312756e6976322d73686172652d6665652d746f0c0000000201610616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0b746f6b656e2d776c6f6e6701620616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c65780c0000000101610100000000000000000000000005f5e100";
 
     #[test]
