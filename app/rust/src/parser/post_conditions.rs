@@ -225,10 +225,14 @@ impl<'a> TransactionPostCondition<'a> {
         Some(output)
     }
 
-    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::U64_FORMATTED_SIZE_DECIMAL]>> {
+    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
         let amount = self.amount_stx()?;
 
-        let mut output = ArrayVec::from([0u8; zxformat::U64_FORMATTED_SIZE_DECIMAL]);
+        // u64::MAX with six decimals is "18446744073709.551615": 21 characters, which does not
+        // fit the 20-byte `U64_FORMATTED_SIZE_DECIMAL`. The formatter bounds-checks, so nothing
+        // overflowed -- on device it wrote "ERR" in place of the amount, and on host builds it
+        // failed outright, leaving the `unwrap()` at the call site to abort the render.
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = zxformat::fpu64_to_str(output.as_mut(), amount, STX_DECIMALS).ok()? as usize;
         unsafe {
             output.set_len(len);

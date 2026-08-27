@@ -310,6 +310,25 @@ where
 mod test {
     use super::*;
 
+    /// The buffer post-conditions format STX amounts into must hold the widest possible value.
+    ///
+    /// `U64_FORMATTED_SIZE_DECIMAL` is 20 bytes, one short of "18446744073709.551615", so a
+    /// post-condition at the top of the u64 range could not be rendered at all.
+    #[test]
+    fn test_max_stx_amount_fits_the_post_condition_buffer() {
+        const STX_DECIMALS: u8 = 6;
+
+        let mut out = [0u8; MAX_STR_BUFF_LEN];
+        let len = fpu64_to_str(&mut out, u64::MAX, STX_DECIMALS).unwrap();
+        assert_eq!(
+            core::str::from_utf8(&out[..len]).unwrap(),
+            "18446744073709.551615"
+        );
+
+        let mut too_small = [0u8; U64_FORMATTED_SIZE_DECIMAL];
+        assert!(fpu64_to_str(&mut too_small, u64::MAX, STX_DECIMALS).is_err());
+    }
+
     #[test]
     fn test_u64_to_str() {
         let mut output = [0u8; U64_FORMATTED_SIZE_DECIMAL];
