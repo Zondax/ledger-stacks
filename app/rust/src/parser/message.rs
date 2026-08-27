@@ -5,9 +5,8 @@ use nom::bytes::complete::take;
 
 // The lenght of \x17Stacks Signed Message:
 const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".len();
-// Truncates an ascii
-// message to around this size, as we need to change special characters
-// like /t or /r with spaces.
+// Length of the excerpt shown for a message past MAX_DISPLAYABLE_LEN, once blind signing has
+// been accepted. Shorter messages are paged over in full and never reach this.
 const MAX_ASCII_LEN: usize = 270;
 
 // Longest message the device pages through in full.
@@ -127,10 +126,15 @@ impl<'a> ByteString<'a> {
         self.0.len() > MAX_DISPLAYABLE_LEN
     }
 
-    // Control characters [\b..=\r] would break the layout, so they render as spaces.
+    // Every C0 control character, and DEL, renders as a space.
+    //
+    // A message is only checked for `is_ascii()`, so it may carry any byte below 0x20. The value
+    // buffer reaches the UI as a C string, so a NUL ends the page where it sits: a page beginning
+    // with one renders blank while every byte on it is still covered by the signature. The rest
+    // are either invisible or break the layout.
     #[inline(always)]
     fn printable(byte: u8) -> u8 {
-        if (0x08..=b'\r').contains(&byte) {
+        if byte < 0x20 || byte == 0x7F {
             b' '
         } else {
             byte
@@ -257,6 +261,40 @@ mod test {
             .collect();
         assert_eq!(shown, expected);
         assert!(!shown.ends_with("..."));
+    }
+
+    /// No byte of a displayed message can end the page it sits on.
+    ///
+    /// The value buffer is handed to the UI as a C string, so an unmapped NUL truncates the page
+    /// at that point -- a page starting with one renders blank while its bytes stay covered by
+    /// the signature. Only `\x08..=\r` used to be rewritten, leaving the rest of the C0 range and
+    /// DEL to reach the screen, so a message could hide a page of text behind a single 0x00.
+    #[test]
+    fn test_control_characters_never_truncate_a_page() {
+        const PAGE_WIDTH: usize = 40;
+
+        let mut data = std::string::String::from("Sign in to example.com");
+        // One of every byte the ASCII check lets through but the screen cannot show.
+        for byte in (0u8..0x20).chain(core::iter::once(0x7F)) {
+            data.push(byte as char);
+        }
+        data.push_str("and the part after the control bytes");
+
+        let blob = built_long_message(&data);
+        let mut msg = ByteString::from_bytes(&blob).unwrap();
+        assert!(!msg.requires_blindsign());
+
+        let shown = rendered(&mut msg, PAGE_WIDTH);
+
+        // Every byte survives to the screen, none of them able to cut a page short.
+        assert_eq!(shown.len(), data.len());
+        assert!(
+            !shown.bytes().any(|b| b < 0x20 || b == 0x7F),
+            "{:?}",
+            shown.as_bytes()
+        );
+        assert!(shown.starts_with("Sign in to example.com"));
+        assert!(shown.ends_with("and the part after the control bytes"));
     }
 
     /// Past the paging limit the message is excerpted, and signing it needs blind signing.
