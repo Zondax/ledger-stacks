@@ -279,7 +279,6 @@ where
     for i in out_value.iter_mut() {
         *i = 0u8;
     }
-    let mut page_count;
     let out_len = out_value.len() - 1;
     let output = &mut out_value[..out_len];
 
@@ -288,22 +287,17 @@ where
     if out_len == 0 || in_len == 0 {
         return Err(ParserError::NoData);
     }
-    page_count = (in_len / out_len) as u8;
-    let last_chunk_len = in_len % out_len;
 
-    if last_chunk_len > 0 {
-        page_count += 1;
-    }
+    // Saturate rather than wrap. An input long enough to need more than 255 pages of a narrow
+    // output buffer used to report a truncated count, which both hides the tail and makes the
+    // pages that are reachable line up with the wrong offsets.
+    let pages = in_len / out_len + usize::from(in_len % out_len > 0);
+    let page_count = pages.min(u8::MAX as usize) as u8;
 
     if page_idx < page_count {
         let idx = page_idx as usize * out_len;
-        let last = if last_chunk_len > 0 && page_idx == page_count - 1 {
-            idx + last_chunk_len
-        } else {
-            idx + out_len
-        };
-        let len = last - idx;
-        output[..len]
+        let last = core::cmp::min(idx + out_len, in_len);
+        output[..last - idx]
             .iter_mut()
             .zip(in_value[idx..last].iter())
             .for_each(|(out, byte)| *out = map(*byte));
