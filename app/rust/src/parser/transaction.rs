@@ -342,11 +342,23 @@ impl<'a> Transaction<'a> {
             _ => return Err(ParserError::InvalidAuthType),
         };
 
+        // On a sponsored transaction the device signs as the sponsor, and the address, nonce and
+        // fee below are the sponsor's. Labelling them "Origin" attributed them to the party that
+        // built the transaction instead.
+        #[cfg(any(test, feature = "cpp_test"))]
+        let signer_label = "Origin";
+
+        #[cfg(not(any(test, feature = "cpp_test")))]
+        let signer_label = match self.signer {
+            SignerId::Sponsor => "Sponsor",
+            _ => "Origin",
+        };
+
         match display_idx {
             // The address of who signed this transaction
             0 => {
                 writer_key
-                    .write_str("Origin")
+                    .write_str(signer_label)
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let origin_address = origin.signer_address(self.version)?;
                 zxformat::page_string(out_value, origin_address.as_ref(), page_idx)
