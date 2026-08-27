@@ -31,6 +31,12 @@ pub fn read_varint(input: &[u8]) -> Result<(&[u8], u64), nom::Err<ParserError>> 
     }
 }
 
+/// Unwrapping for invariants the parser has already established.
+///
+/// A violation means the parser and the renderer disagree about data that was accepted, which is
+/// a bug in this crate rather than anything the host can provoke -- so it aborts. It used to
+/// compile to `unreachable_unchecked`, which turned any such disagreement into undefined
+/// behaviour on a device built at `opt-level = "z"` instead of a clean, deterministic stop.
 pub trait ApduPanic: Sized {
     type Item;
 
@@ -46,17 +52,15 @@ impl<T, E> ApduPanic for Result<T, E> {
     fn apdu_unwrap(self) -> Self::Item {
         match self {
             Ok(t) => t,
-            // be sure this point is unreachable when calling this function
-            Err(_) => unsafe { std::hint::unreachable_unchecked() },
+            Err(_) => panic!("apdu_unwrap on an Err"),
         }
     }
 
     #[inline]
-    fn apdu_expect(self, _: &str) -> Self::Item {
+    fn apdu_expect(self, s: &str) -> Self::Item {
         match self {
             Ok(t) => t,
-            // be sure this point is unreachable when calling this function
-            Err(_) => unsafe { std::hint::unreachable_unchecked() },
+            Err(_) => panic!("{}", s),
         }
     }
 }
@@ -68,17 +72,15 @@ impl<T> ApduPanic for Option<T> {
     fn apdu_unwrap(self) -> Self::Item {
         match self {
             Some(t) => t,
-            // be sure this point is unreachable when calling this function
-            _ => unsafe { std::hint::unreachable_unchecked() },
+            None => panic!("apdu_unwrap on a None"),
         }
     }
 
     #[inline]
-    fn apdu_expect(self, _: &str) -> Self::Item {
+    fn apdu_expect(self, s: &str) -> Self::Item {
         match self {
             Some(t) => t,
-            // be sure this point is unreachable when calling this function
-            _ => unsafe { std::hint::unreachable_unchecked() },
+            None => panic!("{}", s),
         }
     }
 }
