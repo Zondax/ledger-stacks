@@ -25,8 +25,10 @@ use super::{PostConditions, TransactionPostConditionMode};
 // 65-bytes vrs
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 
-// Items every transaction review opens with, before the payload: origin address, nonce, fee and
-// the post-condition mode.
+// Items every transaction review opens with, before the payload: the signing spending
+// condition's address, nonce and fee, then the post-condition mode. The address is labelled
+// "Origin" even when the device signs as sponsor and the values come from the sponsor's
+// condition.
 const TX_HEADER_ITEMS: u8 = 4;
 
 // Where the post-condition mode sits among those header items.
@@ -253,9 +255,12 @@ impl<'a> Transaction<'a> {
 
         // Only a call the renderer actually shows as a compact SIP-10 transfer card may hide
         // items. `sip10_token_info()` alone matches on contract address and name, so a call to a
-        // *registry* contract with any other function name would suppress the base items in
-        // `num_items` while `get_contract_call_items` still rendered them -- silently dropping
-        // the trailing arguments, the function name and every post-condition from the review.
+        // *registry* contract with any other function name used to shrink `num_items` by the
+        // three base items while `get_contract_call_items` still rendered them. The payload's
+        // remaining slots were then consumed base-items-first, and whatever ran off the end was
+        // signed without ever being shown: with fewer than three arguments even the contract and
+        // function names disappeared, with more the last three arguments did, and every
+        // post-condition was suppressed in either case.
         if !contract_call.is_sip10_transfer() {
             return Ok(false);
         }
