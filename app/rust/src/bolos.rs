@@ -18,9 +18,14 @@ pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {
 
 // extern function that uses the device sdk to compute a hash
 // (only linked on device; host/test builds hash via the sha2 crate below)
+//
+// `in_len` mirrors the `uint32_t` of the C prototype in `app/src/c_api/rust.h`. It used to be
+// declared `u16` here, which silently truncated any input above 64 KiB -- reachable on every
+// target whose transaction buffer is 85 KiB -- and made the device sign a digest of a prefix of
+// the message it was given.
 #[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
-    pub fn hash_sha256(in_data: *const u8, in_len: u16, out: *mut u8);
+    pub fn hash_sha256(in_data: *const u8, in_len: u32, out: *mut u8);
 }
 
 #[derive(Debug)]
@@ -33,7 +38,7 @@ pub fn sha256(data: &[u8], output: &mut [u8]) -> Result<(), OutputTooSmall> {
     }
 
     unsafe {
-        hash_sha256(data.as_ptr(), data.len() as _, output.as_mut_ptr());
+        hash_sha256(data.as_ptr(), data.len() as u32, output.as_mut_ptr());
     }
 
     Ok(())

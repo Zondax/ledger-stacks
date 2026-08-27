@@ -43,12 +43,12 @@ zxerr_t crypto_sha256_init() {
     return zxerr_ok;
 }
 
-zxerr_t crypto_sha256_update(const uint8_t *input, uint16_t inputLen) {
+zxerr_t crypto_sha256_update(const uint8_t *input, uint32_t inputLen) {
 #if defined(LEDGER_SPECIFIC)
     CHECK_CX_OK(cx_sha256_update(&ctx, input, inputLen));
 #elif defined(ENABLE_FUZZING)
     // Simple deterministic mixing based on input
-    for (uint16_t i = 0; i < inputLen; i++) {
+    for (uint32_t i = 0; i < inputLen; i++) {
         fuzz_hash_state[fuzz_hash_counter % CX_SHA256_SIZE] ^= input[i];
         fuzz_hash_counter++;
     }
@@ -70,7 +70,7 @@ zxerr_t crypto_sha256_final(uint8_t *output) {
     return zxerr_ok;
 }
 
-zxerr_t crypto_sha256_one_shot(uint8_t *output, uint16_t outputLen, const uint8_t *input, uint16_t inputLen) {
+zxerr_t crypto_sha256_one_shot(uint8_t *output, uint16_t outputLen, const uint8_t *input, uint32_t inputLen) {
     if (output == NULL || outputLen == 0 || input == NULL) {
         return zxerr_invalid_crypto_settings;
     }
