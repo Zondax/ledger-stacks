@@ -103,12 +103,17 @@ where
     }
 }
 
-/// Test and fuzzing stand-in for the on-device token registry.
+/// Stand-in for the on-device token registry in `cargo test` builds.
 ///
-/// The device resolves tokens through `token_info.c`, which host builds do not link. Returning
-/// `None` unconditionally left every code path behind a registry hit -- the compact SIP-10
-/// renderer and the item-hiding predicate that feeds `num_items` -- unreachable from both the
-/// unit tests and the fuzzer. Recognising one fixed contract keeps them exercised.
+/// The CMake host builds -- the C++ tests and the fuzzer -- compile this crate with
+/// `--features cpp_test` and link the real `app/src/token_info.c`, so they are unaffected by
+/// this. `cargo test` links neither, and returning `None` unconditionally left the code behind a
+/// registry hit -- the compact SIP-10 renderer and the item-hiding predicate that feeds
+/// `num_items` -- unreachable from the Rust unit tests.
+///
+/// Matching on the contract name alone is looser than the device, which keys on address and name
+/// together. `hello-world` is the contract name in five existing fixtures; none of them calls a
+/// function named `transfer`, so none is rendered through the compact card.
 #[cfg(any(test, feature = "fuzzing"))]
 pub fn get_token_info<T, U>(_contract_address: T, contract_name: U) -> Option<TokenInfo<'static>>
 where

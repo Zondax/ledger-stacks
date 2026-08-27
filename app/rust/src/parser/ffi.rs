@@ -109,8 +109,12 @@ pub unsafe extern "C" fn _getItem(
 /// Sets `*requires` to 1 when the parsed object commits to data the device cannot display.
 ///
 /// Transactions report on their payload; byte-string messages report on their length, since the
-/// signature covers text past what the review can page through. JWTs and structured messages
-/// have their own review flows and always report 0.
+/// signature covers text past what the review can page through.
+///
+/// JWTs and SIP-018 structured messages are deliberately *not* gated here, and that is a known
+/// gap rather than a guarantee: both review flows show a hash of the signed bytes instead of the
+/// content, so they are always blind in the sense this flag exists to catch. Reporting 0 leaves
+/// `parser_parse` free to suppress the risk screen for them.
 #[no_mangle]
 pub unsafe extern "C" fn _tx_requires_blindsign(
     tx_t: *const parse_tx_t,

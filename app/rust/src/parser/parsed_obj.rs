@@ -737,8 +737,9 @@ mod test {
     /// The item-hiding predicate matched on contract address and name alone, while the compact
     /// SIP-10 renderer additionally requires the function to be `transfer`. When the two
     /// disagreed, `num_items` shrank by the three base items but `get_item` still rendered them,
-    /// so the trailing arguments, the function name and every post-condition dropped off the end
-    /// of the review while remaining committed to by the signature.
+    /// so the review ran out of slots before the end of the payload. Which items were lost
+    /// depended on the argument count; this fixture takes one argument, where everything after
+    /// the contract address went unshown while the signature still covered it.
     #[test]
     fn test_registry_contract_non_transfer_call_shows_every_item() {
         let input_path = {
