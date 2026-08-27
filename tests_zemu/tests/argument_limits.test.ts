@@ -23,12 +23,12 @@ const defaultOptions = {
   X11: false,
 }
 
-// A Nano pages ~200 leaves over ~400 screens, one click each.
-jest.setTimeout(900000)
-const NAVIGATION_TIMEOUT = 800000
+// A Nano pages ~64 leaves over ~130 screens, one click each.
+jest.setTimeout(600000)
+const NAVIGATION_TIMEOUT = 500000
 
 /** Mirrors MAX_ARG_DISPLAY_ITEMS in app/rust/src/parser/transaction_payload/contract_call.rs. */
-const MAX_ARG_DISPLAY_ITEMS = 200
+const MAX_ARG_DISPLAY_ITEMS = 64
 /** The deepest nesting `walk_value` flattens: a leaf at depth TX_DEPTH_LIMIT - 1. */
 const MAX_FLATTEN_DEPTH = 7
 

@@ -28,6 +28,16 @@ const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 // Every transaction shows an origin, a nonce and a fee before its payload.
 const TX_ORIGIN_ITEMS: u8 = 3;
 
+/// Most display items a transaction may have.
+///
+/// Not 255. zxlib hands the review screens their index through
+/// `viewfunc_getItem_t(int8_t displayIdx, ..)` (deps/ledger-zxlib/app/ui/view.h), so index 128
+/// and up arrive negative, `parser_getItem` compares them against `numItems` as an unsigned
+/// value, and the item is refused. The ceiling belongs to the UI, not to the u8 the parser
+/// counts with, and a transaction past it cannot be reviewed on any screen -- blind signing
+/// included, since that shows the same items behind a warning. Refusing it is the honest answer.
+pub const MAX_DISPLAY_ITEMS: u8 = 128;
+
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
@@ -341,7 +351,7 @@ impl<'a> Transaction<'a> {
             .checked_add(base_items)
             .and_then(|items| items.checked_add(leaves))
             .and_then(|items| items.checked_add(post_conditions))
-            .is_some())
+            .is_some_and(|items| items <= MAX_DISPLAY_ITEMS))
     }
 
     /// The layout every item lookup in this transaction shares.
@@ -364,6 +374,7 @@ impl<'a> Transaction<'a> {
         TX_ORIGIN_ITEMS
             .checked_add(self.payload.num_items(mode)?)
             .and_then(|res| res.checked_add(num_items_post_conditions))
+            .filter(|items| *items <= MAX_DISPLAY_ITEMS)
             .ok_or(ParserError::ValueOutOfRange)
     }
 

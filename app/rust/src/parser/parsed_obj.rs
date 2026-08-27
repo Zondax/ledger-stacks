@@ -937,6 +937,7 @@ mod test {
 #[cfg(test)]
 mod gate_paths {
     use super::*;
+    use crate::parser::transaction::MAX_DISPLAY_ITEMS;
     use crate::parser::transaction_payload::{MAX_ARG_DISPLAY_ITEMS, MAX_VALUE_TEXT};
     use crate::parser::TX_DEPTH_LIMIT;
     use std::prelude::v1::*;
@@ -1099,24 +1100,22 @@ mod gate_paths {
         assert_eq!(items.last().unwrap().1, MAX_ARG_DISPLAY_ITEMS.to_string());
     }
 
-    /// Flattened leaves that would not fit beside the post-conditions fall back to the single
-    /// layout when that renders everything -- the outcome the previous version produced.
+    /// Post-conditions and argument leaves share the display index, so the same list of leaves
+    /// reviews or is gated depending on how much room the post-conditions leave it.
     #[test]
-    fn review_falls_back_when_leaves_do_not_fit_beside_post_conditions() {
-        // 150 leaves + 40 STX conditions * 3 items + 6 = 276: flattened does not fit.
-        // Single layout: 1 argument + 120 + 6 = 127: fits.
-        let leaves: Vec<Vec<u8>> = (0..150).map(|_| uint(1)).collect();
-        let tx = with_stx_post_conditions(&contract_call_tx(&[list_of(&leaves)]), 40);
-        // ...but a list is a container, so the single layout cannot show it: gated.
-        assert_eq!(outcome(&tx), Outcome::BlindSign);
+    fn review_depends_on_what_post_conditions_leave_room_for() {
+        let leaves: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS).map(|_| uint(1)).collect();
+        let call = contract_call_tx(&[list_of(&leaves)]);
 
-        // With scalars instead, the single layout shows them all and there is no gate.
-        let scalars: Vec<Vec<u8>> = (0..150).map(|_| uint(1)).collect();
-        let tx = with_stx_post_conditions(&contract_call_tx(&scalars), 30);
-        let Outcome::Review(items) = outcome(&tx) else {
+        // 6 + 64 + 15 * 3 = 115 items: fits, so every leaf is shown.
+        let Outcome::Review(items) = outcome(&with_stx_post_conditions(&call, 15)) else {
             panic!("expected a normal review");
         };
-        assert_eq!(items.len(), 6 + 150 + 30 * 3);
+        assert_eq!(items.len(), 6 + MAX_ARG_DISPLAY_ITEMS as usize + 15 * 3);
+
+        // 6 + 64 + 20 * 3 = 130 items: past MAX_DISPLAY_ITEMS. The fallback cannot show a list
+        // either, so this is gated rather than reviewed with the leaves missing.
+        assert_eq!(outcome(&with_stx_post_conditions(&call, 20)), Outcome::BlindSign);
     }
 
     // ---- blind sign ----------------------------------------------------------------------
@@ -1223,21 +1222,23 @@ mod gate_paths {
         assert_eq!(first(2), Some(TX_DEPTH_LIMIT as usize + 2), "parser limit");
     }
 
-    /// The argument count walks off the end of the display index in one step: 249 scalar
-    /// arguments are the most a call can carry (255 items exactly), and everything past that is
-    /// rejected. It used to be worse than rejected -- at 253 and beyond the overflow inside the
-    /// payload was swallowed, the call reviewed as six items, and every argument was absent.
+    /// The argument count walks off the end of the display index in one step. The ceiling is
+    /// MAX_DISPLAY_ITEMS, not 255: zxlib passes the review screens an `int8_t` index, so item 128
+    /// can never be fetched. 122 scalar arguments fill it exactly and everything past that is
+    /// refused -- where before, from 253 up, the overflow was swallowed inside the payload and
+    /// the call reviewed as six items with every argument absent.
     #[test]
     fn rejected_when_arguments_overflow_the_display_index() {
         let scalars = |n: usize| (0..n).map(|i| uint(i as u128)).collect::<Vec<_>>();
+        let most = MAX_DISPLAY_ITEMS as usize - 6;
 
-        let Outcome::Review(items) = outcome(&contract_call_tx(&scalars(249))) else {
-            panic!("249 arguments fit the index exactly");
+        let Outcome::Review(items) = outcome(&contract_call_tx(&scalars(most))) else {
+            panic!("{} arguments fit the index exactly", most)
         };
-        assert_eq!(items.len(), 255);
-        assert_eq!(items[254].0, "arg248");
+        assert_eq!(items.len(), MAX_DISPLAY_ITEMS as usize);
+        assert_eq!(items[MAX_DISPLAY_ITEMS as usize - 1].0, std::format!("arg{}", most - 1));
 
-        for n in [250usize, 252, 253, 254, 300] {
+        for n in [most + 1, most + 4, 200, 300] {
             assert_eq!(
                 outcome(&contract_call_tx(&scalars(n))),
                 Outcome::Rejected,

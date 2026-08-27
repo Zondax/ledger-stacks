@@ -33,12 +33,19 @@ const MAX_WRAPPER_DEPTH: u8 = 3;
 /// Lowercase hex digits, for rendering buffers without a scratch buffer.
 const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
 
-/// Most display items a contract call's arguments may expand to when flattened. Bounds the walk
-/// so a crafted argument -- 256 entries per container, eight levels deep -- cannot be counted to
-/// an astronomical total, and keeps the per-screen walk cheap. Whether that many items actually
-/// fit is decided per transaction by `Transaction::flatten_args`, since post-conditions and
-/// arguments share the same u8 display index.
-pub const MAX_ARG_DISPLAY_ITEMS: u8 = 200;
+/// Most display items a contract call's arguments may expand to when flattened.
+///
+/// Bounds the walk so a crafted argument -- 256 entries per container, eight levels deep --
+/// cannot be counted to an astronomical total. Whether that many items actually fit is decided
+/// per transaction by `Transaction::flatten_args`, since post-conditions and arguments share the
+/// display index.
+///
+/// Sized well under that ceiling on purpose. `render_flat_arg` restarts the walk for every screen,
+/// so a review costs O(items x leaves): at 64 leaves that is a few thousand value reads, where 200
+/// would have been forty thousand, on a 30 MHz chip, twice -- once for `parser_validate` and again
+/// as the user pages. Real calls need far less: the reported swaps use one to six leaves, and the
+/// largest fixture in this repo expands to 31.
+pub const MAX_ARG_DISPLAY_ITEMS: u8 = 64;
 
 /// Longest key a flattened leaf may carry, in bytes. A leaf whose path outgrows this is opaque,
 /// and the transaction is gated.
