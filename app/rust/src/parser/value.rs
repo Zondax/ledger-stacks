@@ -388,11 +388,14 @@ pub fn value_to_string_impl<const MAX_DEPTH: u8>(
 mod test {
     use super::*;
 
-    /// A buffer whose declared length does not fit the input is rejected, not wrapped around.
+    /// A buffer whose declared length does not fit the input is rejected while it is measured.
     ///
-    /// `len as usize + 4` overflowed on the device's 32-bit target for a length near
-    /// `u32::MAX` -- the release profile has no overflow checks -- so a buffer claiming ~4 GiB
-    /// measured as a handful of bytes and every field after it was read from the wrong offset.
+    /// The bug this guards is a 32-bit one: `len as usize + 4` wrapped on the device target for
+    /// a length near `u32::MAX` -- the release profile leaves overflow checks off -- so a buffer
+    /// claiming ~4 GiB measured as a handful of bytes and every field after it was read from the
+    /// wrong offset. A 64-bit host cannot wrap, and `Value::from_bytes` hides the difference
+    /// because its outer `take` rejects the oversized length either way. So this asserts on
+    /// `value_len`, where the bad measurement is visible on any pointer width.
     #[test]
     fn test_buffer_length_beyond_the_input_is_rejected() {
         // 0x02 = buffer, then a 4-byte big-endian length.
@@ -402,15 +405,23 @@ mod test {
             bytes.extend_from_slice(&[0xAA; 8]);
 
             assert!(
+                Value::value_len::<10>(&bytes).is_err(),
+                "measured a buffer declaring {} bytes with 8 available",
+                declared
+            );
+            assert!(
                 Value::from_bytes::<10>(&bytes).is_err(),
-                "accepted a buffer declaring {} bytes with 8 available", declared
+                "accepted a buffer declaring {} bytes with 8 available",
+                declared
             );
         }
 
-        // A buffer that really is there still parses.
+        // A buffer that really is there still parses, and measures to exactly its own extent:
+        // 1-byte type + 4-byte length + 8 bytes of content.
         let mut bytes = std::vec![0x02u8];
         bytes.extend_from_slice(&8u32.to_be_bytes());
         bytes.extend_from_slice(&[0xAA; 8]);
+        assert_eq!(Value::value_len::<10>(&bytes), Ok(13));
         let (_, value) = Value::from_bytes::<10>(&bytes).unwrap();
         assert!(matches!(value.value_id(), ValueId::Buffer));
         assert_eq!(value.0.len(), bytes.len());
