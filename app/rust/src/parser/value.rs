@@ -141,8 +141,17 @@ impl<'a> Value<'a> {
         let len = match id {
             ValueId::Int | ValueId::UInt => BIG_INT_SIZE,
             ValueId::Buffer => {
+                // A declared length is host-controlled, so bound it against what is actually
+                // there before it is added to: `len as usize + 4` alone wraps on a 32-bit target
+                // for a length near u32::MAX, and a ~4 GiB buffer would then measure as a few
+                // bytes and shift every later field.
+                let (rem, len) = be_u32(rem)?;
+                let len = len as usize;
+                if rem.len() < len {
+                    return Err(ParserError::UnexpectedBufferEnd.into());
+                }
                 // value_len + 4-bytes
-                be_u32(rem).map(|(_, len)| len as usize + 4)?
+                len + 4
             }
             ValueId::BoolTrue | ValueId::BoolFalse => 0,
             ValueId::StandardPrincipal => StandardPrincipal::BYTES_LEN,
@@ -378,6 +387,34 @@ pub fn value_to_string_impl<const MAX_DEPTH: u8>(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    /// A buffer whose declared length does not fit the input is rejected, not wrapped around.
+    ///
+    /// `len as usize + 4` overflowed on the device's 32-bit target for a length near
+    /// `u32::MAX` -- the release profile has no overflow checks -- so a buffer claiming ~4 GiB
+    /// measured as a handful of bytes and every field after it was read from the wrong offset.
+    #[test]
+    fn test_buffer_length_beyond_the_input_is_rejected() {
+        // 0x02 = buffer, then a 4-byte big-endian length.
+        for declared in [u32::MAX, u32::MAX - 3, 0xFFFF_FFFC, 64] {
+            let mut bytes = std::vec![0x02u8];
+            bytes.extend_from_slice(&declared.to_be_bytes());
+            bytes.extend_from_slice(&[0xAA; 8]);
+
+            assert!(
+                Value::from_bytes::<10>(&bytes).is_err(),
+                "accepted a buffer declaring {} bytes with 8 available", declared
+            );
+        }
+
+        // A buffer that really is there still parses.
+        let mut bytes = std::vec![0x02u8];
+        bytes.extend_from_slice(&8u32.to_be_bytes());
+        bytes.extend_from_slice(&[0xAA; 8]);
+        let (_, value) = Value::from_bytes::<10>(&bytes).unwrap();
+        assert!(matches!(value.value_id(), ValueId::Buffer));
+        assert_eq!(value.0.len(), bytes.len());
+    }
 
     #[test]
     fn test_tuple_value() {
