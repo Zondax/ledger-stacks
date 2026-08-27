@@ -271,11 +271,26 @@ pub unsafe extern "C" fn _hash_mode(tx_t: *const parse_tx_t, hash_mode: *mut u8)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _num_multisig_fields(tx_t: *const parse_tx_t) -> u32 {
-    parsed_obj_from_state(tx_t as _)
+pub unsafe extern "C" fn _num_multisig_fields(
+    tx_t: *const parse_tx_t,
+    num_fields: *mut u32,
+) -> u32 {
+    // Reporting a count of zero for a failure would be indistinguishable from a signer with no
+    // preceding auth fields, and the sighash chain would then hash nothing and report success.
+    if num_fields.is_null() {
+        return ParserError::NoData as _;
+    }
+
+    match parsed_obj_from_state(tx_t as _)
         .and_then(|obj| obj.transaction())
         .and_then(|tx| tx.transaction_auth.num_auth_fields())
-        .unwrap_or(0)
+    {
+        Some(count) => {
+            *num_fields = count;
+            ParserError::ParserOk as _
+        }
+        None => ParserError::ContextMismatch as _,
+    }
 }
 
 #[no_mangle]

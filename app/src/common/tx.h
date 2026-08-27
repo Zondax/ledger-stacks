@@ -65,8 +65,9 @@ zxerr_t tx_auth_flag(uint8_t *flag);
 // Returns 1 if the transaction is multisig, 0 otherwise
 int8_t tx_is_multisig();
 
-// Returns # of fields in a multisig spending condition, or 0 if not multisig
-uint32_t tx_num_multisig_fields();
+// Writes the # of fields in a multisig spending condition to `num_fields`. Fails rather
+// than reporting 0, which would be indistinguishable from a condition that has none.
+zxerr_t tx_num_multisig_fields(uint32_t *num_fields);
 
 // Returns multisig auth field at position `index`
 zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);
