@@ -691,6 +691,46 @@ mod test {
         items
     }
 
+    /// Every transaction review states what happens to assets no post-condition covers.
+    ///
+    /// The mode byte was parsed and validated but never rendered, so an `Allow`-mode transaction
+    /// showed the same protective-looking list of post-conditions as a `Deny`-mode one.
+    #[test]
+    fn test_post_condition_mode_is_displayed() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("contract_call_with_fungible_postcondition");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+
+        // Locate the mode byte in the raw blob so each variant can be exercised.
+        let mode_offset = {
+            let mut obj = ParsedObj::from_bytes(&bytes).unwrap();
+            obj.read(&bytes).unwrap();
+            let tx = obj.transaction().unwrap();
+            tx.transaction_modes.as_ptr() as usize - bytes.as_ptr() as usize + 1
+        };
+
+        for (byte, expected) in [(0x01u8, "Allow"), (0x02, "Deny"), (0x03, "Originator")] {
+            let mut patched = bytes.clone();
+            patched[mode_offset] = byte;
+
+            let items = review_items(&patched);
+            let mode = items
+                .iter()
+                .find(|(k, _)| k == "Post-cond mode")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or_else(|| panic!("no mode item for {byte:#04x}"));
+            assert_eq!(mode, expected);
+        }
+    }
+
     /// A contract call to a *registry* contract that is not a SIP-10 `transfer` must be reviewed
     /// in full.
     ///
@@ -929,7 +969,7 @@ mod test {
 
         std::println!("tx: {:?}", msg);
     }
-    
+
     const MODE_FIXTURE_HEX: &str = "000000000104009ef3889fd070159edcd8ef88a0ec87cea1592c83000000000000000000000000000f42400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000060002169ef3889fd070159edcd8ef88a0ec87cea1592c830100000000000027100003167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f72650300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000102169ef3889fd070159edcd8ef88a0ec87cea1592c83168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e030000000000000000010316402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0f616d6d2d7661756c742d76322d303116402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c657804616c65780300000000011c908a02162ec1a2dc2904ebc8b408598116c75e42c51afa2617726f757465722d76656c61722d616c65782d762d312d320d737761702d68656c7065722d6100000007010000000000000000000000000000271001000000000000000000000000011c908a040c00000002016106167c5f674a8fd08efa61dd9b11121e046dd2c892730477737478016206168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e06167c5f674a8fd08efa61dd9b11121e046dd2c8927312756e6976322d73686172652d6665652d746f0c0000000201610616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0b746f6b656e2d776c6f6e6701620616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c65780c0000000101610100000000000000000000000005f5e100";
 
     #[test]
