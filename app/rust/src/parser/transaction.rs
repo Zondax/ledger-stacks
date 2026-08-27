@@ -26,9 +26,9 @@ use super::{PostConditions, TransactionPostConditionMode};
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 
 // Items every transaction review opens with, before the payload: the signing spending
-// condition's address, nonce and fee, then the post-condition mode. The address is labelled
-// "Origin" even when the device signs as sponsor and the values come from the sponsor's
-// condition.
+// condition's address, nonce and fee, then the post-condition mode. All three are read from
+// whichever condition the device signs with, and the address is titled to match -- "Sponsor"
+// on a sponsored transaction the device sponsors, "Origin" otherwise.
 const TX_HEADER_ITEMS: u8 = 4;
 
 // Where the post-condition mode sits among those header items.
@@ -334,8 +334,19 @@ impl<'a> Transaction<'a> {
         c_zemu_log_stack("Transaction::get_origin_items\x00");
         let mut writer_key = zxformat::Writer::new(out_key);
 
+        // Host builds reach here with `self.signer` still `Invalid`: only `parser_validate`
+        // calls `check_signer_pk_hash`, and the C++ tests go through `parser_parse`. On device
+        // that is a state we should never render, so it is an error; in a test it just means
+        // no signer was nominated, and falling back to the origin keeps those fixtures working
+        // while still letting a test nominate the sponsor and exercise the branch below.
         #[cfg(any(test, feature = "cpp_test"))]
-        let origin = self.transaction_auth.origin();
+        let origin = match self.signer {
+            SignerId::Sponsor => self
+                .transaction_auth
+                .sponsor()
+                .ok_or(ParserError::InvalidAuthType)?,
+            _ => self.transaction_auth.origin(),
+        };
 
         #[cfg(not(any(test, feature = "cpp_test")))]
         let origin = match self.signer {
@@ -348,12 +359,11 @@ impl<'a> Transaction<'a> {
         };
 
         // On a sponsored transaction the device signs as the sponsor, and the address, nonce and
-        // fee below are the sponsor's. Labelling them "Origin" attributed them to the party that
-        // built the transaction instead.
-        #[cfg(any(test, feature = "cpp_test"))]
-        let signer_label = "Origin";
-
-        #[cfg(not(any(test, feature = "cpp_test")))]
+        // fee below are the sponsor's. Titling the address "Origin" attributed them to the party
+        // that built the transaction instead.
+        //
+        // This needs no cfg fork of its own: with `self.signer` at `Invalid` it yields "Origin",
+        // which is what the host fixtures above expect.
         let signer_label = match self.signer {
             SignerId::Sponsor => "Sponsor",
             _ => "Origin",
@@ -588,5 +598,65 @@ impl<'a> Transaction<'a> {
     // check just for origin, meaning we support standard transaction only
     pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
         self.transaction_auth.hash_mode()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::prelude::v1::*;
+
+    // Sponsored transfer: auth type 0x05, origin hash160 60dbb3.., sponsor hash160 29cfc6..,
+    // origin nonce 220 / fee 52259, sponsor nonce 0 / fee 0.
+    const SPONSORED_TX: &str = "0000000001050060dbb32efe0c56e1d418c020f4cb71c556b6a60d00000000000000dc000000000000cc230000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000029cfc6376255a78451eeb4b129ed8eacffa2feef000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000000216debc095099629badb11b9d5335e874d12f1f1d450973656e642d6d616e790973656e642d6d616e7900000000";
+    const ORIGIN_HASH: &str = "60dbb32efe0c56e1d418c020f4cb71c556b6a60d";
+    const SPONSOR_HASH: &str = "29cfc6376255a78451eeb4b129ed8eacffa2feef";
+
+    fn header_item(tx: &Transaction<'_>, display_idx: u8) -> (String, String) {
+        let mut key = [0u8; 30];
+        let mut value = [0u8; 30];
+        tx.get_origin_items(display_idx, &mut key, &mut value, 0)
+            .unwrap();
+        let trim = |b: &[u8]| {
+            core::str::from_utf8(b)
+                .unwrap()
+                .trim_end_matches('\0')
+                .to_string()
+        };
+        (trim(&key), trim(&value))
+    }
+
+    /// The three header items belong to whoever the device signs as, and say so.
+    ///
+    /// On a sponsored transaction the device signs as the sponsor, so the address, nonce and fee
+    /// are read from the sponsor's spending condition. Titling the address "Origin" attributed
+    /// the sponsor's own values to the party that built the transaction.
+    #[test]
+    fn test_sponsor_header_items_are_labelled_and_read_as_the_sponsor() {
+        let bytes = hex::decode(SPONSORED_TX).unwrap();
+        let origin_hash = hex::decode(ORIGIN_HASH).unwrap();
+        let sponsor_hash = hex::decode(SPONSOR_HASH).unwrap();
+
+        let mut tx = Transaction::from_bytes(&bytes).unwrap();
+
+        assert_eq!(tx.check_signer_pk_hash(&origin_hash), ParserError::ParserOk);
+        assert_eq!(tx.signer, SignerId::Origin);
+        let (origin_key, origin_addr) = header_item(&tx, 0);
+        assert_eq!(origin_key, "Origin");
+        assert_eq!(header_item(&tx, 1).1, "220");
+        assert_eq!(header_item(&tx, 2).1, "52259");
+
+        assert_eq!(
+            tx.check_signer_pk_hash(&sponsor_hash),
+            ParserError::ParserOk
+        );
+        assert_eq!(tx.signer, SignerId::Sponsor);
+        let (sponsor_key, sponsor_addr) = header_item(&tx, 0);
+        assert_eq!(sponsor_key, "Sponsor");
+        assert_eq!(header_item(&tx, 1).1, "0");
+        assert_eq!(header_item(&tx, 2).1, "0");
+
+        // The label is only meaningful if it tracks a different address.
+        assert_ne!(origin_addr, sponsor_addr);
     }
 }
