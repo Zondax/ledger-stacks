@@ -717,7 +717,7 @@ mod test {
                 .iter()
                 .find(|(k, _)| k == "Post-cond mode")
                 .map(|(_, v)| v.as_str())
-                .unwrap_or_else(|| panic!("no mode item for {byte:#04x}"));
+                .unwrap_or_else(|| panic!("no mode item for {:#04x}", byte));
             assert_eq!(mode, expected);
         }
     }
