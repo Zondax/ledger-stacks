@@ -269,7 +269,7 @@ mod test {
         assert!(msg.requires_blindsign());
 
         let shown = rendered(&mut msg, 40);
-        assert!(shown.ends_with("..."), "{shown}");
+        assert!(shown.ends_with("..."), "{}", shown);
         assert_eq!(shown.len(), MAX_ASCII_LEN + 3);
     }
 
