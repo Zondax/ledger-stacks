@@ -296,7 +296,7 @@ where
     // Saturating would stop the wrap but still show a fraction of the input under a page total
     // that reads as complete. Failing here instead turns it into a parse error, so the
     // transaction is rejected rather than half-shown.
-    let pages = in_len / out_len + usize::from(in_len % out_len > 0);
+    let pages = in_len / out_len + usize::from(!in_len.is_multiple_of(out_len));
     if pages > u8::MAX as usize {
         return Err(ParserError::ValueOutOfRange);
     }
