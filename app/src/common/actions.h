@@ -302,7 +302,14 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
     uint8_t previous_signer_data[1 + PREVIOUS_SIGNER_SIG_LEN] = {0};
     memset(previous_signer_data, 0, sizeof(previous_signer_data));
 
-    uint32_t num_fields = tx_num_multisig_fields();
+    // A count we cannot read must not fall through as zero: that is indistinguishable from a
+    // first signer with nothing to chain, and would return a hash covering none of the
+    // preceding signers.
+    uint32_t num_fields = 0;
+    if (tx_num_multisig_fields(&num_fields) != zxerr_ok) {
+        return zxerr_no_data;
+    }
+
     for (uint32_t i = 0; i < num_fields; ++i) {
         // `TransactionAuthFieldID` part of `MultisigSpendingCondition` auth field
         uint8_t id = 0xFF;

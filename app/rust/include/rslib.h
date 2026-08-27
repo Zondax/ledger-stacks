@@ -44,7 +44,7 @@ parser_error_t _tx_requires_blindsign(const parser_tx_t *v, uint8_t *requires);
 parser_error_t _structured_msg_hash(const parser_tx_t *v, uint8_t *out, uint16_t out_len);
 
 uint8_t _is_multisig(const parser_tx_t *v);
-uint32_t _num_multisig_fields(const parser_tx_t *v);
+parser_error_t _num_multisig_fields(const parser_tx_t *v, uint32_t *num_fields);
 parser_error_t _get_multisig_field(const parser_tx_t *v, uint32_t index, uint8_t *id, uint8_t **data);
 
 parser_error_t _hash_mode(const parser_tx_t *v, uint8_t *hash_mode);
