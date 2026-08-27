@@ -19,6 +19,7 @@
 #include <parser_txdef.h>
 
 #include <fstream>
+#include <vector>
 #include <iostream>
 
 #include "app_mode.h"
@@ -166,6 +167,34 @@ class BlindSignGate : public ::testing::Test {
         const uint16_t bufferLen = parseHexString(buffer, sizeof(buffer), testcase(name).blob.c_str());
         return parser_parse(&ctx, buffer, bufferLen);
     }
+
+    // "\x17Stacks Signed Message:\n" + varint(len) + len bytes of text. Built here rather than
+    // stored as a fixture because the interesting lengths are kilobytes of filler.
+    static std::vector<uint8_t> signedMessage(size_t len) {
+        const std::string header = "\x17Stacks Signed Message:\n";
+        std::vector<uint8_t> blob(header.begin(), header.end());
+
+        if (len < 0xFD) {
+            blob.push_back(static_cast<uint8_t>(len));
+        } else if (len <= 0xFFFF) {
+            blob.push_back(0xFD);
+            blob.push_back(static_cast<uint8_t>(len & 0xFF));
+            blob.push_back(static_cast<uint8_t>(len >> 8));
+        } else {
+            blob.push_back(0xFE);
+            for (int i = 0; i < 4; i++) {
+                blob.push_back(static_cast<uint8_t>((len >> (8 * i)) & 0xFF));
+            }
+        }
+
+        blob.insert(blob.end(), len, 'A');
+        return blob;
+    }
+
+    static parser_error_t parseBlob(const std::vector<uint8_t> &blob) {
+        parser_context_t ctx;
+        return parser_parse(&ctx, blob.data(), blob.size());
+    }
 };
 
 TEST_F(BlindSignGate, OpaqueArgsRejectedWhenDisabled) {
@@ -240,4 +269,40 @@ TEST_F(BlindSignGate, Sip10TransferWithMemoNotGated) {
     EXPECT_EQ(parse("SIP10_contract"), parser_ok);
     EXPECT_EQ(parse("SIP10_contract_hidden_post_condition"), parser_ok);
     EXPECT_EQ(parse("SIP10_contract_shown_post_condition"), parser_ok);
+}
+
+// A signed message is paged over in full up to MAX_DISPLAYABLE_LEN; past it the review shows a
+// 270-byte excerpt while the signature still covers every byte. That excerpt is only acceptable
+// if the user has opted into blind signing, so the gate has to fire on length.
+//
+// The Rust side unit-tests the predicate; this covers the wiring from it through
+// _tx_requires_blindsign to a refused APDU, which is what actually protects the user.
+TEST_F(BlindSignGate, LongMessageRejectedWhenDisabled) {
+    app_mode_set_blindsign(0);
+    EXPECT_EQ(parseBlob(signedMessage(4097)), parser_blindsign_mode_required);
+    EXPECT_EQ(parseBlob(signedMessage(20000)), parser_blindsign_mode_required);
+}
+
+// Right at the limit the message still renders in full, so it must not be gated.
+TEST_F(BlindSignGate, MessageWithinPagingLimitNotGated) {
+    app_mode_set_blindsign(0);
+    EXPECT_EQ(parseBlob(signedMessage(4096)), parser_ok);
+    // The 284-byte Gamma sign-in prompt, which used to be cut at 270.
+    EXPECT_EQ(parseBlob(signedMessage(284)), parser_ok);
+    EXPECT_EQ(parseBlob(signedMessage(11)), parser_ok);
+}
+
+TEST_F(BlindSignGate, LongMessageAllowedWhenEnabled) {
+    app_mode_set_blindsign(1);
+    EXPECT_EQ(parseBlob(signedMessage(4097)), parser_ok);
+    // The user must still be shown the risk screen for it.
+    EXPECT_TRUE(app_mode_blindsign_required());
+}
+
+// The mirror of FullyDisplayableTxSkipsWarningEvenWhenBlindSignEnabled, for messages.
+TEST_F(BlindSignGate, FullyPagedMessageSkipsWarningEvenWhenBlindSignEnabled) {
+    app_mode_set_blindsign(1);
+    ASSERT_TRUE(app_mode_blindsign_required());
+    EXPECT_EQ(parseBlob(signedMessage(4096)), parser_ok);
+    EXPECT_FALSE(app_mode_blindsign_required());
 }
