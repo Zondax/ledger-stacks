@@ -301,8 +301,10 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
         uint8_t *data = NULL;
         zxerr_t err = tx_get_multisig_field(i, &id, &data);
 
+        // Fail closed. Skipping a signer field would carry on hashing and hand the user a
+        // digest that no longer matches the transaction they are approving.
         if (err != zxerr_ok || !data) {
-            continue;
+            return zxerr_no_data;
         }
 
         switch (id) {
@@ -319,7 +321,10 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
                 previous_signer_data[0] = 0x01;
                 break;
             default:
+                // Unreachable while the parser validates the field ids, and if that ever stops
+                // holding, hashing stale signer data is worse than refusing to sign.
                 zemu_log_stack("Invalid TransactionAuthFieldID\n");
+                return zxerr_no_data;
         };
 
         // Copy previous signer's signature
