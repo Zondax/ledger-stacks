@@ -731,6 +731,54 @@ mod test {
         }
     }
 
+    /// A genuine SIP-10 transfer is reviewed through the compact card, with the base items and
+    /// post-conditions suppressed.
+    ///
+    /// This is the branch the hiding predicate exists for. The negative case below proves the
+    /// predicate does not fire when it should not; without this one, nothing proves it still
+    /// fires when it should, and tightening it further could silently disable the compact card.
+    #[test]
+    fn test_registry_transfer_hides_base_items_and_post_conditions() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("sip10_transfer_hidden_details");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+
+        assert_eq!(json.function_name, "transfer");
+
+        let items = review_items(&bytes);
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+
+        // The compact card: header items, then exactly the four transfer arguments.
+        assert_eq!(
+            keys,
+            std::vec![
+                "Origin",
+                "Nonce",
+                "Fee (uSTX)",
+                "Post-cond mode",
+                "Amount",
+                "From",
+                "To",
+                "Memo"
+            ],
+            "{:?}",
+            items
+        );
+
+        // The suppressed items really are absent, not merely reordered.
+        for hidden in ["Contract address", "Contract name", "Function name", "Asset name"] {
+            assert!(!keys.contains(&hidden), "{} still shown: {:?}", hidden, keys);
+        }
+    }
+
     /// A contract call to a *registry* contract that is not a SIP-10 `transfer` must be reviewed
     /// in full.
     ///
