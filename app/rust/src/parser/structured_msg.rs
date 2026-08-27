@@ -25,15 +25,23 @@ impl<'a> Domain<'a> {
         // Domain is a tuple with 3 elements
         let tuple = value.tuple().ok_or(ParserError::InvalidStructuredMsg)?;
 
+        // Each key is matched independently, so counting alone would accept a tuple that repeats
+        // one key and omits another -- `{name, name, version}` looked like three valid fields.
+        // The review renders one field per name, so the omitted one silently showed nothing.
+        let mut seen = [false; Self::LEN];
         let mut items = 0;
         for (key, value) in tuple.iter() {
             let value_id = value.value_id();
-            match (key.name(), value_id) {
-                (b"name", ValueId::StringAscii) => {}
-                (b"version", ValueId::StringAscii) => {}
-                (b"chain-id", ValueId::UInt) => {}
+            let slot = match (key.name(), value_id) {
+                (b"name", ValueId::StringAscii) => 0,
+                (b"version", ValueId::StringAscii) => 1,
+                (b"chain-id", ValueId::UInt) => 2,
                 _ => return Err(ParserError::InvalidStructuredMsg.into()),
+            };
+            if seen[slot] {
+                return Err(ParserError::InvalidStructuredMsg.into());
             }
+            seen[slot] = true;
             items += 1;
         }
 
