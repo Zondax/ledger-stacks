@@ -17,8 +17,11 @@ pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {
     std::println!("{:?}", std::str::from_utf8(_s.as_ref()).unwrap());
 }
 
-// extern function that uses the device sdk to compute a hash
-// (only linked on device; host/test builds hash via the sha2 crate below)
+// extern function that uses the device sdk to compute a hash.
+//
+// Linked on device and in the CMake host builds, which compile this crate with `cpp_test` and
+// provide the symbol from app/src/c_api/rust.c; only `cargo test` hashes via the sha2 crate
+// below.
 //
 // `in_len` mirrors the `uint32_t` of the C prototype in `app/src/c_api/rust.h`. It used to be
 // declared `u16` here, which silently truncated any input above 64 KiB -- reachable on every
