@@ -84,13 +84,14 @@ typedef enum {
 #define MULTISIG_HASH_MODE_P2SH        0x01u
 #define MULTISIG_HASH_MODE_P2SH_NONSEQ 0x05u
 
+// 0x05 is unassigned and was never dispatched. SIP-018 structured messages are signed through
+// INS_SIGN_SECP256K1 (0x02); the parser recognises them from the "SIP018" prefix on the data,
+// not from the instruction. Keep 0x05 reserved rather than reusing it.
 #define INS_GET_VERSION            0x00
 #define INS_GET_ADDR_SECP256K1     0x01
 #define INS_SIGN_SECP256K1         0x02
 #define INS_GET_AUTH_PUBKEY        0x03
 #define INS_SIGN_JWT_SECP256K1     0x04
-// 0x05 is unassigned. SIP-018 structured messages are signed through
-// INS_SIGN_SECP256K1, which dispatches on the parsed payload type.
 #define INS_GET_MASTER_FINGERPRINT 0x06
 #define INS_GET_ADDR_MULTISIG      0x07
 
