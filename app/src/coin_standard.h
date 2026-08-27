@@ -89,7 +89,8 @@ typedef enum {
 #define INS_SIGN_SECP256K1         0x02
 #define INS_GET_AUTH_PUBKEY        0x03
 #define INS_SIGN_JWT_SECP256K1     0x04
-#define INS_SIGN_STRUCTURED_MSG    0x05
+// 0x05 is unassigned. SIP-018 structured messages are signed through
+// INS_SIGN_SECP256K1, which dispatches on the parsed payload type.
 #define INS_GET_MASTER_FINGERPRINT 0x06
 #define INS_GET_ADDR_MULTISIG      0x07
 
