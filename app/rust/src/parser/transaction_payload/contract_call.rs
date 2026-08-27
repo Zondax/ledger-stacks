@@ -432,10 +432,6 @@ impl<'a> TransactionContractCallWrapper<'a> {
         self.flat_items
     }
 
-    pub fn is_sip10_transfer(&self) -> bool {
-        self.contract_type == ContractType::SIP10
-    }
-
     /// Whether the one-item-per-argument layout renders every argument in full.
     pub fn single_items_render(&self) -> bool {
         self.single_items_render

@@ -25,8 +25,15 @@ use super::{PostConditions, TransactionPostConditionMode};
 // 65-bytes vrs
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 
-// Every transaction shows an origin, a nonce and a fee before its payload.
+// Every transaction shows an origin, a nonce and a fee before its payload, then the
+// post-condition mode.
 const TX_ORIGIN_ITEMS: u8 = 3;
+
+// Where the post-condition mode sits, immediately after the origin items.
+const POST_CONDITION_MODE_ITEM_IDX: u8 = TX_ORIGIN_ITEMS;
+
+// The origin items plus the post-condition mode.
+const TX_HEADER_ITEMS: u8 = TX_ORIGIN_ITEMS + 1;
 
 /// Most display items a transaction may have.
 ///
@@ -352,7 +359,7 @@ impl<'a> Transaction<'a> {
             (CONTRACT_CALL_BASE_ITEMS, self.post_conditions.num_items())
         };
 
-        Ok(TX_ORIGIN_ITEMS
+        Ok(TX_HEADER_ITEMS
             .checked_add(base_items)
             .and_then(|items| items.checked_add(leaves))
             .and_then(|items| items.checked_add(post_conditions))
@@ -375,12 +382,19 @@ impl<'a> Transaction<'a> {
             self.post_conditions.num_items()
         };
 
-        // nonce + origin + fee-rate + payload + post-conditions
-        TX_ORIGIN_ITEMS
+        // origin + nonce + fee-rate + post-condition mode + payload + post-conditions
+        TX_HEADER_ITEMS
             .checked_add(self.payload.num_items(mode)?)
             .and_then(|res| res.checked_add(num_items_post_conditions))
             .filter(|items| *items <= MAX_DISPLAY_ITEMS)
             .ok_or(ParserError::ValueOutOfRange)
+    }
+
+    /// The transaction's post-condition mode.
+    ///
+    /// Parsing already rejects anything that is not a known variant, so this cannot fail.
+    pub fn post_condition_mode(&self) -> Option<TransactionPostConditionMode> {
+        TransactionPostConditionMode::from_u8(self.transaction_modes[1])
     }
 
     fn get_origin_items(
@@ -436,6 +450,31 @@ impl<'a> Transaction<'a> {
         }
     }
 
+    /// Renders what happens to assets no post-condition covers.
+    ///
+    /// Without it the listed post-conditions read as a guarantee even under `Allow`, where
+    /// anything they do not mention moves freely.
+    fn get_post_condition_mode_item(
+        &self,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        zxformat::Writer::new(out_key)
+            .write_str("Post-cond mode")
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+
+        let mode = match self
+            .post_condition_mode()
+            .ok_or(ParserError::UnexpectedValue)?
+        {
+            TransactionPostConditionMode::Allow => "Allow",
+            TransactionPostConditionMode::Deny => "Deny",
+            TransactionPostConditionMode::Originator => "Originator",
+        };
+        zxformat::page_string(out_value, mode.as_bytes(), page_idx)
+    }
+
     #[inline(always)]
     fn get_other_items(
         &mut self,
@@ -484,10 +523,12 @@ impl<'a> Transaction<'a> {
             return Err(ParserError::DisplayIdxOutOfRange);
         }
 
-        if display_idx < 3 {
-            self.get_origin_items(display_idx, out_key, out_value, page_idx)
-        } else {
-            self.get_other_items(display_idx, out_key, out_value, page_idx)
+        match display_idx {
+            0..=2 => self.get_origin_items(display_idx, out_key, out_value, page_idx),
+            POST_CONDITION_MODE_ITEM_IDX => {
+                self.get_post_condition_mode_item(out_key, out_value, page_idx)
+            }
+            _ => self.get_other_items(display_idx, out_key, out_value, page_idx),
         }
     }
 

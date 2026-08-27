@@ -682,6 +682,46 @@ mod test {
         items
     }
 
+    /// Every transaction review states what happens to assets no post-condition covers.
+    ///
+    /// The mode byte was parsed and validated but never rendered, so an `Allow`-mode transaction
+    /// showed the same protective-looking list of post-conditions as a `Deny`-mode one.
+    #[test]
+    fn test_post_condition_mode_is_displayed() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("contract_call_with_fungible_postcondition");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+
+        // Locate the mode byte in the raw blob so each variant can be exercised.
+        let mode_offset = {
+            let mut obj = ParsedObj::from_bytes(&bytes).unwrap();
+            obj.read(&bytes).unwrap();
+            let tx = obj.transaction().unwrap();
+            tx.transaction_modes.as_ptr() as usize - bytes.as_ptr() as usize + 1
+        };
+
+        for (byte, expected) in [(0x01u8, "Allow"), (0x02, "Deny"), (0x03, "Originator")] {
+            let mut patched = bytes.clone();
+            patched[mode_offset] = byte;
+
+            let items = review_items(&patched);
+            let mode = items
+                .iter()
+                .find(|(k, _)| k == "Post-cond mode")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or_else(|| panic!("no mode item for {byte:#04x}"));
+            assert_eq!(mode, expected);
+        }
+    }
+
     /// A contract call to a *registry* contract that is not a SIP-10 `transfer` must be reviewed
     /// in full.
     ///
