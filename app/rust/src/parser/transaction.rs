@@ -244,6 +244,15 @@ impl<'a> Transaction<'a> {
             _ => return Ok(false),
         };
 
+        // Only a call the renderer actually shows as a compact SIP-10 transfer card may hide
+        // items. `sip10_token_info()` alone matches on contract address and name, so a call to a
+        // *registry* contract with any other function name would suppress the base items in
+        // `num_items` while `get_contract_call_items` still rendered them -- silently dropping
+        // the trailing arguments, the function name and every post-condition from the review.
+        if !contract_call.is_sip10_transfer() {
+            return Ok(false);
+        }
+
         let token_info = match contract_call.sip10_token_info() {
             Some(info) => info,
             None => return Ok(false),
