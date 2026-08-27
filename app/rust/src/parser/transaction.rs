@@ -11,7 +11,7 @@ use crate::{
         error::ParserError,
         parser_common::{HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH},
         transaction_auth::TransactionAuth,
-        transaction_payload::TransactionPayload,
+        transaction_payload::{DisplayMode, TransactionPayload, CONTRACT_CALL_BASE_ITEMS},
     },
 };
 
@@ -24,6 +24,19 @@ use super::{PostConditions, TransactionPostConditionMode};
 // 1-byte pubkey type
 // 65-bytes vrs
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
+
+// Every transaction shows an origin, a nonce and a fee before its payload.
+const TX_ORIGIN_ITEMS: u8 = 3;
+
+/// Most display items a transaction may have.
+///
+/// Not 255. zxlib hands the review screens their index through
+/// `viewfunc_getItem_t(int8_t displayIdx, ..)` (deps/ledger-zxlib/app/ui/view.h), so index 128
+/// and up arrive negative, `parser_getItem` compares them against `numItems` as an unsigned
+/// value, and the item is refused. The ceiling belongs to the UI, not to the u8 the parser
+/// counts with, and a transaction past it cannot be reviewed on any screen -- blind signing
+/// included, since that shows the same items behind a warning. Refusing it is the honest answer.
+pub const MAX_DISPLAY_ITEMS: u8 = 128;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -234,6 +247,12 @@ impl<'a> Transaction<'a> {
 
     /// Checks if SIP-10 token transfer details should be hidden
     /// This includes postconditions and contract call base items (address, name, function)
+    ///
+    /// Only for a recognised SIP-10 *transfer*: that is the one call `render_sip10_transfer_args`
+    /// collapses to Amount / From / To / Memo, so it is the only one whose base items and
+    /// post-condition are redundant. Keying this on the contract alone -- as it used to -- hid the
+    /// post-conditions of any other function on a listed token, and since the renderer still spent
+    /// three indices on the base items, the last three arguments were never shown either.
     fn should_hide_sip10_details(&self) -> Result<bool, ParserError> {
         if self.post_conditions.num_items() == 0 {
             return Ok(false);
@@ -243,6 +262,10 @@ impl<'a> Transaction<'a> {
             TransactionPayload::ContractCall(call) => call,
             _ => return Ok(false),
         };
+
+        if !contract_call.is_sip10_transfer() {
+            return Ok(false);
+        }
 
         let token_info = match contract_call.sip10_token_info() {
             Some(info) => info,
@@ -277,21 +300,81 @@ impl<'a> Transaction<'a> {
     /// post-conditions changes *which* items are listed, never whether an argument's value can be
     /// rendered.
     pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
+        if let TransactionPayload::ContractCall(call) = &self.payload {
+            // A SIP-10 transfer has its own fixed rendering; everything else is gated exactly
+            // when its arguments cannot be shown one item per leaf.
+            if !call.is_sip10_transfer() {
+                // A transaction whose items do not fit the display index at all is *rejected* by
+                // num_items(), and has been since before there was a gate -- 70 distinct
+                // post-conditions is 280 items and the device will not sign it. Do not turn that
+                // into a blind-signing prompt: enabling the setting would not make it signable,
+                // so the prompt would be a lie and the real error would never be seen.
+                if self.num_items().is_err() {
+                    return Ok(false);
+                }
+                // Gated only when neither layout shows everything. The fallback -- one item per
+                // argument -- is what the device showed before flattening existed, so a call it
+                // rendered in full then must not need blind signing now.
+                return Ok(!self.flatten_args()? && !call.single_items_render());
+            }
+        }
         self.payload.requires_blindsign()
     }
 
-    pub fn num_items(&self) -> Result<u8, ParserError> {
-        let mut num_items_post_conditions = self.post_conditions.num_items();
+    /// Whether the contract call's arguments are displayed one item per leaf.
+    ///
+    /// Two things have to hold. Every leaf must render, which the contract call worked out at
+    /// parse time and recorded as `flat_items`. And the items must fit alongside the rest of the
+    /// transaction inside the u8 display index `_getNumItems` reports -- post-conditions and
+    /// arguments share that space, and a wide DLMM withdrawal already spends 26 items on
+    /// post-conditions alone, so the check cannot live in the payload by itself.
+    ///
+    /// When it does not hold, the arguments fall back to one item each -- the type placeholders
+    /// this rendering replaced -- and `requires_blindsign` gates the transaction. So the fallback
+    /// is never what a user silently signs: they have opted in to see it.
+    fn flatten_args(&self) -> Result<bool, ParserError> {
+        let TransactionPayload::ContractCall(call) = &self.payload else {
+            return Ok(false);
+        };
+        let Some(leaves) = call.flat_items() else {
+            return Ok(false);
+        };
 
         let hide_sip10_details = self.should_hide_sip10_details()?;
+        let (base_items, post_conditions) = if hide_sip10_details {
+            (0, 0)
+        } else {
+            (CONTRACT_CALL_BASE_ITEMS, self.post_conditions.num_items())
+        };
 
-        if hide_sip10_details {
-            num_items_post_conditions = 0;
-        }
+        Ok(TX_ORIGIN_ITEMS
+            .checked_add(base_items)
+            .and_then(|items| items.checked_add(leaves))
+            .and_then(|items| items.checked_add(post_conditions))
+            .is_some_and(|items| items <= MAX_DISPLAY_ITEMS))
+    }
+
+    /// The layout every item lookup in this transaction shares.
+    fn display_mode(&self) -> Result<DisplayMode, ParserError> {
+        Ok(DisplayMode {
+            hide_sip10_details: self.should_hide_sip10_details()?,
+            flatten_args: self.flatten_args()?,
+        })
+    }
+
+    pub fn num_items(&self) -> Result<u8, ParserError> {
+        let mode = self.display_mode()?;
+        let num_items_post_conditions = if mode.hide_sip10_details {
+            0
+        } else {
+            self.post_conditions.num_items()
+        };
 
         // nonce + origin + fee-rate + payload + post-conditions
-        3u8.checked_add(self.payload.num_items(hide_sip10_details))
+        TX_ORIGIN_ITEMS
+            .checked_add(self.payload.num_items(mode)?)
             .and_then(|res| res.checked_add(num_items_post_conditions))
+            .filter(|items| *items <= MAX_DISPLAY_ITEMS)
             .ok_or(ParserError::ValueOutOfRange)
     }
 
@@ -379,7 +462,7 @@ impl<'a> Transaction<'a> {
                 out_value,
                 page_idx,
                 total_items, // we need to display the payload in order
-                hide_sip10_details,
+                self.display_mode()?,
             )
         }
     }

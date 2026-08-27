@@ -19,7 +19,12 @@ parser_error_t _validate(const parser_context_t *ctx, const parser_tx_t *v);
 
 parser_error_t _getNumItems(const parser_context_t *ctx, const parser_tx_t *v, uint8_t *num_items);
 
-parser_error_t _getItem(const parser_context_t *ctx, int8_t displayIdx, char *outKey, uint16_t outKeyLen, char *outValue,
+// displayIdx is unsigned, matching the u8 the Rust side has always taken. Declared int8_t, every
+// index from 128 up crossed the FFI sign-extended, the item was never found, and the device
+// answered display_idx_out_of_range -- refusing a transaction it had just counted and could
+// render. zxlib's viewfunc_getItem_t is int8_t as well, which is why MAX_DISPLAY_ITEMS caps a
+// transaction at 128 items: past that the review screens cannot address them either.
+parser_error_t _getItem(const parser_context_t *ctx, uint8_t displayIdx, char *outKey, uint16_t outKeyLen, char *outValue,
                         uint16_t outValueLen, uint8_t pageIdx, uint8_t *pageCount, const parser_tx_t *v);
 
 /****************************** Getters for the required information for signing*******************/
