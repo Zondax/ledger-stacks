@@ -1,5 +1,5 @@
 use super::{error::ParserError, read_varint};
-use crate::zxformat::{page_string, Writer};
+use crate::zxformat::{page_string, page_string_with, Writer};
 use core::fmt::Write;
 use nom::bytes::complete::take;
 
@@ -9,6 +9,14 @@ const BYTE_STRING_HEADER_LEN: usize = "\x17Stacks Signed Message:\n".len();
 // message to around this size, as we need to change special characters
 // like /t or /r with spaces.
 const MAX_ASCII_LEN: usize = 270;
+
+// Longest message the device pages through in full.
+//
+// The signature covers the whole message, so anything the review cannot show has to go through
+// the blind-signing gate instead. The bound exists because `page_string` counts pages in a `u8`
+// and the narrowest buffer the app pages into is the 30-byte scratch `parser_validate` uses:
+// 4 KiB needs 142 pages there, comfortably inside a `u8`.
+const MAX_DISPLAYABLE_LEN: usize = 4096;
 
 #[repr(C)]
 #[cfg_attr(test, derive(Debug))]
@@ -31,6 +39,11 @@ impl<'a> Message<'a> {
 
     pub fn num_items(&self) -> u8 {
         self.0.num_items()
+    }
+
+    /// Whether this message commits to text the review cannot show in full.
+    pub fn requires_blindsign(&self) -> bool {
+        self.0.requires_blindsign()
     }
 
     pub fn get_item(
@@ -105,6 +118,25 @@ impl<'a> ByteString<'a> {
         1
     }
 
+    /// Whether the message is longer than the review can page through.
+    ///
+    /// Messages above [`MAX_DISPLAYABLE_LEN`] are shown as a leading excerpt only, so signing one
+    /// has to be gated on blind signing: the digest covers every byte, including the ones the
+    /// excerpt drops.
+    pub fn requires_blindsign(&self) -> bool {
+        self.0.len() > MAX_DISPLAYABLE_LEN
+    }
+
+    // Control characters [\b..=\r] would break the layout, so they render as spaces.
+    #[inline(always)]
+    fn printable(byte: u8) -> u8 {
+        if (0x08..=b'\r').contains(&byte) {
+            b' '
+        } else {
+            byte
+        }
+    }
+
     pub fn get_item(
         &mut self,
         display_idx: u8,
@@ -117,44 +149,32 @@ impl<'a> ByteString<'a> {
         }
 
         let mut writer_key = Writer::new(out_key);
-
-        let mut msg = [0; MAX_ASCII_LEN + 3];
-        let suffix = [b'.'; 3];
-
-        // look for special characters [\b..=\r]
-        // and replace them with space b' '
-        let msg_iter = self.0.iter().map(|c| {
-            if (*c >= 0x08) && (*c <= b'\r') {
-                b' '
-            } else {
-                *c
-            }
-        });
-
-        let mut copy_len = if self.0.len() > MAX_ASCII_LEN {
-            let m = msg
-                .get_mut(MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len())
-                .ok_or(ParserError::UnexpectedBufferEnd)?;
-            m.copy_from_slice(&suffix[..]);
-            MAX_ASCII_LEN
-        } else {
-            self.0.len()
-        };
-
-        msg.iter_mut()
-            .take(copy_len)
-            .zip(msg_iter)
-            .for_each(|(r, m)| *r = m);
-
-        if copy_len >= MAX_ASCII_LEN {
-            copy_len += suffix.len()
-        }
-
         writer_key
             .write_str("Sign Message")
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
-        page_string(out_value, &msg[..copy_len], page_idx)
+        if !self.requires_blindsign() {
+            // Page over the message itself. Rewriting each page as it is copied out keeps the
+            // whole text reviewable without a stack buffer the size of the message.
+            return page_string_with(out_value, self.0, page_idx, Self::printable);
+        }
+
+        // Past the paging limit the user has already accepted blind signing, so show as much of
+        // the message as fits and mark it as cut short.
+        let mut msg = [0; MAX_ASCII_LEN + 3];
+        let suffix = [b'.'; 3];
+
+        let m = msg
+            .get_mut(MAX_ASCII_LEN..MAX_ASCII_LEN + suffix.len())
+            .ok_or(ParserError::UnexpectedBufferEnd)?;
+        m.copy_from_slice(&suffix[..]);
+
+        msg.iter_mut()
+            .take(MAX_ASCII_LEN)
+            .zip(self.0.iter().map(|c| Self::printable(*c)))
+            .for_each(|(r, m)| *r = m);
+
+        page_string(out_value, &msg[..MAX_ASCII_LEN + suffix.len()], page_idx)
     }
 }
 
@@ -171,6 +191,97 @@ mod test {
         vec.push(len as u8);
         vec.extend_from_slice(data.as_bytes());
         vec
+    }
+
+    /// Builds a signed-message blob whose length prefix is a real varint, so the helper works
+    /// past the 252-byte single-byte form.
+    fn built_long_message(data: &str) -> Vec<u8> {
+        let header = "\x17Stacks Signed Message:\n".as_bytes();
+        let mut vec = vec![];
+        vec.extend_from_slice(header);
+        let len = data.len();
+        if len < 0xFD {
+            vec.push(len as u8);
+        } else if len <= u16::MAX as usize {
+            vec.push(0xFD);
+            vec.extend_from_slice(&(len as u16).to_le_bytes());
+        } else {
+            vec.push(0xFE);
+            vec.extend_from_slice(&(len as u32).to_le_bytes());
+        }
+        vec.extend_from_slice(data.as_bytes());
+        vec
+    }
+
+    /// Reads back every page of the single review item.
+    fn rendered(msg: &mut ByteString<'_>, page_width: usize) -> String {
+        let mut key = [0u8; 32];
+        let mut value = std::vec![0u8; page_width];
+        let pages = msg.get_item(0, &mut key, &mut value, 0).unwrap();
+
+        let mut out = String::new();
+        for page in 0..pages {
+            let mut value = std::vec![0u8; page_width];
+            msg.get_item(0, &mut key, &mut value, page).unwrap();
+            out.push_str(core::str::from_utf8(&value).unwrap().trim_end_matches('\0'));
+        }
+        out
+    }
+
+    /// A message the review can page through is rendered whole, not cut at 270 bytes.
+    ///
+    /// The excerpt used to stop at `MAX_ASCII_LEN` and append "...", while the signature covered
+    /// every byte -- so a wallet could hide arbitrary text behind an approval. Real sign-in
+    /// messages sit just past that limit; this one is the 284-byte Gamma prompt.
+    #[test]
+    fn test_message_past_the_excerpt_limit_renders_in_full() {
+        let data = "Welcome!\nSign this message to access Gamma's full feature set.\nAs always, by using Gamma, you agree to our terms of use: https://gamma.io/terms\nDomain: gamma.io\nAccount: SP2PH3XAPDMSKXQVS1WZ80JGZACY713JQQEE1DY48\nNonce: c83024f9e9aef40f5d72076e883054c07100035112826b14f78e5a893d62b1bf\n";
+        assert!(data.len() > MAX_ASCII_LEN);
+        assert!(data.len() <= MAX_DISPLAYABLE_LEN);
+
+        let blob = built_long_message(data);
+        let mut msg = ByteString::from_bytes(&blob).unwrap();
+
+        assert!(!msg.requires_blindsign());
+
+        let shown = rendered(&mut msg, 40);
+        let expected: String = data
+            .chars()
+            .map(|c| {
+                if ('\u{08}'..='\r').contains(&c) {
+                    ' '
+                } else {
+                    c
+                }
+            })
+            .collect();
+        assert_eq!(shown, expected);
+        assert!(!shown.ends_with("..."));
+    }
+
+    /// Past the paging limit the message is excerpted, and signing it needs blind signing.
+    #[test]
+    fn test_message_beyond_paging_limit_requires_blindsign() {
+        let data = "A".repeat(MAX_DISPLAYABLE_LEN + 1);
+        let blob = built_long_message(&data);
+        let mut msg = ByteString::from_bytes(&blob).unwrap();
+
+        assert!(msg.requires_blindsign());
+
+        let shown = rendered(&mut msg, 40);
+        assert!(shown.ends_with("..."), "{shown}");
+        assert_eq!(shown.len(), MAX_ASCII_LEN + 3);
+    }
+
+    /// A short message keeps rendering exactly as before.
+    #[test]
+    fn test_short_message_is_not_gated() {
+        let data = "hello there";
+        let blob = built_long_message(data);
+        let mut msg = ByteString::from_bytes(&blob).unwrap();
+
+        assert!(!msg.requires_blindsign());
+        assert_eq!(rendered(&mut msg, 40), data);
     }
 
     #[test]
