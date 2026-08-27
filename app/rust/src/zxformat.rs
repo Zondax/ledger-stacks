@@ -288,11 +288,19 @@ where
         return Err(ParserError::NoData);
     }
 
-    // Saturate rather than wrap. An input long enough to need more than 255 pages of a narrow
-    // output buffer used to report a truncated count, which both hides the tail and makes the
-    // pages that are reachable line up with the wrong offsets.
+    // Refuse anything the page counter cannot address. The count is a `u8`, and it used to be
+    // reached by a truncating cast plus an unchecked increment: an input needing more than 255
+    // pages reported the count modulo 256, and one landing on exactly 255 full pages plus a
+    // remainder wrapped the increment to 0, which drops the item from the review entirely.
+    //
+    // Saturating would stop the wrap but still show a fraction of the input under a page total
+    // that reads as complete. Failing here instead turns it into a parse error, so the
+    // transaction is rejected rather than half-shown.
     let pages = in_len / out_len + usize::from(in_len % out_len > 0);
-    let page_count = pages.min(u8::MAX as usize) as u8;
+    if pages > u8::MAX as usize {
+        return Err(ParserError::ValueOutOfRange);
+    }
+    let page_count = pages as u8;
 
     if page_idx < page_count {
         let idx = page_idx as usize * out_len;
@@ -309,6 +317,35 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+
+    /// An input needing more than 255 pages is rejected, not silently under-reported.
+    ///
+    /// The count is a `u8`. It used to come from a truncating cast plus an unchecked increment,
+    /// so 7396 bytes through the 30-byte scratch buffer `parser_validate` uses wrapped the count
+    /// to 0 -- which drops the item from the review while its bytes stay signed. The narrowest
+    /// buffer decides the limit, so that is what this pins.
+    #[test]
+    fn test_input_needing_more_than_255_pages_is_rejected() {
+        // `parser_validate` pages into `char tmpVal[30]`, leaving 29 usable bytes per page.
+        const OUT: usize = 30;
+        const USABLE: usize = OUT - 1;
+
+        let mut out = [0u8; OUT];
+
+        let exactly_255 = std::vec![b'A'; 255 * USABLE];
+        assert_eq!(page_string(&mut out, &exactly_255, 0), Ok(255));
+
+        for len in [255 * USABLE + 1, 256 * USABLE, 45_000] {
+            let too_long = std::vec![b'A'; len];
+            assert_eq!(
+                page_string(&mut out, &too_long, 0),
+                Err(ParserError::ValueOutOfRange),
+                "{} bytes should not be pageable into {} bytes",
+                len,
+                OUT
+            );
+        }
+    }
 
     /// The buffer post-conditions format STX amounts into must hold the widest possible value.
     ///
