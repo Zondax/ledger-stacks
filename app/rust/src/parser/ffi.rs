@@ -108,8 +108,13 @@ pub unsafe extern "C" fn _getItem(
 
 /// Sets `*requires` to 1 when the parsed object commits to data the device cannot display.
 ///
-/// Only transactions can be blind-signed; messages, JWTs and structured messages have their own
-/// review flows and always report 0.
+/// Transactions report on their payload; byte-string messages report on their length, since the
+/// signature covers text past what the review can page through.
+///
+/// JWTs and SIP-018 structured messages are deliberately *not* gated here, and that is a known
+/// gap rather than a guarantee: both review flows show a hash of the signed bytes instead of the
+/// content, so they are always blind in the sense this flag exists to catch. Reporting 0 leaves
+/// `parser_parse` free to suppress the risk screen for them.
 #[no_mangle]
 pub unsafe extern "C" fn _tx_requires_blindsign(
     tx_t: *const parse_tx_t,
@@ -124,17 +129,21 @@ pub unsafe extern "C" fn _tx_requires_blindsign(
         return ParserError::ContextMismatch as _;
     };
 
-    match obj.transaction() {
-        Some(tx) => match tx.requires_blindsign() {
+    if let Some(tx) = obj.transaction() {
+        return match tx.requires_blindsign() {
             Ok(value) => {
                 *requires = value as u8;
                 ParserError::ParserOk as _
             }
             Err(e) => e as _,
-        },
-        // Not a transaction: nothing to gate.
-        None => ParserError::ParserOk as _,
+        };
     }
+
+    if let Some(msg) = obj.message() {
+        *requires = msg.requires_blindsign() as u8;
+    }
+
+    ParserError::ParserOk as _
 }
 
 #[no_mangle]
@@ -262,11 +271,26 @@ pub unsafe extern "C" fn _hash_mode(tx_t: *const parse_tx_t, hash_mode: *mut u8)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _num_multisig_fields(tx_t: *const parse_tx_t) -> u32 {
-    parsed_obj_from_state(tx_t as _)
+pub unsafe extern "C" fn _num_multisig_fields(
+    tx_t: *const parse_tx_t,
+    num_fields: *mut u32,
+) -> u32 {
+    // Reporting a count of zero for a failure would be indistinguishable from a signer with no
+    // preceding auth fields, and the sighash chain would then hash nothing and report success.
+    if num_fields.is_null() {
+        return ParserError::NoData as _;
+    }
+
+    match parsed_obj_from_state(tx_t as _)
         .and_then(|obj| obj.transaction())
         .and_then(|tx| tx.transaction_auth.num_auth_fields())
-        .unwrap_or(0)
+    {
+        Some(count) => {
+            *num_fields = count;
+            ParserError::ParserOk as _
+        }
+        None => ParserError::ContextMismatch as _,
+    }
 }
 
 #[no_mangle]

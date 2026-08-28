@@ -11,7 +11,7 @@ use crate::{
         error::ParserError,
         parser_common::{HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH},
         transaction_auth::TransactionAuth,
-        transaction_payload::TransactionPayload,
+        transaction_payload::{DisplayMode, TransactionPayload, CONTRACT_CALL_BASE_ITEMS},
     },
 };
 
@@ -24,6 +24,28 @@ use super::{PostConditions, TransactionPostConditionMode};
 // 1-byte pubkey type
 // 65-bytes vrs
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
+
+// Every transaction review opens with the signing spending condition's address, nonce and fee,
+// before the payload. All three are read from whichever condition the device signs with, and the
+// address is titled to match -- "Sponsor" on a sponsored transaction the device sponsors,
+// "Origin" otherwise.
+const TX_ORIGIN_ITEMS: u8 = 3;
+
+// Where the post-condition mode sits, immediately after the origin items.
+const POST_CONDITION_MODE_ITEM_IDX: u8 = TX_ORIGIN_ITEMS;
+
+// The origin items plus the post-condition mode.
+const TX_HEADER_ITEMS: u8 = TX_ORIGIN_ITEMS + 1;
+
+/// Most display items a transaction may have.
+///
+/// Not 255. zxlib hands the review screens their index through
+/// `viewfunc_getItem_t(int8_t displayIdx, ..)` (deps/ledger-zxlib/app/ui/view.h), so index 128
+/// and up arrive negative, `parser_getItem` compares them against `numItems` as an unsigned
+/// value, and the item is refused. The ceiling belongs to the UI, not to the u8 the parser
+/// counts with, and a transaction past it cannot be reviewed on any screen -- blind signing
+/// included, since that shows the same items behind a warning. Refusing it is the honest answer.
+pub const MAX_DISPLAY_ITEMS: u8 = 128;
 
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
@@ -234,6 +256,12 @@ impl<'a> Transaction<'a> {
 
     /// Checks if SIP-10 token transfer details should be hidden
     /// This includes postconditions and contract call base items (address, name, function)
+    ///
+    /// Only for a recognised SIP-10 *transfer*: that is the one call `render_sip10_transfer_args`
+    /// collapses to Amount / From / To / Memo, so it is the only one whose base items and
+    /// post-condition are redundant. Keying this on the contract alone -- as it used to -- hid the
+    /// post-conditions of any other function on a listed token, and since the renderer still spent
+    /// three indices on the base items, the last three arguments were never shown either.
     fn should_hide_sip10_details(&self) -> Result<bool, ParserError> {
         if self.post_conditions.num_items() == 0 {
             return Ok(false);
@@ -243,6 +271,18 @@ impl<'a> Transaction<'a> {
             TransactionPayload::ContractCall(call) => call,
             _ => return Ok(false),
         };
+
+        // Only a call the renderer actually shows as a compact SIP-10 transfer card may hide
+        // items. `sip10_token_info()` alone matches on contract address and name, so a call to a
+        // *registry* contract with any other function name used to shrink `num_items` by the
+        // three base items while `get_contract_call_items` still rendered them. The payload's
+        // remaining slots were then consumed base-items-first, and whatever ran off the end was
+        // signed without ever being shown: with fewer than three arguments even the contract and
+        // function names disappeared, with more the last three arguments did, and every
+        // post-condition was suppressed in either case.
+        if !contract_call.is_sip10_transfer() {
+            return Ok(false);
+        }
 
         let token_info = match contract_call.sip10_token_info() {
             Some(info) => info,
@@ -277,22 +317,89 @@ impl<'a> Transaction<'a> {
     /// post-conditions changes *which* items are listed, never whether an argument's value can be
     /// rendered.
     pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
+        if let TransactionPayload::ContractCall(call) = &self.payload {
+            // A SIP-10 transfer has its own fixed rendering; everything else is gated exactly
+            // when its arguments cannot be shown one item per leaf.
+            if !call.is_sip10_transfer() {
+                // A transaction whose items do not fit the display index at all is *rejected* by
+                // num_items(), and has been since before there was a gate -- 70 distinct
+                // post-conditions is 280 items and the device will not sign it. Do not turn that
+                // into a blind-signing prompt: enabling the setting would not make it signable,
+                // so the prompt would be a lie and the real error would never be seen.
+                if self.num_items().is_err() {
+                    return Ok(false);
+                }
+                // Gated only when neither layout shows everything. The fallback -- one item per
+                // argument -- is what the device showed before flattening existed, so a call it
+                // rendered in full then must not need blind signing now.
+                return Ok(!self.flatten_args()? && !call.single_items_render());
+            }
+        }
         self.payload.requires_blindsign()
     }
 
-    pub fn num_items(&self) -> Result<u8, ParserError> {
-        let mut num_items_post_conditions = self.post_conditions.num_items();
+    /// Whether the contract call's arguments are displayed one item per leaf.
+    ///
+    /// Two things have to hold. Every leaf must render, which the contract call worked out at
+    /// parse time and recorded as `flat_items`. And the items must fit alongside the rest of the
+    /// transaction inside the u8 display index `_getNumItems` reports -- post-conditions and
+    /// arguments share that space, and a wide DLMM withdrawal already spends 26 items on
+    /// post-conditions alone, so the check cannot live in the payload by itself.
+    ///
+    /// When it does not hold, the arguments fall back to one item each -- the type placeholders
+    /// this rendering replaced -- and `requires_blindsign` gates the transaction. So the fallback
+    /// is never what a user silently signs: they have opted in to see it.
+    fn flatten_args(&self) -> Result<bool, ParserError> {
+        let TransactionPayload::ContractCall(call) = &self.payload else {
+            return Ok(false);
+        };
+        let Some(leaves) = call.flat_items() else {
+            return Ok(false);
+        };
 
         let hide_sip10_details = self.should_hide_sip10_details()?;
+        let (base_items, post_conditions) = if hide_sip10_details {
+            (0, 0)
+        } else {
+            (CONTRACT_CALL_BASE_ITEMS, self.post_conditions.num_items())
+        };
 
-        if hide_sip10_details {
-            num_items_post_conditions = 0;
-        }
+        Ok(TX_HEADER_ITEMS
+            .checked_add(base_items)
+            .and_then(|items| items.checked_add(leaves))
+            .and_then(|items| items.checked_add(post_conditions))
+            .is_some_and(|items| items <= MAX_DISPLAY_ITEMS))
+    }
 
-        // nonce + origin + fee-rate + payload + post-conditions
-        3u8.checked_add(self.payload.num_items(hide_sip10_details))
+    /// The layout every item lookup in this transaction shares.
+    fn display_mode(&self) -> Result<DisplayMode, ParserError> {
+        Ok(DisplayMode {
+            hide_sip10_details: self.should_hide_sip10_details()?,
+            flatten_args: self.flatten_args()?,
+        })
+    }
+
+    pub fn num_items(&self) -> Result<u8, ParserError> {
+        let mode = self.display_mode()?;
+        let num_items_post_conditions = if mode.hide_sip10_details {
+            0
+        } else {
+            self.post_conditions.num_items()
+        };
+
+        // origin + nonce + fee-rate + post-condition mode + payload + post-conditions
+        TX_HEADER_ITEMS
+            .checked_add(self.payload.num_items(mode)?)
             .and_then(|res| res.checked_add(num_items_post_conditions))
+            .filter(|items| *items <= MAX_DISPLAY_ITEMS)
             .ok_or(ParserError::ValueOutOfRange)
+    }
+
+    /// The transaction's post-condition mode.
+    ///
+    /// Parsing already rejects anything that is not a known variant, so this cannot fail.
+    pub fn post_condition_mode(&self) -> Option<TransactionPostConditionMode> {
+        TransactionPostConditionMode::from_u8(self.transaction_modes[1])
     }
 
     fn get_origin_items(
@@ -305,8 +412,19 @@ impl<'a> Transaction<'a> {
         c_zemu_log_stack("Transaction::get_origin_items\x00");
         let mut writer_key = zxformat::Writer::new(out_key);
 
+        // Host builds reach here with `self.signer` still `Invalid`: only `parser_validate`
+        // calls `check_signer_pk_hash`, and the C++ tests go through `parser_parse`. On device
+        // that is a state we should never render, so it is an error; in a test it just means
+        // no signer was nominated, and falling back to the origin keeps those fixtures working
+        // while still letting a test nominate the sponsor and exercise the branch below.
         #[cfg(any(test, feature = "cpp_test"))]
-        let origin = self.transaction_auth.origin();
+        let origin = match self.signer {
+            SignerId::Sponsor => self
+                .transaction_auth
+                .sponsor()
+                .ok_or(ParserError::InvalidAuthType)?,
+            _ => self.transaction_auth.origin(),
+        };
 
         #[cfg(not(any(test, feature = "cpp_test")))]
         let origin = match self.signer {
@@ -318,11 +436,22 @@ impl<'a> Transaction<'a> {
             _ => return Err(ParserError::InvalidAuthType),
         };
 
+        // On a sponsored transaction the device signs as the sponsor, and the address, nonce and
+        // fee below are the sponsor's. Titling the address "Origin" attributed them to the party
+        // that built the transaction instead.
+        //
+        // This needs no cfg fork of its own: with `self.signer` at `Invalid` it yields "Origin",
+        // which is what the host fixtures above expect.
+        let signer_label = match self.signer {
+            SignerId::Sponsor => "Sponsor",
+            _ => "Origin",
+        };
+
         match display_idx {
             // The address of who signed this transaction
             0 => {
                 writer_key
-                    .write_str("Origin")
+                    .write_str(signer_label)
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 let origin_address = origin.signer_address(self.version)?;
                 zxformat::page_string(out_value, origin_address.as_ref(), page_idx)
@@ -346,6 +475,31 @@ impl<'a> Transaction<'a> {
 
             _ => unreachable!(),
         }
+    }
+
+    /// Renders what happens to assets no post-condition covers.
+    ///
+    /// Without it the listed post-conditions read as a guarantee even under `Allow`, where
+    /// anything they do not mention moves freely.
+    fn get_post_condition_mode_item(
+        &self,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        zxformat::Writer::new(out_key)
+            .write_str("Post-cond mode")
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+
+        let mode = match self
+            .post_condition_mode()
+            .ok_or(ParserError::UnexpectedValue)?
+        {
+            TransactionPostConditionMode::Allow => "Allow",
+            TransactionPostConditionMode::Deny => "Deny",
+            TransactionPostConditionMode::Originator => "Originator",
+        };
+        zxformat::page_string(out_value, mode.as_bytes(), page_idx)
     }
 
     #[inline(always)]
@@ -379,7 +533,7 @@ impl<'a> Transaction<'a> {
                 out_value,
                 page_idx,
                 total_items, // we need to display the payload in order
-                hide_sip10_details,
+                self.display_mode()?,
             )
         }
     }
@@ -396,10 +550,12 @@ impl<'a> Transaction<'a> {
             return Err(ParserError::DisplayIdxOutOfRange);
         }
 
-        if display_idx < 3 {
-            self.get_origin_items(display_idx, out_key, out_value, page_idx)
-        } else {
-            self.get_other_items(display_idx, out_key, out_value, page_idx)
+        match display_idx {
+            0..=2 => self.get_origin_items(display_idx, out_key, out_value, page_idx),
+            POST_CONDITION_MODE_ITEM_IDX => {
+                self.get_post_condition_mode_item(out_key, out_value, page_idx)
+            }
+            _ => self.get_other_items(display_idx, out_key, out_value, page_idx),
         }
     }
 
@@ -520,5 +676,65 @@ impl<'a> Transaction<'a> {
     // check just for origin, meaning we support standard transaction only
     pub fn hash_mode(&self) -> Result<HashMode, ParserError> {
         self.transaction_auth.hash_mode()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::prelude::v1::*;
+
+    // Sponsored transfer: auth type 0x05, origin hash160 60dbb3.., sponsor hash160 29cfc6..,
+    // origin nonce 220 / fee 52259, sponsor nonce 0 / fee 0.
+    const SPONSORED_TX: &str = "0000000001050060dbb32efe0c56e1d418c020f4cb71c556b6a60d00000000000000dc000000000000cc230000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000029cfc6376255a78451eeb4b129ed8eacffa2feef000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000000216debc095099629badb11b9d5335e874d12f1f1d450973656e642d6d616e790973656e642d6d616e7900000000";
+    const ORIGIN_HASH: &str = "60dbb32efe0c56e1d418c020f4cb71c556b6a60d";
+    const SPONSOR_HASH: &str = "29cfc6376255a78451eeb4b129ed8eacffa2feef";
+
+    fn header_item(tx: &Transaction<'_>, display_idx: u8) -> (String, String) {
+        let mut key = [0u8; 30];
+        let mut value = [0u8; 30];
+        tx.get_origin_items(display_idx, &mut key, &mut value, 0)
+            .unwrap();
+        let trim = |b: &[u8]| {
+            core::str::from_utf8(b)
+                .unwrap()
+                .trim_end_matches('\0')
+                .to_string()
+        };
+        (trim(&key), trim(&value))
+    }
+
+    /// The three header items belong to whoever the device signs as, and say so.
+    ///
+    /// On a sponsored transaction the device signs as the sponsor, so the address, nonce and fee
+    /// are read from the sponsor's spending condition. Titling the address "Origin" attributed
+    /// the sponsor's own values to the party that built the transaction.
+    #[test]
+    fn test_sponsor_header_items_are_labelled_and_read_as_the_sponsor() {
+        let bytes = hex::decode(SPONSORED_TX).unwrap();
+        let origin_hash = hex::decode(ORIGIN_HASH).unwrap();
+        let sponsor_hash = hex::decode(SPONSOR_HASH).unwrap();
+
+        let mut tx = Transaction::from_bytes(&bytes).unwrap();
+
+        assert_eq!(tx.check_signer_pk_hash(&origin_hash), ParserError::ParserOk);
+        assert_eq!(tx.signer, SignerId::Origin);
+        let (origin_key, origin_addr) = header_item(&tx, 0);
+        assert_eq!(origin_key, "Origin");
+        assert_eq!(header_item(&tx, 1).1, "220");
+        assert_eq!(header_item(&tx, 2).1, "52259");
+
+        assert_eq!(
+            tx.check_signer_pk_hash(&sponsor_hash),
+            ParserError::ParserOk
+        );
+        assert_eq!(tx.signer, SignerId::Sponsor);
+        let (sponsor_key, sponsor_addr) = header_item(&tx, 0);
+        assert_eq!(sponsor_key, "Sponsor");
+        assert_eq!(header_item(&tx, 1).1, "0");
+        assert_eq!(header_item(&tx, 2).1, "0");
+
+        // The label is only meaningful if it tracks a different address.
+        assert_ne!(origin_addr, sponsor_addr);
     }
 }
