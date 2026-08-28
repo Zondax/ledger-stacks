@@ -1007,9 +1007,9 @@ mod test {
     /// The transaction from issue #238 -- a 145-bin DLMM withdrawal carrying 158 post-conditions
     /// (155 MaySend NFTs on one asset, two FT, one STX) -- as the zemu `wide-position` fixture.
     /// Before #240 it was rejected at parse; the snapshots pin every screen, and this pins the
-    /// number: 26 display items, with the 155 NFTs collapsed into one aggregated block.
+    /// number: 27 display items, with the 155 NFTs collapsed into one aggregated block.
     #[test]
-    fn test_issue_238_transaction_renders_26_items() {
+    fn test_issue_238_transaction_renders_27_items() {
         let fixtures = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests_zemu/tests/dlmm_post_conditions.json"
@@ -1021,7 +1021,7 @@ mod test {
         let mut obj = ParsedObj::from_bytes(&bytes).expect("must parse after #240");
         obj.read(&bytes).unwrap();
         let num_items = obj.transaction().unwrap().num_items().unwrap();
-        assert_eq!(num_items, 26);
+        assert_eq!(num_items, 27);
 
         let cstr = |buf: &[u8]| {
             let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
@@ -1038,20 +1038,28 @@ mod test {
         let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
 
         assert_eq!(
-            keys[..6],
-            ["Origin", "Nonce", "Fee (uSTX)", "Contract address", "Contract name", "Function name"]
+            keys[..7],
+            [
+                "Origin",
+                "Nonce",
+                "Fee (uSTX)",
+                "Post-cond mode",
+                "Contract address",
+                "Contract name",
+                "Function name"
+            ]
         );
-        assert_eq!(items[5].1, "withdraw-relative-liquidity-same-multi");
-        assert_eq!(keys[6..11], ["arg0", "arg1", "arg2", "arg3", "arg4"]);
+        assert_eq!(items[6].1, "withdraw-relative-liquidity-same-multi");
+        assert_eq!(keys[7..12], ["arg0", "arg1", "arg2", "arg3", "arg4"]);
         // The 145-bin list is far past what fits one item per leaf, so it renders as its type.
-        assert_eq!(items[6].1, "is List");
+        assert_eq!(items[7].1, "is List");
         // 155 conditions on one (principal, asset, MaySend) key are a single 4-item block.
         assert_eq!(
-            keys[22..],
+            keys[23..],
             ["Principal", "Asset name", "NonFungi. Code", "Count"]
         );
-        assert_eq!(items[24].1, "MaySend");
-        assert_eq!(items[25].1, "155");
+        assert_eq!(items[25].1, "MaySend");
+        assert_eq!(items[26].1, "155");
     }
 
     const MODE_FIXTURE_HEX: &str = "000000000104009ef3889fd070159edcd8ef88a0ec87cea1592c83000000000000000000000000000f42400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000060002169ef3889fd070159edcd8ef88a0ec87cea1592c830100000000000027100003167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f72650300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000103167c5f674a8fd08efa61dd9b11121e046dd2c892730a756e6976322d636f7265168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e0300000000000000000102169ef3889fd070159edcd8ef88a0ec87cea1592c83168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e086c6f6e67636f696e030000000000000000010316402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0f616d6d2d7661756c742d76322d303116402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c657804616c65780300000000011c908a02162ec1a2dc2904ebc8b408598116c75e42c51afa2617726f757465722d76656c61722d616c65782d762d312d320d737761702d68656c7065722d6100000007010000000000000000000000000000271001000000000000000000000000011c908a040c00000002016106167c5f674a8fd08efa61dd9b11121e046dd2c892730477737478016206168c5e2f8d25627d6edebeb6d10fa3300f5acc8441086c6f6e67636f696e06167c5f674a8fd08efa61dd9b11121e046dd2c8927312756e6976322d73686172652d6665652d746f0c0000000201610616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0b746f6b656e2d776c6f6e6701620616402da2c079e5d31d58b9cfc7286d1b1eb2f7834e0a746f6b656e2d616c65780c0000000101610100000000000000000000000005f5e100";
@@ -1234,12 +1242,13 @@ mod gate_paths {
         let Outcome::Review(items) = outcome(&tx) else {
             panic!("expected a normal review");
         };
-        // origin, nonce, fee, contract address, contract name, function name, then the leaves
+        // origin, nonce, fee, post-condition mode, contract address, contract name, function
+        // name, then the leaves
         assert_eq!(
-            keys(&items)[6..],
+            keys(&items)[7..],
             ["stacked uSTX", "arg1.amount", "arg1.ids[0]", "arg1.ids[1]"]
         );
-        assert_eq!(items[9].1, "3");
+        assert_eq!(items[10].1, "3");
     }
 
     /// Scalars past the leaf budget: not flattened, but every argument renders on its own, so
@@ -1251,9 +1260,9 @@ mod gate_paths {
         let Outcome::Review(items) = outcome(&tx) else {
             panic!("expected a normal review");
         };
-        assert_eq!(items.len(), 6 + args.len());
-        assert_eq!(items[6].0, "stacked uSTX");
-        assert_eq!(items[7].0, "arg1");
+        assert_eq!(items.len(), 7 + args.len());
+        assert_eq!(items[7].0, "stacked uSTX");
+        assert_eq!(items[8].0, "arg1");
         assert_eq!(items.last().unwrap().1, MAX_ARG_DISPLAY_ITEMS.to_string());
     }
 
@@ -1264,13 +1273,13 @@ mod gate_paths {
         let leaves: Vec<Vec<u8>> = (0..MAX_ARG_DISPLAY_ITEMS).map(|_| uint(1)).collect();
         let call = contract_call_tx(&[list_of(&leaves)]);
 
-        // 6 + 64 + 15 * 3 = 115 items: fits, so every leaf is shown.
+        // 7 + 64 + 15 * 3 = 116 items: fits, so every leaf is shown.
         let Outcome::Review(items) = outcome(&with_stx_post_conditions(&call, 15)) else {
             panic!("expected a normal review");
         };
-        assert_eq!(items.len(), 6 + MAX_ARG_DISPLAY_ITEMS as usize + 15 * 3);
+        assert_eq!(items.len(), 7 + MAX_ARG_DISPLAY_ITEMS as usize + 15 * 3);
 
-        // 6 + 64 + 20 * 3 = 130 items: past MAX_DISPLAY_ITEMS. The fallback cannot show a list
+        // 7 + 64 + 20 * 3 = 131 items: past MAX_DISPLAY_ITEMS. The fallback cannot show a list
         // either, so this is gated rather than reviewed with the leaves missing.
         assert_eq!(outcome(&with_stx_post_conditions(&call, 20)), Outcome::BlindSign);
     }
@@ -1349,7 +1358,7 @@ mod gate_paths {
         for (depth, result) in &outcomes {
             match result {
                 Outcome::Review(items) => assert_eq!(
-                    items[6].0,
+                    items[7].0,
                     std::format!("arg0{}", "[0]".repeat(*depth)),
                     "depth {}: flattened key",
                     depth
@@ -1381,13 +1390,13 @@ mod gate_paths {
 
     /// The argument count walks off the end of the display index in one step. The ceiling is
     /// MAX_DISPLAY_ITEMS, not 255: zxlib passes the review screens an `int8_t` index, so item 128
-    /// can never be fetched. 122 scalar arguments fill it exactly and everything past that is
+    /// can never be fetched. 121 scalar arguments fill it exactly and everything past that is
     /// refused -- where before, from 253 up, the overflow was swallowed inside the payload and
-    /// the call reviewed as six items with every argument absent.
+    /// the call reviewed as its header items with every argument absent.
     #[test]
     fn rejected_when_arguments_overflow_the_display_index() {
         let scalars = |n: usize| (0..n).map(|i| uint(i as u128)).collect::<Vec<_>>();
-        let most = MAX_DISPLAY_ITEMS as usize - 6;
+        let most = MAX_DISPLAY_ITEMS as usize - 7;
 
         let Outcome::Review(items) = outcome(&contract_call_tx(&scalars(most))) else {
             panic!("{} arguments fit the index exactly", most)
