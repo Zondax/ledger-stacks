@@ -16,8 +16,9 @@
  * Nano only. The touch devices take the same path through NBGL's own control, whose position is
  * not addressable from the test harness; their snapshots record that the control appears.
  */
-import Zemu, { DEFAULT_START_OPTIONS, INavElement } from '@zondax/zemu'
-import { ActionKind, SwipeDirection } from '@zondax/zemu/dist/types'
+import Zemu, { ButtonKind, DEFAULT_START_OPTIONS, INavElement } from '@zondax/zemu'
+import { getTouchElement } from '@zondax/zemu/dist/buttons'
+import { ActionKind, IButton, SwipeDirection } from '@zondax/zemu/dist/types'
 import StacksApp from '@zondax/ledger-stacks'
 import { AddressVersion } from '@stacks/transactions'
 import { createHash } from 'crypto'
@@ -38,6 +39,24 @@ jest.setTimeout(300000)
 
 /** The skip screen is a bagl construct; the touch devices use NBGL's own Skip control. */
 const buttonModels = models.filter(m => m.name === 'nanox' || m.name === 'nanosp')
+const touchModels = models.filter(m => m.name === 'stax' || m.name === 'flex' || m.name === 'apex_p')
+
+/**
+ * Where NBGL draws its Skip control, per model. Zemu has no `ButtonKind` for it, so this is the
+ * one position the test has to carry itself; every other target comes from `getTouchElement`.
+ * Read off the review snapshots -- it sits right-aligned in the header. An SDK bump that moves
+ * the header breaks these tests, which is most of why they are worth having.
+ */
+const SKIP_CONTROL: Record<string, IButton> = {
+  flex: { x: 420, y: 47, delay: 0.5, direction: SwipeDirection.NoSwipe },
+  stax: { x: 348, y: 44, delay: 0.5, direction: SwipeDirection.NoSwipe },
+  apex_p: { x: 268, y: 31, delay: 0.5, direction: SwipeDirection.NoSwipe },
+}
+
+const touch = (button: IButton): INavElement => ({ type: ActionKind.Touch, button })
+
+/** Taps needed before the Skip control is drawn: past the review's own title page. */
+const TAPS_BEFORE_SKIP = 2
 
 /** Both buttons at once. `button` is unused on a two-button device but the type requires it. */
 const bothClick: INavElement = {
@@ -90,6 +109,40 @@ describe('ReviewFastPath', function () {
         bothClick,
         bothClick,
       ])
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.concurrent.each(touchModels)('skips a blind-signed review on $name', async function (m) {
+    const sim = new Zemu(m.path)
+    const dpath = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      const pkResponse = await app.getAddressAndPubKey(dpath, AddressVersion.MainnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+
+      await sim.toggleBlindSigning()
+
+      const signatureRequest = app.sign(dpath, dlmmBlob(pkResponse.publicKey.toString('hex')))
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+
+      // Into the review far enough for the Skip control to be drawn, take it, confirm the SDK's
+      // "Skip review?" prompt, then sign from where it lands -- the risk acknowledgement.
+      const schedule: INavElement[] = []
+      for (let i = 0; i < TAPS_BEFORE_SKIP; i++) {
+        schedule.push(touch(getTouchElement(m.name, ButtonKind.NavRightButton)))
+      }
+      schedule.push(touch(SKIP_CONTROL[m.name]))
+      schedule.push(touch(getTouchElement(m.name, ButtonKind.ConfirmYesButton)))
+      schedule.push(touch(getTouchElement(m.name, ButtonKind.ApproveHoldButton)))
+
+      await sim.navigateAndCompareSnapshots('.', `${m.prefix.toLowerCase()}-review_fast_path_blindsign`, schedule)
 
       const signature = await signatureRequest
       expect(signature.returnCode).toEqual(0x9000)
