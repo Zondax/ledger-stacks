@@ -19,6 +19,7 @@
 #include <parser_txdef.h>
 
 #include <fstream>
+#include <vector>
 #include <iostream>
 
 #include "app_mode.h"
@@ -136,9 +137,10 @@ TEST_P(JsonTestsA, CheckUIOutput_CurrentTX) {
 // Blind-signing gate
 //
 // parser_parse() refuses to sign a transaction whose items the device cannot render, unless the
-// user has explicitly enabled blind signing. Fixtures below are reused from testcases.json: the
-// Contract_call_* cases with tuple/buffer/string-utf8 arguments render placeholders ("is Tuple",
-// "is Buffer", ...) and must be gated; everything else renders in full and must not be.
+// user has explicitly enabled blind signing. Fixtures below are reused from testcases.json.
+// Structured arguments are flattened into one display item per leaf, so a tuple or a list is no
+// longer a reason to gate; what is left are values with no faithful rendering at all, such as a
+// non-ASCII string-utf8.
 ///////////////////////////////////////////////////////////////////////////////
 
 class BlindSignGate : public ::testing::Test {
@@ -165,19 +167,45 @@ class BlindSignGate : public ::testing::Test {
         const uint16_t bufferLen = parseHexString(buffer, sizeof(buffer), testcase(name).blob.c_str());
         return parser_parse(&ctx, buffer, bufferLen);
     }
+
+    // "\x17Stacks Signed Message:\n" + varint(len) + len bytes of text. Built here rather than
+    // stored as a fixture because the interesting lengths are kilobytes of filler.
+    static std::vector<uint8_t> signedMessage(size_t len) {
+        const std::string header = "\x17Stacks Signed Message:\n";
+        std::vector<uint8_t> blob(header.begin(), header.end());
+
+        if (len < 0xFD) {
+            blob.push_back(static_cast<uint8_t>(len));
+        } else if (len <= 0xFFFF) {
+            blob.push_back(0xFD);
+            blob.push_back(static_cast<uint8_t>(len & 0xFF));
+            blob.push_back(static_cast<uint8_t>(len >> 8));
+        } else {
+            blob.push_back(0xFE);
+            for (int i = 0; i < 4; i++) {
+                blob.push_back(static_cast<uint8_t>((len >> (8 * i)) & 0xFF));
+            }
+        }
+
+        blob.insert(blob.end(), len, 'A');
+        return blob;
+    }
+
+    static parser_error_t parseBlob(const std::vector<uint8_t> &blob) {
+        parser_context_t ctx;
+        return parser_parse(&ctx, blob.data(), blob.size());
+    }
 };
 
 TEST_F(BlindSignGate, OpaqueArgsRejectedWhenDisabled) {
     app_mode_set_blindsign(0);
-    // tuple + buffer + optional-some arguments
-    EXPECT_EQ(parse("Contract_call_long_args"), parser_blindsign_mode_required);
-    // string-utf8 argument
+    // A non-ASCII string-utf8 argument: the device fonts cannot show it.
     EXPECT_EQ(parse("Contract_call_string_args"), parser_blindsign_mode_required);
 }
 
 TEST_F(BlindSignGate, OpaqueArgsAllowedWhenEnabled) {
     app_mode_set_blindsign(1);
-    EXPECT_EQ(parse("Contract_call_long_args"), parser_ok);
+    EXPECT_EQ(parse("Contract_call_string_args"), parser_ok);
     // The "Accept risk and sign" review must be armed for this transaction.
     EXPECT_TRUE(app_mode_blindsign_required());
 }
@@ -186,6 +214,41 @@ TEST_F(BlindSignGate, FullyDisplayableTxNotGated) {
     app_mode_set_blindsign(0);
     EXPECT_EQ(parse("Transfer"), parser_ok);
     EXPECT_EQ(parse("Contract_call"), parser_ok);
+}
+
+// An argument the parser cannot decode is a rejection, not a gate. The gate exists for data the
+// device can parse but not show; data it cannot parse has no blind-signing path, because the
+// parser cannot even find where the argument ends. Enabling the setting must not change the
+// answer -- otherwise the user would be told to opt in to something that still cannot be signed.
+TEST_F(BlindSignGate, UndecodableArgIsRejectedNotGated) {
+    // The Contract_call fixture with arg0's Clarity type tag (byte 155) set to 0x0f, which does
+    // not exist, and the same fixture with the last argument truncated.
+    static const char *kUnknownTag =
+        "8080000000040060dbb32efe0c56e1d418c020f4cb71c556b6a60d0000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000000216000000000000000000000000000000000000000003706f7809737461636b2d737478000000050f00000000000000000000000000004e20051ad386442122c88878ae04c5726762477f4ef09ffe0100000000000000000000000000000002061ad386442122c88878ae04c5726762477f4ef09ffe12736f6d652d636f6e74726163742d6e616d65010000000000000000000000000000000a";
+    static const char *kTruncated =
+        "8080000000040060dbb32efe0c56e1d418c020f4cb71c556b6a60d0000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000302000000000216000000000000000000000000000000000000000003706f7809737461636b2d737478000000050100000000000000000000000000004e20051ad386442122c88878ae04c5726762477f4ef09ffe0100000000000000000000000000000002061ad386442122c88878ae04c5726762477f4ef09ffe12736f6d652d636f6e74726163742d6e616d65010000000000000000000000";
+
+    for (const char *blob : {kUnknownTag, kTruncated}) {
+        for (uint8_t enabled : {0, 1}) {
+            app_mode_set_blindsign(enabled);
+            parser_context_t ctx;
+            uint8_t buffer[5000];
+            MEMZERO(buffer, sizeof(buffer));
+            const uint16_t bufferLen = parseHexString(buffer, sizeof(buffer), blob);
+            const parser_error_t err = parser_parse(&ctx, buffer, bufferLen);
+            EXPECT_NE(err, parser_ok) << "blind sign " << int(enabled);
+            EXPECT_NE(err, parser_blindsign_mode_required) << "blind sign " << int(enabled);
+        }
+    }
+}
+
+// Structured arguments are shown one display item per leaf, so carrying a tuple is no longer a
+// reason to gate. Contract_call_long_args holds a nested tuple, a list, a buffer and an optional;
+// flattened it renders 31 items, every one of them a value the user can read.
+TEST_F(BlindSignGate, StructuredArgsNotGatedOnceFlattened) {
+    app_mode_set_blindsign(0);
+    EXPECT_EQ(parse("Contract_call_long_args"), parser_ok);
+    EXPECT_EQ(parse("Contract_call_post_conditions"), parser_ok);
 }
 
 // Regression guard: a user who switches blind signing on must still get the *normal* review for
@@ -206,4 +269,40 @@ TEST_F(BlindSignGate, Sip10TransferWithMemoNotGated) {
     EXPECT_EQ(parse("SIP10_contract"), parser_ok);
     EXPECT_EQ(parse("SIP10_contract_hidden_post_condition"), parser_ok);
     EXPECT_EQ(parse("SIP10_contract_shown_post_condition"), parser_ok);
+}
+
+// A signed message is paged over in full up to MAX_DISPLAYABLE_LEN; past it the review shows a
+// 270-byte excerpt while the signature still covers every byte. That excerpt is only acceptable
+// if the user has opted into blind signing, so the gate has to fire on length.
+//
+// The Rust side unit-tests the predicate; this covers the wiring from it through
+// _tx_requires_blindsign to a refused APDU, which is what actually protects the user.
+TEST_F(BlindSignGate, LongMessageRejectedWhenDisabled) {
+    app_mode_set_blindsign(0);
+    EXPECT_EQ(parseBlob(signedMessage(4097)), parser_blindsign_mode_required);
+    EXPECT_EQ(parseBlob(signedMessage(20000)), parser_blindsign_mode_required);
+}
+
+// Right at the limit the message still renders in full, so it must not be gated.
+TEST_F(BlindSignGate, MessageWithinPagingLimitNotGated) {
+    app_mode_set_blindsign(0);
+    EXPECT_EQ(parseBlob(signedMessage(4096)), parser_ok);
+    // The 284-byte Gamma sign-in prompt, which used to be cut at 270.
+    EXPECT_EQ(parseBlob(signedMessage(284)), parser_ok);
+    EXPECT_EQ(parseBlob(signedMessage(11)), parser_ok);
+}
+
+TEST_F(BlindSignGate, LongMessageAllowedWhenEnabled) {
+    app_mode_set_blindsign(1);
+    EXPECT_EQ(parseBlob(signedMessage(4097)), parser_ok);
+    // The user must still be shown the risk screen for it.
+    EXPECT_TRUE(app_mode_blindsign_required());
+}
+
+// The mirror of FullyDisplayableTxSkipsWarningEvenWhenBlindSignEnabled, for messages.
+TEST_F(BlindSignGate, FullyPagedMessageSkipsWarningEvenWhenBlindSignEnabled) {
+    app_mode_set_blindsign(1);
+    ASSERT_TRUE(app_mode_blindsign_required());
+    EXPECT_EQ(parseBlob(signedMessage(4096)), parser_ok);
+    EXPECT_FALSE(app_mode_blindsign_required());
 }

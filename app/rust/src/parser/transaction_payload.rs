@@ -7,13 +7,32 @@ mod versioned_contract;
 use nom::number::complete::le_u8;
 
 use self::{
-    contract_call::{TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS},
+    contract_call::TransactionContractCallWrapper,
     smart_contract::TransactionSmartContract,
     token_transfer::StxTokenTransfer,
     versioned_contract::VersionedSmartContract,
 };
 
 use super::{ContractName, C32_ENCODED_ADDRS_LENGTH};
+
+// Re-exported so `Transaction` can budget its display items against the same constant the
+// contract-call renderer uses.
+pub use self::contract_call::CONTRACT_CALL_BASE_ITEMS;
+#[cfg(test)]
+pub use self::contract_call::{MAX_ARG_DISPLAY_ITEMS, MAX_VALUE_TEXT};
+
+/// How this transaction's items are laid out.
+///
+/// Both decisions belong to the transaction, not the payload: one needs the post-conditions, the
+/// other needs the whole item budget. They are settled once per `get_item`/`num_items` and passed
+/// down together, so the count and the rendering cannot disagree about which layout is in use.
+#[derive(Clone, Copy)]
+pub struct DisplayMode {
+    /// Collapse a recognised SIP-10 transfer to Amount / From / To / Memo.
+    pub hide_sip10_details: bool,
+    /// Show contract-call arguments one display item per leaf, rather than one per argument.
+    pub flatten_args: bool,
+}
 use crate::parser::error::ParserError;
 
 #[repr(u8)]
@@ -138,13 +157,15 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn num_items(&self, hide_sip10_details: bool) -> u8 {
+    /// An error here means the items do not fit the u8 display index, and it must propagate:
+    /// the transaction is refused. This used to fall back to CONTRACT_CALL_BASE_ITEMS, which
+    /// made a call with 253 or more arguments review as six items -- origin, nonce, fee and the
+    /// three base items -- with every argument silently absent and no blind-signing warning.
+    pub fn num_items(&self, mode: DisplayMode) -> Result<u8, ParserError> {
         match self {
-            Self::TokenTransfer(_) => 3,
-            Self::SmartContract(_) | Self::VersionedSmartContract(_) => 1,
-            Self::ContractCall(ref call) => {
-                call.num_items(hide_sip10_details).unwrap_or(CONTRACT_CALL_BASE_ITEMS)
-            }
+            Self::TokenTransfer(_) => Ok(3),
+            Self::SmartContract(_) | Self::VersionedSmartContract(_) => Ok(1),
+            Self::ContractCall(ref call) => call.num_items(mode),
         }
     }
 
@@ -168,9 +189,9 @@ impl<'a> TransactionPayload<'a> {
         out_value: &mut [u8],
         page_idx: u8,
         total_items: u8,
-        hide_sip10_details: bool,
+        mode: DisplayMode,
     ) -> Result<u8, ParserError> {
-        let idx = self.num_items(hide_sip10_details) - (total_items - display_idx);
+        let idx = self.num_items(mode)? - (total_items - display_idx);
         match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
@@ -179,7 +200,7 @@ impl<'a> TransactionPayload<'a> {
                 contract.get_contract_items(idx, out_key, out_value, page_idx)
             }
             Self::ContractCall(ref call) => {
-                call.get_contract_call_items(idx, out_key, out_value, page_idx, hide_sip10_details)
+                call.get_contract_call_items(idx, out_key, out_value, page_idx, mode)
             }
             Self::VersionedSmartContract(ref deploy) => {
                 deploy.get_contract_items(idx, out_key, out_value, page_idx)

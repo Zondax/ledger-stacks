@@ -293,7 +293,14 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
     uint8_t previous_signer_data[1 + PREVIOUS_SIGNER_SIG_LEN] = {0};
     memset(previous_signer_data, 0, sizeof(previous_signer_data));
 
-    uint32_t num_fields = tx_num_multisig_fields();
+    // A count we cannot read must not fall through as zero: that is indistinguishable from a
+    // first signer with nothing to chain, and would return a hash covering none of the
+    // preceding signers.
+    uint32_t num_fields = 0;
+    if (tx_num_multisig_fields(&num_fields) != zxerr_ok) {
+        return zxerr_no_data;
+    }
+
     for (uint32_t i = 0; i < num_fields; ++i) {
         // `TransactionAuthFieldID` part of `MultisigSpendingCondition` auth field
         uint8_t id = 0xFF;
@@ -301,8 +308,10 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
         uint8_t *data = NULL;
         zxerr_t err = tx_get_multisig_field(i, &id, &data);
 
+        // Fail closed. Skipping a signer field would carry on hashing and hand the user a
+        // digest that no longer matches the transaction they are approving.
         if (err != zxerr_ok || !data) {
-            continue;
+            return zxerr_no_data;
         }
 
         switch (id) {
@@ -319,7 +328,10 @@ __Z_INLINE zxerr_t compute_sig_hash_chain(uint8_t *hash, uint16_t hash_len) {
                 previous_signer_data[0] = 0x01;
                 break;
             default:
+                // Unreachable while the parser validates the field ids, and if that ever stops
+                // holding, hashing stale signer data is worse than refusing to sign.
                 zemu_log_stack("Invalid TransactionAuthFieldID\n");
+                return zxerr_no_data;
         };
 
         // Copy previous signer's signature

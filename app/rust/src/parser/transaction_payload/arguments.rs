@@ -58,8 +58,7 @@ impl<'a> Arguments<'a> {
         check_canary!();
 
         let num_args = self.num_args()?;
-        // skip the first 4-bytes holding the argument count
-        let mut leftover = self.0.get(4..).ok_or(ParserError::NoData)?;
+        let mut leftover = self.values()?;
 
         for _ in 0..num_args {
             let (rem, value) = Value::from_bytes::<TX_DEPTH_LIMIT>(leftover)
@@ -72,6 +71,14 @@ impl<'a> Arguments<'a> {
         }
 
         Ok(true)
+    }
+
+    /// The serialized argument values, with the leading `be_u32` count already skipped.
+    ///
+    /// Handed out so a caller can walk the arguments itself -- the flattening walk descends into
+    /// each value and cannot express that as a per-argument predicate.
+    pub fn values(&self) -> Result<&'a [u8], ParserError> {
+        self.0.get(4..).ok_or(ParserError::NoData)
     }
 
     pub fn argument_at(&self, at: usize) -> Result<Value<'a>, ParserError> {

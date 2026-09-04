@@ -63,8 +63,9 @@ uint32_t parser_last_transaction_block(uint8_t **last_block);
 // Returns 1 if the transaction is multisig, 0 otherwise
 int8_t parser_is_transaction_multisig();
 
-// Returns # of fields in a multisig spending condition, or 0 if not multisig
-uint32_t parser_num_multisig_fields();
+// Writes the # of fields in a multisig spending condition to `num_fields`. Fails rather
+// than reporting 0, which would be indistinguishable from a condition that has none.
+parser_error_t parser_num_multisig_fields(uint32_t *num_fields);
 
 // Fill in multisig field id and data pointer for field `index`
 parser_error_t parser_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data);

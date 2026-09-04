@@ -788,17 +788,14 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`, true, 0, undefined, true)
+      // Its tuple, list and optional arguments are shown one item per leaf, so this reviews
+      // normally -- no blind-signing opt-in.
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1107,17 +1104,14 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`, true, 0, undefined, true)
+      // Its tuple, list and optional arguments are shown one item per leaf, so this reviews
+      // normally -- no blind-signing opt-in.
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -2029,11 +2023,13 @@ describe('Standard', function () {
   })
 
   // SIP-040 post-condition handling — issue #224 (HODLMM Zest/STX "remove liquidity"
-  // failed on Ledger with "Data invalid"). These transactions carry 84 post-conditions
-  // (81x NFT MaySend + 2x FT + 1x STX, Deny mode). Identical MaySend NFT conditions are
-  // collapsed into one "Count: N" display item so the screen count stays under the
-  // device's display-item ceiling.
-  // Real captured unsigned transaction blobs (issue #224), keyed by label.
+  // failed on Ledger with "Data invalid"). These transactions carry one post-condition per
+  // liquidity bin: 84 (81x NFT MaySend + 2x FT + 1x STX, Deny mode) for the two blobs from
+  // #224, and 158 (155x NFT MaySend + 2x FT + 1x STX) for the 145-bin position in issue
+  // #238, which the 128-condition parse cap then still rejected. Identical MaySend NFT
+  // conditions are collapsed into one "Count: N" display item so the screen count stays
+  // under the device's display-item ceiling, whatever the position width.
+  // Real captured unsigned transaction blobs, keyed by label.
   const dlmmFixtures: Record<string, string> = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, 'dlmm_post_conditions.json'), 'utf8'),
   )

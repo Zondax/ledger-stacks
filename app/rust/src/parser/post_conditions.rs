@@ -225,10 +225,14 @@ impl<'a> TransactionPostCondition<'a> {
         Some(output)
     }
 
-    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::U64_FORMATTED_SIZE_DECIMAL]>> {
+    pub fn amount_stx_str(&self) -> Option<ArrayVec<[u8; zxformat::MAX_STR_BUFF_LEN]>> {
         let amount = self.amount_stx()?;
 
-        let mut output = ArrayVec::from([0u8; zxformat::U64_FORMATTED_SIZE_DECIMAL]);
+        // u64::MAX with six decimals is "18446744073709.551615", which the 20-byte
+        // `U64_FORMATTED_SIZE_DECIMAL` cannot hold: the device formatter needs two bytes more
+        // than the 20 digits it is given, so it wrote "ERR" in place of the amount and reported
+        // success. `MAX_STR_BUFF_LEN` is 30, which clears that bound.
+        let mut output = ArrayVec::from([0u8; zxformat::MAX_STR_BUFF_LEN]);
         let len = zxformat::fpu64_to_str(output.as_mut(), amount, STX_DECIMALS).ok()? as usize;
         unsafe {
             output.set_len(len);
@@ -354,7 +358,7 @@ impl<'a> TransactionPostCondition<'a> {
                     writer_key
                         .write_str("Stx amount")
                         .map_err(|_| ParserError::UnexpectedBufferEnd)?;
-                    let amount = self.amount_stx_str().unwrap();
+                    let amount = self.amount_stx_str().ok_or(ParserError::UnexpectedValue)?;
                     zxformat::page_string(out_value, amount.as_ref(), page_idx)
                 }
                 _ => Err(ParserError::DisplayIdxOutOfRange),
@@ -611,11 +615,34 @@ mod test {
     // STX: type(0) | principal | code | amount(8). FT: type(1) | principal | asset | code |
     // amount(8). NFT: type(2) | principal | asset | value | code.
     fn stx_cond(code: u8) -> Vec<u8> {
+        stx_cond_with_amount(code, 0)
+    }
+    fn stx_cond_with_amount(code: u8, amount: u64) -> Vec<u8> {
         let mut v = vec![0u8, 2, 1];
         v.extend_from_slice(&[1u8; 20]);
         v.push(code);
-        v.extend_from_slice(&[0u8; 8]);
+        v.extend_from_slice(&amount.to_be_bytes());
         v
+    }
+
+    /// The widest STX amount renders in full rather than as the formatter's "ERR" placeholder.
+    ///
+    /// This goes through `get_items` because that is where the buffer size actually bites:
+    /// `amount_stx_str` sizes the scratch buffer the device formatter writes into, and at
+    /// `U64_FORMATTED_SIZE_DECIMAL` that formatter reported success while emitting "ERR".
+    #[test]
+    fn test_max_stx_amount_renders_in_full() {
+        let bytes = stx_cond_with_amount(0x02, u64::MAX);
+        let (_, parsed) = TransactionPostCondition::from_bytes(&bytes).unwrap();
+
+        let mut key = [0u8; 30];
+        let mut val = [0u8; 30];
+        let pages = parsed.get_items(2, &mut key, &mut val, 0).unwrap();
+
+        assert_eq!(pages, 1);
+        let val = core::str::from_utf8(&val).unwrap();
+        let val = val.trim_end_matches('\0');
+        assert_eq!(val, "18446744073709.551615");
     }
     fn ft_cond(code: u8) -> Vec<u8> {
         let mut v = vec![1u8, 2, 1];
