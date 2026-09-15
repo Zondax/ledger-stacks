@@ -258,6 +258,23 @@ pub fn format_u128_decimals(
 
 #[inline(never)]
 pub fn page_string(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result<u8, ParserError> {
+    page_string_with(out_value, in_value, page_idx, |byte| byte)
+}
+
+/// Pages `in_value` into `out_value` like [`page_string`], applying `map` to every byte copied.
+///
+/// Lets a caller render a long input in full without first materialising a rewritten copy of it
+/// in a stack buffer: only the bytes of the requested page are touched.
+#[inline(never)]
+pub fn page_string_with<F>(
+    out_value: &mut [u8],
+    in_value: &[u8],
+    page_idx: u8,
+    map: F,
+) -> Result<u8, ParserError>
+where
+    F: Fn(u8) -> u8,
+{
     // Just ensure the buffer is clear
     for i in out_value.iter_mut() {
         *i = 0u8;
@@ -286,7 +303,10 @@ pub fn page_string(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Resul
             idx + out_len
         };
         let len = last - idx;
-        (output[..len]).copy_from_slice(&in_value[idx..last]);
+        output[..len]
+            .iter_mut()
+            .zip(in_value[idx..last].iter())
+            .for_each(|(out, byte)| *out = map(*byte));
     }
 
     Ok(page_count)

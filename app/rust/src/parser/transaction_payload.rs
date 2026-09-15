@@ -7,10 +7,8 @@ mod versioned_contract;
 use nom::number::complete::le_u8;
 
 use self::{
-    contract_call::{TransactionContractCallWrapper, CONTRACT_CALL_BASE_ITEMS},
-    smart_contract::TransactionSmartContract,
-    token_transfer::StxTokenTransfer,
-    versioned_contract::VersionedSmartContract,
+    contract_call::TransactionContractCallWrapper, smart_contract::TransactionSmartContract,
+    token_transfer::StxTokenTransfer, versioned_contract::VersionedSmartContract,
 };
 
 use super::{ContractName, C32_ENCODED_ADDRS_LENGTH};
@@ -138,13 +136,15 @@ impl<'a> TransactionPayload<'a> {
         }
     }
 
-    pub fn num_items(&self, hide_sip10_details: bool) -> u8 {
+    /// Returns an error when the payload cannot fit the device's `u8` display index.
+    ///
+    /// Contract-call overflow must propagate to the transaction. Falling back to the three base
+    /// items would hide every argument while leaving those arguments covered by the signature.
+    pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
         match self {
-            Self::TokenTransfer(_) => 3,
-            Self::SmartContract(_) | Self::VersionedSmartContract(_) => 1,
-            Self::ContractCall(ref call) => {
-                call.num_items(hide_sip10_details).unwrap_or(CONTRACT_CALL_BASE_ITEMS)
-            }
+            Self::TokenTransfer(_) => Ok(3),
+            Self::SmartContract(_) | Self::VersionedSmartContract(_) => Ok(1),
+            Self::ContractCall(ref call) => call.num_items(hide_sip10_details),
         }
     }
 
@@ -170,7 +170,7 @@ impl<'a> TransactionPayload<'a> {
         total_items: u8,
         hide_sip10_details: bool,
     ) -> Result<u8, ParserError> {
-        let idx = self.num_items(hide_sip10_details) - (total_items - display_idx);
+        let idx = self.num_items(hide_sip10_details)? - (total_items - display_idx);
         match self {
             Self::TokenTransfer(ref token) => {
                 token.get_token_transfer_items(idx, out_key, out_value, page_idx)
@@ -212,5 +212,45 @@ mod test {
 
         let parsed = TransactionPayload::from_bytes(&bytes).unwrap().1;
         assert_eq!(parsed.amount(), Some(123));
+    }
+
+    fn contract_call_with_uint_args(num_args: u32) -> Vec<u8> {
+        let mut bytes = vec![TransactionPayloadId::ContractCall as u8];
+        bytes.extend_from_slice(&[0u8; 21]); // contract address
+        bytes.extend_from_slice(&[1, b'c']); // contract name
+        bytes.extend_from_slice(&[1, b'f']); // function name
+        bytes.extend_from_slice(&num_args.to_be_bytes());
+
+        for value in 0..num_args {
+            bytes.push(crate::parser::ValueId::UInt as u8);
+            bytes.extend_from_slice(&(value as u128).to_be_bytes());
+        }
+
+        bytes
+    }
+
+    #[test]
+    fn rejects_contract_call_item_count_overflow() {
+        for num_args in [253, 254, 255, 300] {
+            let bytes = contract_call_with_uint_args(num_args);
+            let (remainder, payload) = TransactionPayload::from_bytes(&bytes).unwrap();
+            assert!(remainder.is_empty());
+
+            assert_eq!(
+                payload.num_items(false),
+                Err(ParserError::ValueOutOfRange),
+                "{} arguments",
+                num_args
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_contract_call_payload_boundary() {
+        let bytes = contract_call_with_uint_args(252);
+        let (remainder, payload) = TransactionPayload::from_bytes(&bytes).unwrap();
+        assert!(remainder.is_empty());
+
+        assert_eq!(payload.num_items(false), Ok(u8::MAX));
     }
 }

@@ -667,6 +667,164 @@ mod test {
         assert_eq!(json.sender, origin_addr);
     }
 
+    /// Collects every review item the device would show for `bytes`, as `(key, value)` pairs.
+    fn review_items(bytes: &[u8]) -> Vec<(String, String)> {
+        let mut obj = ParsedObj::from_bytes(bytes).unwrap();
+        obj.read(bytes).unwrap();
+        ParsedObj::validate(&mut obj).unwrap();
+
+        let num_items = obj.num_items().unwrap();
+        let mut items = Vec::new();
+        for idx in 0..num_items {
+            let mut key = [0u8; 64];
+            let mut value = [0u8; 64];
+            obj.get_item(idx, &mut key, &mut value, 0)
+                .expect("every index below num_items must render");
+            let take = |b: &[u8]| {
+                core::str::from_utf8(b)
+                    .unwrap()
+                    .trim_end_matches('\0')
+                    .to_string()
+            };
+            items.push((take(&key), take(&value)));
+        }
+        items
+    }
+
+    /// Restrictive `Deny` stays implicit; permissive modes state their effect before the payload.
+    #[test]
+    fn test_post_condition_warning_only_for_permissive_modes() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("contract_call_with_fungible_postcondition");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+
+        let mode_offset = {
+            let mut obj = ParsedObj::from_bytes(&bytes).unwrap();
+            obj.read(&bytes).unwrap();
+            let tx = obj.transaction().unwrap();
+            tx.transaction_modes.as_ptr() as usize - bytes.as_ptr() as usize + 1
+        };
+
+        let cases = [
+            (0x01u8, Some(("Unlisted transfers", "Allowed"))),
+            (0x02, None),
+            (0x03, Some(("Restrictions apply", "Originator only"))),
+        ];
+        let mut counts = [0usize; 3];
+
+        for (case_idx, (byte, warning)) in cases.iter().copied().enumerate() {
+            let mut patched = bytes.clone();
+            patched[mode_offset] = byte;
+
+            let items = review_items(&patched);
+            counts[case_idx] = items.len();
+            let is_warning = |key: &str| key == "Unlisted transfers" || key == "Restrictions apply";
+
+            match warning {
+                Some((key, value)) => {
+                    assert_eq!(items[3], (key.to_string(), value.to_string()));
+                    assert_eq!(items.iter().filter(|(k, _)| is_warning(k)).count(), 1);
+                }
+                None => assert!(!items.iter().any(|(k, _)| is_warning(k))),
+            }
+        }
+
+        assert_eq!(counts[0], counts[1] + 1);
+        assert_eq!(counts[2], counts[1] + 1);
+    }
+
+    /// A genuine SIP-10 transfer is reviewed through the compact card, with the base items and
+    /// post-conditions suppressed.
+    ///
+    /// This is the branch the hiding predicate exists for. The negative case below proves the
+    /// predicate does not fire when it should not; without this one, nothing proves it still
+    /// fires when it should, and tightening it further could silently disable the compact card.
+    #[test]
+    fn test_registry_transfer_hides_base_items_and_post_conditions() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("sip10_transfer_hidden_details");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+
+        assert_eq!(json.function_name, "transfer");
+
+        let items = review_items(&bytes);
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+
+        // The compact card: header items, then exactly the four transfer arguments. The fixture
+        // uses restrictive Deny mode, which remains implicit.
+        assert_eq!(
+            keys,
+            std::vec!["Origin", "Nonce", "Fee (uSTX)", "Amount", "From", "To", "Memo"],
+            "{:?}",
+            items
+        );
+
+        // The suppressed items really are absent, not merely reordered.
+        for hidden in ["Contract address", "Contract name", "Function name", "Asset name"] {
+            assert!(!keys.contains(&hidden), "{} still shown: {:?}", hidden, keys);
+        }
+    }
+
+    /// A contract call to a *registry* contract that is not a SIP-10 `transfer` must be reviewed
+    /// in full.
+    ///
+    /// The item-hiding predicate matched on contract address and name alone, while the compact
+    /// SIP-10 renderer additionally requires the function to be `transfer`. When the two
+    /// disagreed, `num_items` shrank by the three base items but `get_item` still rendered them,
+    /// so the trailing arguments, the function name and every post-condition dropped off the end
+    /// of the review while remaining committed to by the signature.
+    #[test]
+    fn test_registry_contract_non_transfer_call_shows_every_item() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("contract_call_with_fungible_postcondition");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+        let bytes = hex::decode(&json.raw).unwrap();
+
+        // The fixture calls "hello-world", which the host-side registry stub recognises, with a
+        // post-condition whose code is the one that stub advertises -- everything the hiding
+        // predicate used to look at. Only the function name keeps it off the compact card.
+        assert_ne!(json.function_name, "transfer");
+
+        let items = review_items(&bytes);
+        let keys: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
+
+        assert!(keys.contains(&"Contract address"), "{:?}", keys);
+        assert!(keys.contains(&"Contract name"), "{:?}", keys);
+        assert!(keys.contains(&"Function name"), "{:?}", keys);
+        assert!(keys.iter().any(|k| k.starts_with("arg")), "{:?}", keys);
+        assert!(keys.contains(&"Asset name"), "{:?}", keys);
+
+        let function_name = items
+            .iter()
+            .find(|(k, _)| k == "Function name")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(function_name, json.function_name);
+    }
+
     #[test]
     fn test_standard_contract_call_tx_with_fungible_post_condition() {
         let input_path = {

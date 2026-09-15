@@ -1228,9 +1228,14 @@ describe('Standard', function () {
     }
   })
 
-  // SIP-040 (epoch 3.4): "Originator" post-condition mode (0x03). Asserts the app
-  // accepts and signs a tx whose mode is Originator (previously rejected as invalid).
-  test.concurrent.each(models)(`sign_originator_post_condition_mode`, async function (m) {
+  const permissivePostConditionCases = models.flatMap((model) => [
+    { ...model, mode: PostConditionMode.Allow, snapshotSuffix: 'sign_allow_post_condition_mode' },
+    { ...model, mode: PostConditionMode.Originator, snapshotSuffix: 'sign_originator_post_condition_mode' },
+  ])
+
+  // Allow and Originator relax which unlisted transfers post-conditions restrict. Their snapshots
+  // must include the warning that distinguishes them from restrictive Deny mode.
+  test.concurrent.each(permissivePostConditionCases)(`$snapshotSuffix $name`, async function (m) {
     const sim = new Zemu(m.path)
     const network = STACKS_TESTNET
     const path = "m/44'/5757'/0'/0/0"
@@ -1259,7 +1264,7 @@ describe('Standard', function () {
         fee: fee,
         nonce: nonce,
         publicKey: devicePublicKey,
-        postConditionMode: PostConditionMode.Originator,
+        postConditionMode: m.mode,
         postConditions,
       }
 
@@ -1268,7 +1273,7 @@ describe('Standard', function () {
       const signatureRequest = app.sign(path, blob)
 
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_originator_post_condition_mode`)
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-${m.snapshotSuffix}`)
 
       const signature = await signatureRequest
       expect(signature.returnCode).toEqual(0x9000)
@@ -1440,8 +1445,10 @@ describe('Standard', function () {
         let txOptions = {
                     contractAddress: contract_address,
           contractName: contract_name,
-          functionName: 'transfer',
-          functionArgs: [uintCV(20000), sender, recipient, someCV(stringAsciiCV('tx_memo'))],
+          functionName: data.nonTransfer ? 'malicious-call' : 'transfer',
+          functionArgs: data.nonTransfer
+            ? [uintCV(20000)]
+            : [uintCV(20000), sender, recipient, someCV(stringAsciiCV('tx_memo'))],
           network: network,
           fee: fee,
           nonce: nonce,
@@ -2113,6 +2120,34 @@ describe('Standard', function () {
 
       const sig = await app.sign(dpath, Buffer.from(tx.serialize(), 'hex'))
       expect(sig.returnCode).not.toEqual(0x9000)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  test.each(models.filter(({ name }) => name === 'nanox'))('STX-002 rejects 253 contract-call arguments before review', async function (m) {
+    const sim = new Zemu(m.path)
+    const dpath = "m/44'/5757'/0'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+      const pk = await app.getAddressAndPubKey(dpath, AddressVersion.TestnetSingleSig)
+      expect(pk.returnCode).toEqual(0x9000)
+
+      const tx = await makeUnsignedContractCall({
+        contractAddress: 'SP000000000000000000002Q6VF78',
+        contractName: 'long_args_contract',
+        functionName: 'overflow',
+        functionArgs: Array.from({ length: 253 }, (_, index) => uintCV(index)),
+        network: STACKS_TESTNET,
+        fee: 10n,
+        nonce: 0n,
+        publicKey: pk.publicKey.toString('hex'),
+      })
+
+      const signature = await app.sign(dpath, Buffer.from(tx.serialize(), 'hex'))
+      expect(signature.returnCode).toEqual(0x6984)
+      await sim.waitUntilScreenIs(sim.getMainMenuSnapshot())
     } finally {
       await sim.close()
     }

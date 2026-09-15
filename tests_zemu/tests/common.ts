@@ -81,5 +81,22 @@ export const SIP10_DATA = [
         }
       ],
       snapshotSuffix: 'sign_sip10_contract_with_post_conditions_hidden'
+    },
+    {
+      name: 'review_non_transfer_registry_call',
+      nonTransfer: true,
+      postConditions: [
+        {
+          address: 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE',
+          code: FungibleConditionCode.Equal,
+          amount: 1000000n
+        },
+        {
+          address: 'ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5',
+          code: FungibleConditionCode.Equal,
+          amount: 1005020n
+        }
+      ],
+      snapshotSuffix: 'review_non_transfer_registry_call'
     }
   ]
