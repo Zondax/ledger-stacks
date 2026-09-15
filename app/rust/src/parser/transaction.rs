@@ -25,6 +25,9 @@ use super::{PostConditions, TransactionPostConditionMode};
 // 65-bytes vrs
 const MULTISIG_PREVIOUS_SIGNER_DATA_LEN: usize = 98;
 
+const TX_ORIGIN_ITEMS: u8 = 3;
+const POST_CONDITION_WARNING_IDX: u8 = TX_ORIGIN_ITEMS;
+
 #[repr(u8)]
 #[derive(Clone, PartialEq, Copy)]
 #[cfg_attr(test, derive(Debug))]
@@ -244,6 +247,15 @@ impl<'a> Transaction<'a> {
             _ => return Ok(false),
         };
 
+        // Only a call the renderer actually shows as a compact SIP-10 transfer card may hide
+        // items. `sip10_token_info()` alone matches on contract address and name, so a call to a
+        // *registry* contract with any other function name would suppress the base items in
+        // `num_items` while `get_contract_call_items` still rendered them -- silently dropping
+        // the trailing arguments, the function name and every post-condition from the review.
+        if !contract_call.is_sip10_transfer() {
+            return Ok(false);
+        }
+
         let token_info = match contract_call.sip10_token_info() {
             Some(info) => info,
             None => return Ok(false),
@@ -289,10 +301,27 @@ impl<'a> Transaction<'a> {
             num_items_post_conditions = 0;
         }
 
-        // nonce + origin + fee-rate + payload + post-conditions
-        3u8.checked_add(self.payload.num_items(hide_sip10_details))
+        let header_items = TX_ORIGIN_ITEMS + u8::from(self.post_condition_warning().is_some());
+
+        // origin + nonce + fee-rate + optional warning + payload + post-conditions
+        header_items
+            .checked_add(self.payload.num_items(hide_sip10_details)?)
             .and_then(|res| res.checked_add(num_items_post_conditions))
             .ok_or(ParserError::ValueOutOfRange)
+    }
+
+    /// A warning for modes that do not restrict every principal's unlisted asset movements.
+    ///
+    /// `Deny` is the restrictive default and needs no extra review item. The returned key and
+    /// value describe the exact relaxation for the other two modes.
+    fn post_condition_warning(&self) -> Option<(&'static str, &'static str)> {
+        match TransactionPostConditionMode::from_u8(self.transaction_modes[1])? {
+            TransactionPostConditionMode::Allow => Some(("Unlisted transfers", "Allowed")),
+            TransactionPostConditionMode::Deny => None,
+            TransactionPostConditionMode::Originator => {
+                Some(("Restrictions apply", "Originator only"))
+            }
+        }
     }
 
     fn get_origin_items(
@@ -348,6 +377,22 @@ impl<'a> Transaction<'a> {
         }
     }
 
+    fn get_post_condition_warning_item(
+        &self,
+        out_key: &mut [u8],
+        out_value: &mut [u8],
+        page_idx: u8,
+    ) -> Result<u8, ParserError> {
+        let (key, value) = self
+            .post_condition_warning()
+            .ok_or(ParserError::UnexpectedValue)?;
+
+        zxformat::Writer::new(out_key)
+            .write_str(key)
+            .map_err(|_| ParserError::UnexpectedBufferEnd)?;
+        zxformat::page_string(out_value, value.as_bytes(), page_idx)
+    }
+
     #[inline(always)]
     fn get_other_items(
         &mut self,
@@ -396,8 +441,12 @@ impl<'a> Transaction<'a> {
             return Err(ParserError::DisplayIdxOutOfRange);
         }
 
-        if display_idx < 3 {
+        if display_idx < TX_ORIGIN_ITEMS {
             self.get_origin_items(display_idx, out_key, out_value, page_idx)
+        } else if display_idx == POST_CONDITION_WARNING_IDX
+            && self.post_condition_warning().is_some()
+        {
+            self.get_post_condition_warning_item(out_key, out_value, page_idx)
         } else {
             self.get_other_items(display_idx, out_key, out_value, page_idx)
         }

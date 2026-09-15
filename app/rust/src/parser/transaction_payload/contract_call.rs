@@ -83,6 +83,15 @@ impl<'a> TransactionContractCallWrapper<'a> {
         self.tx.sip10_token_info()
     }
 
+    /// Whether this call is rendered through the compact SIP-10 transfer card.
+    ///
+    /// The renderer keys the compact card off `ContractType::SIP10`, which additionally requires
+    /// the called function to be `transfer`. Any predicate that suppresses items must agree with
+    /// it, or `num_items` and `get_item` disagree on how many slots the payload occupies.
+    pub fn is_sip10_transfer(&self) -> bool {
+        self.contract_type == ContractType::SIP10
+    }
+
     pub fn contract_name(&'a self) -> Result<ContractName<'a>, ParserError> {
         self.tx.contract_name()
     }
