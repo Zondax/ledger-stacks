@@ -31,8 +31,6 @@
 
 static bool tx_initialized = false;
 
-bool review_pending = false;
-
 __Z_INLINE void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
     if ((rx - offset) < sizeof(uint32_t) * path_len) {
         THROW(APDU_CODE_WRONG_LENGTH);
@@ -151,7 +149,6 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     }
 
     if (requireConfirmation) {
-        review_pending = true;
         app_fill_address(addr_secp256k1);
 
         view_review_init(addr_getItem, addr_getNumItems, app_reply_address);
@@ -231,9 +228,7 @@ __Z_INLINE void handleGetAddrMultisig(volatile uint32_t *flags, volatile uint32_
     multisig_data.pubkeys = (cosigner_bytes > 0) ? (data + MULTISIG_HEADER_LEN) : NULL;
 
     if (requireConfirmation) {
-        review_pending = true;
         if (app_fill_address_multisig() == 0) {
-            review_pending = false;
             THROW(APDU_CODE_DATA_INVALID);
         }
 
@@ -284,7 +279,6 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
         zemu_log_stack("tx_parse done\n");
 
         CHECK_APP_CANARY()
-        review_pending = true;
         view_review_init(tx_getItem, tx_getNumItems, app_sign);
         view_review_show(REVIEW_TXN);
         *flags |= IO_ASYNCH_REPLY;
@@ -336,7 +330,7 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                 THROW(APDU_CODE_WRONG_LENGTH);
             }
 
-            if (review_pending) {
+            if (view_review_is_pending()) {
                 THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
             }
 
@@ -399,7 +393,7 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
             }
         }
         CATCH(EXCEPTION_IO_RESET) {
-            review_pending = false;
+            view_review_clear_pending();
             THROW(EXCEPTION_IO_RESET);
         }
         CATCH_OTHER(err) {
