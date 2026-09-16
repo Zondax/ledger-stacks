@@ -4,13 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  jest-mock: 30.4.1
+
 importers:
 
   .:
     dependencies:
       '@zondax/ledger-stacks':
-        specifier: ^1.1.2
-        version: 1.1.2
+        specifier: ^1.2.0
+        version: 1.2.0
       '@zondax/zemu':
         specifier: ^0.67.4
         version: 0.67.4
@@ -48,6 +51,9 @@ importers:
       bn.js:
         specifier: ^5.2.3
         version: 5.2.3
+      c32check:
+        specifier: ^2.0.0
+        version: 2.0.0
       crypto-js:
         specifier: 4.2.0
         version: 4.2.0
@@ -834,8 +840,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@zondax/ledger-stacks@1.1.2':
-    resolution: {integrity: sha512-VKLPFJijpod7ttuLsZzbkpRAnn6ZPn+o6+QyZOFwh7TolkhvIH7AjfThAjY7DLMhHjcpmPdWLyzbliCeCjNJXA==}
+  '@zondax/ledger-stacks@1.2.0':
+    resolution: {integrity: sha512-FdNO1vk+pJjfU0kTQMOoIidm1keq6lnD5D4+eP1PV1Y+GX3FNHVFvcqr2tLpd0NvAIAClj9Uvqavnnl6FhrSqw==}
 
   '@zondax/zemu@0.67.4':
     resolution: {integrity: sha512-Ibu2OzEetPfrRmH3taqFChW8XwpC09lB+lJi2oL69VM8lqNutbAEPE4lrLjDTMhwAIEnyFZ6f2ny9UrxLtRi+w==}
@@ -3752,7 +3758,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@zondax/ledger-stacks@1.1.2':
+  '@zondax/ledger-stacks@1.2.0':
     dependencies:
       '@ledgerhq/hw-transport': 6.35.2
       '@stacks/transactions': 7.4.0

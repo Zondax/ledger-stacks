@@ -143,16 +143,19 @@ impl<'a> TransactionPayload<'a> {
     pub fn num_items(&self, hide_sip10_details: bool) -> Result<u8, ParserError> {
         match self {
             Self::TokenTransfer(_) => Ok(3),
-            Self::SmartContract(_) | Self::VersionedSmartContract(_) => Ok(1),
+            Self::SmartContract(_) => Ok(1),
+            // contract name + clarity version
+            Self::VersionedSmartContract(_) => Ok(2),
             Self::ContractCall(ref call) => call.num_items(hide_sip10_details),
         }
     }
 
     /// Whether this payload contains data the device will sign but cannot display in full.
     ///
-    /// A contract deploy shows only the contract *name* -- the Clarity source code it commits to
-    /// is never rendered -- so it is always blind. A token transfer renders every one of its three
-    /// items. A contract call depends on its argument types.
+    /// A contract deploy shows only the contract *name* (and, for versioned deploys, the clarity
+    /// version) -- the Clarity source code it commits to is never rendered -- so it is always
+    /// blind. A token transfer renders every one of its three items. A contract call depends on
+    /// its argument types.
     pub fn requires_blindsign(&self) -> Result<bool, ParserError> {
         match self {
             Self::TokenTransfer(_) => Ok(false),

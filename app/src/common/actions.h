@@ -236,6 +236,15 @@ __Z_INLINE uint8_t app_fill_address(address_kind_e kind) {
     return action_addr_len;
 }
 
+__Z_INLINE uint8_t app_fill_address_multisig() {
+    // Put data directly in the apdu buffer
+    MEMZERO(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE);
+
+    action_addr_len = crypto_fillAddress_multisig(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE - 2);
+
+    return action_addr_len;
+}
+
 __Z_INLINE uint8_t app_fill_auth_pubkey(address_kind_e kind) {
     // Put data directly in the apdu buffer
     MEMZERO(G_io_apdu_buffer, IO_APDU_BUFFER_SIZE);

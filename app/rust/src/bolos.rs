@@ -1,5 +1,6 @@
 //! Rust interfaces to Ledger SDK APIs.
 pub const SHA256_LEN: usize = 32;
+pub const RIPEMD160_LEN: usize = 20;
 
 #[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
@@ -48,5 +49,36 @@ pub fn sha256(data: &[u8], out: &mut [u8]) -> Result<(), OutputTooSmall> {
         return Err(OutputTooSmall);
     }
     out.copy_from_slice(digest.as_ref());
+    Ok(())
+}
+
+// extern function that uses the device sdk to compute a ripemd160 hash
+#[cfg(not(any(test, feature = "fuzzing")))]
+extern "C" {
+    pub fn hash_ripemd160(in_data: *const u8, in_len: u16, out: *mut u8);
+}
+
+#[cfg(not(any(test, feature = "fuzzing")))]
+pub fn ripemd160(data: &[u8], output: &mut [u8]) -> Result<(), OutputTooSmall> {
+    if output.len() < RIPEMD160_LEN {
+        return Err(OutputTooSmall);
+    }
+
+    unsafe {
+        hash_ripemd160(data.as_ptr(), data.len() as _, output.as_mut_ptr());
+    }
+
+    Ok(())
+}
+
+#[cfg(any(test, feature = "fuzzing"))]
+pub fn ripemd160(data: &[u8], out: &mut [u8]) -> Result<(), OutputTooSmall> {
+    use ripemd::Digest;
+    use ripemd::Ripemd160;
+    let digest = Ripemd160::digest(data);
+    if out.len() < RIPEMD160_LEN {
+        return Err(OutputTooSmall);
+    }
+    out[..RIPEMD160_LEN].copy_from_slice(digest.as_ref());
     Ok(())
 }
