@@ -279,7 +279,10 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
         zemu_log_stack("tx_parse done\n");
 
         CHECK_APP_CANARY()
-        view_review_init(tx_getItem, tx_getNumItems, app_sign);
+        // Progressive review: the UI offers a way to the approval once the transaction is long
+        // enough to be worth skipping (REVIEW_SKIP_MIN_ITEMS). Address review stays plain -- it
+        // is three items and there is nothing to skip.
+        view_review_init_progressive(tx_getItem, tx_getNumItems, app_sign);
         view_review_show(REVIEW_TXN);
         *flags |= IO_ASYNCH_REPLY;
     }

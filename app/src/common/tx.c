@@ -168,8 +168,19 @@ uint16_t tx_previous_signer_data(uint8_t **data) {
     return parser_previous_signer_data(data);
 }
 
-uint32_t tx_num_multisig_fields() {
-    return parser_num_multisig_fields();
+zxerr_t tx_num_multisig_fields(uint32_t *num_fields) {
+    parser_error_t err = parser_num_multisig_fields(num_fields);
+
+    // Convert error codes
+    if (err == parser_no_data) {
+        return zxerr_no_data;
+    }
+
+    if (err != parser_ok) {
+        return zxerr_unknown;
+    }
+
+    return zxerr_ok;
 }
 
 zxerr_t tx_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data) {
