@@ -12,6 +12,7 @@ on:
 jobs:
   ledger-build:
     uses: Zondax/_workflows/.github/workflows/_ledger_main.yml@v3
+    secrets: inherit
     with:
       runs-on: ${{ github.repository_owner == 'zondax' && 'zondax-runners' || 'ubuntu-latest' }}
       has-rust: true
@@ -20,3 +21,7 @@ jobs:
       # Match the builder's RUSTUP_TOOLCHAIN so build_ledger/build_package install
       # rust-src for the nightly the device build actually uses (-Zbuild-std).
       rust-version: "nightly-2025-12-05"
+      # Upload the device installers of every dev build to the ledger-apps R2 bucket,
+      # where the Zondax hub serves them as private builds.
+      r2-upload-branch: dev
+      r2-app-id: stacks
