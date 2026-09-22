@@ -189,8 +189,11 @@ if(ENABLE_FUZZING)
         # Setup fuzzing directories
         setup_fuzz_directories()
         
-        # Add fuzz targets using the common macro
-        add_fuzz_target(parser_parse ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/parser_parse.cpp app_lib rslib)
+        # Add fuzz targets using the common macro. app_lib is listed again
+        # after rslib, as for unittests: the Rust archive calls back into C
+        # symbols that live in app_lib, and GNU-style linkers resolve static
+        # archives in a single left-to-right pass.
+        add_fuzz_target(parser_parse ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/parser_parse.cpp app_lib rslib app_lib)
 else()
         ##############################################################
         #  Tests
