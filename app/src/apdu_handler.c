@@ -31,6 +31,15 @@
 
 static bool tx_initialized = false;
 
+// A chunked transfer belongs to the instruction that opened it, and derives from the path that
+// instruction validated on its INIT chunk. Both are kept here rather than read back from the
+// shared `hdPath` at the end: any path-taking command (GET_AUTH_PUBKEY, GET_ADDR, ...) sent
+// between INIT and LAST overwrites `hdPath`, and the transfer would then derive from a path the
+// host chose freely, never validated for this instruction.
+static uint8_t tx_ins = 0;
+static uint32_t tx_hdPath[HDPATH_LEN_DEFAULT];
+static uint32_t tx_hdPath_len = 0;
+
 __Z_INLINE void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
     if ((rx - offset) < sizeof(uint32_t) * path_len) {
         THROW(APDU_CODE_WRONG_LENGTH);
@@ -52,15 +61,25 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
         THROW(APDU_CODE_INVALIDP1P2);
     }
 
+    const uint8_t ins = G_io_apdu_buffer[OFFSET_INS];
+
     uint32_t added = 0;
     switch (payloadType) {
         case P1_INIT:
+            // The handler has just extracted and validated this instruction's path.
             tx_initialize();
             tx_reset();
+            tx_ins = ins;
+            MEMCPY(tx_hdPath, hdPath, sizeof(tx_hdPath));
+            tx_hdPath_len = hdPath_len;
             tx_initialized = true;
             return false;
         case P1_ADD:
             if (!tx_initialized) {
+                THROW(APDU_CODE_TX_NOT_INITIALIZED);
+            }
+            if (ins != tx_ins) {
+                tx_initialized = false;
                 THROW(APDU_CODE_TX_NOT_INITIALIZED);
             }
             added = tx_append(&(G_io_apdu_buffer[OFFSET_DATA]), rx - OFFSET_DATA);
@@ -73,11 +92,18 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
             if (!tx_initialized) {
                 THROW(APDU_CODE_TX_NOT_INITIALIZED);
             }
+            if (ins != tx_ins) {
+                tx_initialized = false;
+                THROW(APDU_CODE_TX_NOT_INITIALIZED);
+            }
             added = tx_append(&(G_io_apdu_buffer[OFFSET_DATA]), rx - OFFSET_DATA);
             if (added != rx - OFFSET_DATA) {
                 tx_initialized = false;
                 THROW(APDU_CODE_OUTPUT_BUFFER_TOO_SMALL);
             }
+            // Derive from the path validated on INIT, whatever ran in between.
+            MEMCPY(hdPath, tx_hdPath, sizeof(hdPath));
+            hdPath_len = tx_hdPath_len;
             tx_initialized = false;
             return true;
         default:
@@ -166,7 +192,8 @@ __Z_INLINE void handleGetAddrMultisig(volatile uint32_t *flags, volatile uint32_
     // Chunked transport (like signing): larger key sets (up to n = 15) exceed a
     // single APDU. The INIT chunk carries the device's own derivation path
     // (validated as a standard Stacks path, sets `hdPath`); the ADD/LAST chunks
-    // accumulate the multisig header and cosigner keys.
+    // accumulate the multisig header and cosigner keys. process_chunk() binds the
+    // chunks to this instruction and restores the INIT path on LAST.
     if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == P1_INIT) {
         extract_default_path(rx, OFFSET_DATA);
     }
