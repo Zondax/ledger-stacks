@@ -269,6 +269,20 @@ impl<'a> TransactionPostCondition<'a> {
         NonfungibleConditionCode::from_u8(code)
     }
 
+    /// The principal and asset of a fungible-token condition; `None` for any other kind.
+    pub fn fungible_principal_and_asset(
+        &self,
+    ) -> Option<(PostConditionPrincipal<'a>, AssetInfo<'a>)> {
+        match *self {
+            Self::Fungible(inner) => {
+                let (rem, principal) = PostConditionPrincipal::from_bytes(inner).ok()?;
+                let (_, asset) = AssetInfo::from_bytes(rem).ok()?;
+                Some((principal, asset))
+            }
+            _ => None,
+        }
+    }
+
     pub fn asset_name(&self) -> Option<&[u8]> {
         match self {
             Self::Fungible(inner) | Self::Nonfungible(inner) => {

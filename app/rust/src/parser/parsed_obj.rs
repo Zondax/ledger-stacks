@@ -772,6 +772,77 @@ mod test {
         }
     }
 
+    /// Audit LOW-4. The post-conditions are only hidden when the single condition restates the
+    /// transfer the card shows. Matching only the first condition's code, as before, hid a
+    /// condition on any principal, asset or amount, and every condition after it.
+    #[test]
+    fn test_registry_transfer_shows_post_conditions_that_do_not_restate_it() {
+        let input_path = {
+            let mut r = PathBuf::new();
+            r.push(env!("CARGO_MANIFEST_DIR"));
+            r.push("tests");
+            r.push("sip10_transfer_hidden_details");
+            r.set_extension("json");
+            r
+        };
+        let str = std::fs::read_to_string(input_path).expect("Error opening json file");
+        let json: ContractCallTx = serde_json::from_str(&str).unwrap();
+
+        // The fixture's one condition: fungible, standard principal = the sender, asset in the
+        // called contract, SentGe the transfer amount (1234567).
+        const SENDER: &str = "3b471808467d33eec688b7a7a75f06aad921ba6e";
+        let condition = format!(
+            "0102{}{}1a2d89de56fd4db19741957831926e9ba96cf041580b68656c6c6f2d776f726c640a737461636b61726f6f7303000000000012d687",
+            "1a", SENDER
+        );
+        assert!(json.raw.contains(&format!("00000001{}", condition)));
+
+        let keys_of = |raw: &str| -> Vec<String> {
+            let bytes = hex::decode(raw).unwrap();
+            review_items(&bytes).into_iter().map(|(k, _)| k).collect()
+        };
+        let hides = |raw: &str| !keys_of(raw).iter().any(|k| k == "Fungi. Code");
+
+        assert!(hides(&json.raw));
+
+        // `Origin` names the same account as the sender here, so it restates the transfer too.
+        let origin = condition.replacen(&format!("02{}{}", "1a", SENDER), "01", 1);
+        assert!(hides(&json.raw.replacen(&condition, &origin, 1)));
+
+        let shown = [
+            // Another amount.
+            (
+                "amount",
+                condition.replacen("03000000000012d687", "030000000000000064", 1),
+            ),
+            // Another principal.
+            ("principal", condition.replacen(SENDER, &"11".repeat(20), 1)),
+            // An asset in another contract ("hello-worle").
+            (
+                "asset contract",
+                condition.replacen("68656c6c6f2d776f726c640a", "68656c6c6f2d776f726c650a", 1),
+            ),
+        ];
+        for (what, other) in shown {
+            let raw = json.raw.replacen(&condition, &other, 1);
+            assert!(!hides(&raw), "a condition with another {} was hidden", what);
+        }
+
+        // A second condition, even an identical one, is never hidden behind the first.
+        let two = json.raw.replacen(
+            &format!("00000001{}", condition),
+            &format!("00000002{}{}", condition, condition),
+            1,
+        );
+        let keys = keys_of(&two);
+        assert_eq!(
+            keys.iter().filter(|k| *k == "Fungi. Code").count(),
+            2,
+            "{:?}",
+            keys
+        );
+    }
+
     /// A contract call to a *registry* contract that is not a SIP-10 `transfer` must be reviewed
     /// in full.
     ///

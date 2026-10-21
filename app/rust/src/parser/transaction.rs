@@ -11,7 +11,12 @@ use crate::{
         error::ParserError,
         parser_common::{HashMode, SignerId, TransactionVersion, C32_ENCODED_ADDRS_LENGTH},
         transaction_auth::TransactionAuth,
-        transaction_payload::{DisplayMode, TransactionPayload, CONTRACT_CALL_BASE_ITEMS},
+        post_conditions::{PostConditionPrincipal, TransactionPostCondition},
+        transaction_payload::{
+            DisplayMode, TransactionContractCallWrapper, TransactionPayload,
+            CONTRACT_CALL_BASE_ITEMS,
+        },
+        PrincipalData, StacksAddress, ValueId,
     },
 };
 
@@ -257,8 +262,14 @@ impl<'a> Transaction<'a> {
     /// post-condition are redundant. Keying this on the contract alone -- as it used to -- hid the
     /// post-conditions of any other function on a listed token, and since the renderer still spent
     /// three indices on the base items, the last three arguments were never shown either.
+    ///
+    /// The post-condition is only redundant when it says exactly what the card already shows.
+    /// So there must be one condition and no more, and it must be a fungible condition with the
+    /// token's expected code on the transfer's sender, the called token contract and the
+    /// transfer amount. Anything else is shown in full. Checking only the first condition's code,
+    /// as this used to, hid every condition behind it and any principal, asset or amount it named.
     fn should_hide_sip10_details(&self) -> Result<bool, ParserError> {
-        if self.post_conditions.num_items() == 0 {
+        if self.post_conditions.num_conditions() != 1 {
             return Ok(false);
         }
 
@@ -289,18 +300,87 @@ impl<'a> Transaction<'a> {
             None => return Ok(false),
         };
 
-        let current_condition = match self.post_conditions.first_post_condition()?.fungible_condition_code() {
-            Some(code) => code,
-            None => return Ok(false),
-        };
+        let condition = self.post_conditions.first_post_condition()?;
+        if condition.fungible_condition_code() != Some(expected_condition) {
+            return Ok(false);
+        }
 
-        // Skip rendering if expected condition is the current one
-        if expected_condition == current_condition {
+        if self.sip10_condition_restates_transfer(contract_call, &condition)? {
             c_zemu_log_stack("Hiding SIP-10 details\x00");
             return Ok(true);
         }
 
         Ok(false)
+    }
+
+    /// Whether a fungible post-condition names the sender, token and amount of the SIP-10
+    /// transfer `call`.
+    ///
+    /// The asset is matched on the token contract: the registry does not record the asset
+    /// name, and a listed token contract defines the one fungible token it is listed for.
+    fn sip10_condition_restates_transfer(
+        &self,
+        call: &TransactionContractCallWrapper<'_>,
+        condition: &TransactionPostCondition<'_>,
+    ) -> Result<bool, ParserError> {
+        let Some((principal, asset)) = condition.fungible_principal_and_asset() else {
+            return Ok(false);
+        };
+
+        // Token: the condition's asset lives in the contract being called.
+        let contract_name = call.contract_name()?;
+        if asset.address.0[..] != *call.contract_address_bytes()?
+            || asset.contract_name.name() != contract_name.name()
+        {
+            return Ok(false);
+        }
+
+        // Amount: arg0 of `transfer`.
+        let amount = call.argument_at(0)?;
+        let amount = match amount.uint() {
+            Some(amount) => amount,
+            None => return Ok(false),
+        };
+        if condition.tokens_amount().map(u128::from) != Some(amount) {
+            return Ok(false);
+        }
+
+        // Principal: arg1 of `transfer`, the sender.
+        let sender = call.argument_at(1)?;
+        let sender = match sender.value_id() {
+            ValueId::StandardPrincipal => PrincipalData::standard_from_bytes(sender.payload()),
+            ValueId::ContractPrincipal => {
+                PrincipalData::contract_principal_from_bytes(sender.payload())
+            }
+            _ => return Ok(false),
+        }
+        .map(|(_, sender)| sender)
+        .map_err(|_| ParserError::InvalidAddress)?;
+
+        let same_address = |address: &StacksAddress<'_>| {
+            sender.version() == address.0[0] && sender.raw_address() == &address.0[1..]
+        };
+        let matches = match principal {
+            PostConditionPrincipal::Origin => {
+                sender.contract_name().is_none()
+                    && sender.encoded_address()?.as_ref()
+                        == self
+                            .transaction_auth
+                            .origin()
+                            .signer_address(self.version)?
+                            .as_ref()
+            }
+            PostConditionPrincipal::Standard(address) => {
+                sender.contract_name().is_none() && same_address(&address)
+            }
+            PostConditionPrincipal::Contract(address, name) => {
+                same_address(&address)
+                    && sender
+                        .contract_name()
+                        .is_some_and(|sender_name| sender_name.name() == name.name())
+            }
+        };
+        Ok(matches)
     }
 
     /// Whether this transaction commits to data the device cannot show the user.

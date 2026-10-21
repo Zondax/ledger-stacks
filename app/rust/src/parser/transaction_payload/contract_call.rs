@@ -415,6 +415,19 @@ impl<'a> TransactionContractCallWrapper<'a> {
         self.tx.contract_address()
     }
 
+    /// The called contract's `[version][hash160]`, the same 21 bytes a post-condition asset
+    /// carries for its contract.
+    pub fn contract_address_bytes(&self) -> Result<&'a [u8], ParserError> {
+        self.tx
+            .0
+            .get(..HASH160_LEN + 1)
+            .ok_or(ParserError::UnexpectedBufferEnd)
+    }
+
+    pub fn argument_at(&self, idx: usize) -> Result<Value<'a>, ParserError> {
+        self.tx.function_args()?.argument_at(idx)
+    }
+
     pub fn function_name(&self) -> Result<&[u8], ParserError> {
         self.tx.function_name()
     }
