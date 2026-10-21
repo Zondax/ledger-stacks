@@ -129,6 +129,20 @@ async function patchedPreSignHash(
 }
 
 // Helper function to create STX post conditions with the new Pc API
+// A fungible-token post-condition on `contractId`'s token `tokenName`.
+function createFtPostCondition(address: string, code: FungibleConditionCode, amount: bigint, contractId: string, tokenName: string) {
+  const builder = Pc.principal(address)
+  const contract = contractId as `${string}.${string}`
+  switch (code) {
+    case FungibleConditionCode.Equal:
+      return builder.willSendEq(amount).ft(contract, tokenName)
+    case FungibleConditionCode.LessEqual:
+      return builder.willSendLte(amount).ft(contract, tokenName)
+    default:
+      throw new Error(`unsupported condition code ${code}`)
+  }
+}
+
 function createStxPostCondition(address: string, code: FungibleConditionCode, amount: bigint) {
   const builder = Pc.principal(address)
   switch (code) {
@@ -1447,10 +1461,13 @@ describe('Standard', function () {
           fee: fee,
           nonce: nonce,
           publicKey: devicePublicKey,
-          postConditions: data.postConditions ? [
-            createStxPostCondition(data.postConditions[0].address, data.postConditions[0].code, data.postConditions[0].amount),
-            createStxPostCondition(data.postConditions[1].address, data.postConditions[1].code, data.postConditions[1].amount),
-          ] : [],
+          postConditions: data.postConditions
+            ? data.postConditions.map((pc: any) =>
+                pc.ft
+                  ? createFtPostCondition(pc.address, pc.code, pc.amount, `${contract_address}.${contract_name}`, 'sbtc-token')
+                  : createStxPostCondition(pc.address, pc.code, pc.amount),
+              )
+            : [],
         }
 
         const transaction = await makeUnsignedContractCall(txOptions)
