@@ -244,7 +244,9 @@ bool crypto_extractPublicKeyHash(uint8_t *pubKeyHash, uint16_t pubKeyLen) {
     // calculates the sha256 + ripemd160
     address_temp_t address_temp;
 
-    cx_hash_sha256(publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE);
+    if (cx_hash_sha256(publicKey, PK_LEN_SECP256K1, address_temp.hash_sha256, CX_SHA256_SIZE) != CX_SHA256_SIZE) {
+        return false;
+    }
     return ripemd160(address_temp.hash_sha256, CX_SHA256_SIZE, pubKeyHash);  // RIPEMD-160
 }
 

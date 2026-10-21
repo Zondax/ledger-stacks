@@ -46,7 +46,7 @@ pub fn multisig_p2sh_hash160(
     if device_pubkey.len() != PUBKEY_LEN {
         return Err(ParserError::ValueOutOfRange);
     }
-    if cosigner_keys.len() % PUBKEY_LEN != 0 {
+    if !cosigner_keys.len().is_multiple_of(PUBKEY_LEN) {
         return Err(ParserError::ValueOutOfRange);
     }
 
@@ -93,10 +93,10 @@ pub fn multisig_p2sh_hash160(
 
     // Hash160 = RIPEMD160(SHA256(script))
     let mut sha = [0u8; SHA256_LEN];
-    sha256(&script[..off], &mut sha).map_err(|_| ParserError::UnexpectedError)?;
+    sha256(&script[..off], &mut sha).map_err(|_| ParserError::CryptoError)?;
 
     let mut hash160 = [0u8; HASH160_LEN];
-    ripemd160(&sha, &mut hash160).map_err(|_| ParserError::UnexpectedError)?;
+    ripemd160(&sha, &mut hash160).map_err(|_| ParserError::CryptoError)?;
 
     Ok(hash160)
 }

@@ -219,21 +219,19 @@ impl<'a> StructuredMsg<'a> {
         to_hash[..prefix_len].copy_from_slice(&prefix[..]);
 
         // 1. get domain hash
-        // wont panic as out has the right len
         let domain = self.domain();
         sha256(
             domain.bytes(),
             &mut to_hash[prefix_len..prefix_len + SHA256_LEN],
         )
-        .unwrap();
+        .map_err(|_| ParserError::CryptoError)?;
         // 1. get msg hash
-        // wont panic as out has the right len
         let len = to_hash.len();
-        sha256(self.msg(), &mut to_hash[len - SHA256_LEN..]).unwrap();
+        sha256(self.msg(), &mut to_hash[len - SHA256_LEN..])
+            .map_err(|_| ParserError::CryptoError)?;
 
         // compute msg hash
-        // wont panic as out is SHA256_LEN bytes len
-        sha256(&to_hash[..], &mut out[0..SHA256_LEN]).unwrap();
+        sha256(&to_hash[..], &mut out[0..SHA256_LEN]).map_err(|_| ParserError::CryptoError)?;
 
         Ok(())
     }
@@ -263,8 +261,7 @@ impl<'a> StructuredMsg<'a> {
 
                 // 1. get prefix hash
                 let mut hash = [0; SHA256_LEN];
-                // wont panic as we are passing an output buffer longer enough
-                self.get_hash(&mut hash).unwrap();
+                self.get_hash(&mut hash)?;
 
                 // buffer to store the hex hash
                 let mut hex = [0; SHA256_LEN * 2];

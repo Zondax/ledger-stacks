@@ -386,7 +386,10 @@ __Z_INLINE zxerr_t get_presig_hash(uint8_t *hash, uint16_t hashLen) {
         case Message:
         case Jwt: {
             // we have byteString or JWT messages. The hash is the same for both types
-            cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE);
+            if (cx_hash_sha256(data, data_len, hash, CX_SHA256_SIZE) != CX_SHA256_SIZE) {
+                MEMZERO(hash, hashLen);
+                return zxerr_unknown;
+            }
             return zxerr_ok;
         }
         // special case is delegated to the rust side
