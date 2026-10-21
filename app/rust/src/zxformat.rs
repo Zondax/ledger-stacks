@@ -256,6 +256,16 @@ pub fn format_u128_decimals(
     Some(output)
 }
 
+/// Whether every byte is printable ASCII (0x20..=0x7e), so the text shows on screen exactly as
+/// signed.
+///
+/// `is_ascii()` alone is not enough: it admits every C0 control byte. The value buffer reaches
+/// the UI as a C string, so a NUL ends the text where it sits -- `ok\0SPATTACKER` reviews as `ok`
+/// -- and the other control bytes are invisible or break the layout.
+pub fn is_printable_ascii(bytes: &[u8]) -> bool {
+    bytes.iter().all(|b| (0x20..=0x7e).contains(b))
+}
+
 #[inline(never)]
 pub fn page_string(out_value: &mut [u8], in_value: &[u8], page_idx: u8) -> Result<u8, ParserError> {
     page_string_with(out_value, in_value, page_idx, |byte| byte)

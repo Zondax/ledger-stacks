@@ -40,6 +40,16 @@ impl<'a> Domain<'a> {
                 (b"chain-id", ValueId::UInt) => 2,
                 _ => return Err(ParserError::InvalidStructuredMsg.into()),
             };
+            // `get_item` shows the name and version as they are, and the screen stops at a NUL:
+            // `app\0evil` would review as `app` while the domain hash covers every byte.
+            if value_id == ValueId::StringAscii {
+                let printable = value
+                    .string_ascii()
+                    .is_some_and(|s| crate::zxformat::is_printable_ascii(s.content()));
+                if !printable {
+                    return Err(ParserError::InvalidStructuredMsg.into());
+                }
+            }
             if seen[slot] {
                 return Err(ParserError::InvalidStructuredMsg.into());
             }
@@ -320,6 +330,26 @@ mod test {
         let valid = "5349503031380c0000000308636861696e2d69640100000000000000000000000000000001046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300d0000000568656c6c6f";
         let bytes = hex::decode(valid).unwrap();
         StructuredMsg::from_bytes(&bytes).unwrap();
+    }
+
+    /// The domain name and version are shown as they are, and the screen stops at a NUL, so a
+    /// name of `St\0cks` would review as `St`. Such a domain is rejected (audit HIGH-5).
+    #[test]
+    fn parse_domain_with_unprintable_string_is_rejected() {
+        let valid = "5349503031380c0000000308636861696e2d69640100000000000000000000000000000001046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300d0000000568656c6c6f";
+        // "Stacks" -> "St\0cks", and "1.0.0" -> "1.0\n0".
+        for (from, to) in [
+            ("537461636b73", "537400636b73"),
+            ("312e302e30", "312e300a30"),
+        ] {
+            let input = valid.replacen(from, to, 1);
+            let bytes = hex::decode(&input).unwrap();
+            assert!(
+                StructuredMsg::from_bytes(&bytes).is_err(),
+                "accepted {}",
+                input
+            );
+        }
     }
 
     #[test]

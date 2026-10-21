@@ -767,19 +767,16 @@ impl<'a> TransactionContractCall<'a> {
                 Ok(())
             }
 
-            // `[len: 4][chars]`. Written in full and paged; the parser has already checked that
-            // a StringAscii really is ASCII.
-            ValueId::StringAscii => {
+            // `[len: 4][chars]`. Written in full and paged, but only when every byte is
+            // printable. The parser accepts any ASCII byte in a StringAscii, NUL included, and
+            // the screen stops at a NUL: `ok\0SPATTACKER` would review as `ok`.
+            //
+            // Device fonts cover ASCII, so a UTF-8 string whose bytes happen to be printable
+            // ASCII is shown like any other string. Anything else would render as mojibake or
+            // blanks, which is worse than admitting the device cannot show it.
+            ValueId::StringAscii | ValueId::StringUtf8 => {
                 let content = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
-                Self::write_text_content(writer, content)
-            }
-
-            // Device fonts cover ASCII, so a UTF-8 string whose bytes happen to be ASCII is shown
-            // like any other string. Anything else would render as mojibake or blanks, which is
-            // worse than admitting the device cannot show it.
-            ValueId::StringUtf8 => {
-                let content = payload.get(4..).ok_or(ParserError::UnexpectedBufferEnd)?;
-                if !content.is_ascii() {
+                if !zxformat::is_printable_ascii(content) {
                     return Err(ParserError::UnexpectedType);
                 }
                 Self::write_text_content(writer, content)
@@ -931,13 +928,14 @@ impl<'a> TransactionContractCall<'a> {
         zxformat::page_string(out_value, Self::type_placeholder(value), page_idx)
     }
 
-    /// The content of a string argument that is ASCII -- so it *could* be shown -- but longer
-    /// than the render budget. `None` for anything else.
+    /// The content of a string argument that is printable ASCII -- so it *could* be shown -- but
+    /// longer than the render budget. `None` for anything else.
     fn overlong_ascii_text<'b>(value: &Value<'b>) -> Option<&'b [u8]> {
         match value.value_id() {
             ValueId::StringAscii | ValueId::StringUtf8 => {
                 let content = value.payload().get(4..)?;
-                (content.is_ascii() && content.len() > MAX_VALUE_TEXT).then_some(content)
+                (content.len() > MAX_VALUE_TEXT && zxformat::is_printable_ascii(content))
+                    .then_some(content)
             }
             _ => None,
         }
@@ -1550,6 +1548,43 @@ mod test {
         euro.extend_from_slice("\u{20ac}".as_bytes());
         assert!(!displayable(&euro));
         assert_eq!(render(&euro), "is StringUtf8");
+    }
+
+    fn string_of(id: u8, content: &[u8]) -> Vec<u8> {
+        let mut b = vec![id];
+        b.extend_from_slice(&(content.len() as u32).to_be_bytes());
+        b.extend_from_slice(content);
+        b
+    }
+
+    /// Audit HIGH-5. A NUL is ASCII, so `ok\0SPATTACKER` passed as displayable and skipped the
+    /// blind-signing gate, while the screen stopped at the NUL and showed `ok`. Any byte outside
+    /// printable ASCII now makes the string opaque, for both string types, and the review shows
+    /// the type placeholder rather than a prefix.
+    #[test]
+    fn test_strings_with_control_bytes_are_not_displayable() {
+        for id in [0x0d, 0x0e] {
+            assert!(displayable(&string_of(id, b"okSPATTACKER")));
+            for content in [
+                &b"ok\0SPATTACKER"[..],
+                b"ok\nnext",
+                b"tab\there",
+                b"del\x7f",
+            ] {
+                let value = string_of(id, content);
+                assert!(!displayable(&value), "{:?} must be gated", content);
+                assert!(PLACEHOLDERS.contains(&render(&value).as_str()));
+            }
+        }
+
+        // The gate fires for the whole call, not just the value.
+        assert!(!requires_blindsign(&[string_of(0x0d, b"okSPATTACKER")]));
+        assert!(requires_blindsign(&[string_of(0x0d, b"ok\0SPATTACKER")]));
+
+        // An over-long string with a NUL gets no prefix either: the prefix could end at the NUL.
+        let mut long = vec![b'a'; MAX_VALUE_TEXT + 10];
+        long[3] = 0;
+        assert_eq!(render(&string_of(0x0d, &long)), "is StringAscii");
     }
 
     /// A contract-call payload: `[address][contract-name][function-name][arg count][args]`.

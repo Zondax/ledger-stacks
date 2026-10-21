@@ -210,9 +210,9 @@ impl<'a> ContractName<'a> {
         let (rem, name) = ClarityName::from_bytes(bytes)?;
 
         // we are using the ClarityName inner type to wrap-up the parsing which is the same for
-        // Contract names, but the docs do not say nothing about what is a valid clarity name either
-        // ascii or utf8 values, lets check it here.
-        if !name.0.is_ascii() {
+        // Contract names. A valid one is `^[a-zA-Z]([a-zA-Z0-9]|[-_])*$`, so anything that is not
+        // printable ASCII is malformed -- and a NUL would cut the name short on screen.
+        if !crate::zxformat::is_printable_ascii(name.0) {
             return Err(ParserError::InvalidContractName.into());
         }
 
@@ -245,7 +245,16 @@ impl<'a> ClarityName<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (rem, name) = Self::read_as_bytes(bytes)?;
         // Omit the first byte as it is the encoded length
-        Ok((rem, Self(&name[1..])))
+        let name = &name[1..];
+
+        // Function, asset and tuple-key names are shown as they are. Clarity only allows
+        // printable ASCII in a name, and a NUL would end it early on screen while the
+        // signature still covers the bytes after it.
+        if !crate::zxformat::is_printable_ascii(name) {
+            return Err(ParserError::UnexpectedValue.into());
+        }
+
+        Ok((rem, Self(name)))
     }
 
     #[inline(never)]
