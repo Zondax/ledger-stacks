@@ -12,7 +12,6 @@ on:
 jobs:
   ledger-build:
     uses: Zondax/_workflows/.github/workflows/_ledger_main.yml@v3
-    secrets: inherit
     with:
       runs-on: ${{ github.repository_owner == 'zondax' && 'zondax-runners' || 'ubuntu-latest' }}
       has-rust: true
