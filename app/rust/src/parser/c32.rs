@@ -54,24 +54,26 @@ pub extern "C" fn rs_c32_address(
 }
 
 #[cfg(any(test, feature = "fuzzing"))]
-fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
+fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) -> Result<(), ParserError> {
     let digest = Sha256::digest(&data[..21]);
     data.copy_from_slice(digest.as_slice());
     let sha2_2 = Sha256::digest(&data[..]);
     data[20..24].copy_from_slice(&sha2_2.as_slice()[..4]);
+    Ok(())
 }
 
+// A failed hash is an error, not a zero digest: a checksum built from one would give an address
+// that looks valid on screen and is not the one the user meant.
 #[cfg(not(any(test, feature = "fuzzing")))]
-fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) {
+fn double_sha256_checksum(data: &mut [u8; SHA256_LEN]) -> Result<(), ParserError> {
     let mut output = [0u8; SHA256_LEN];
-    // safe to unwrap as we are passing the right len
-    sha256(&data[..21], &mut output[..]).apdu_unwrap();
+    sha256(&data[..21], &mut output[..]).map_err(|_| ParserError::CryptoError)?;
     data.copy_from_slice(output.as_ref());
-    // safe to unwrap as we are passing the right len
-    sha256(&data[..], &mut output).apdu_unwrap();
+    sha256(&data[..], &mut output).map_err(|_| ParserError::CryptoError)?;
     let d = data.get_mut(20..24).apdu_unwrap();
     let o = output.get(..4).apdu_unwrap();
     d.copy_from_slice(o);
+    Ok(())
 }
 
 #[inline(never)]
@@ -147,7 +149,7 @@ fn c32_check_encode(
     let mut check_data = [0u8; 32];
     check_data[0] = version;
     check_data[1..21].copy_from_slice(data);
-    double_sha256_checksum(&mut check_data);
+    double_sha256_checksum(&mut check_data)?;
 
     // the first 20 bytes correspond to our initial signature hash
     // the next 4-bytes were filled by the double_sha256_checksum

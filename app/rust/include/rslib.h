@@ -9,6 +9,15 @@
 
 uint16_t rs_c32_address(const uint8_t *input, uint8_t version, uint8_t *output, uint16_t outLen);
 
+// Derives a Stacks multisig (P2SH) address. `device_pubkey` is this device's own
+// 33-byte compressed key; `cosigner_keys` is `num_cosigners * 33` bytes of the
+// other compressed keys (may be NULL when num_cosigners == 0). The device key is
+// spliced into the ordered set at `device_index`. Writes the c32 address into
+// `output` and returns its length, or 0 on error.
+uint16_t rs_multisig_c32_address(const uint8_t *device_pubkey, const uint8_t *cosigner_keys, uint8_t num_cosigners,
+                                 uint8_t device_index, uint8_t num_required, uint8_t version, uint8_t *output,
+                                 uint16_t outLen);
+
 /****************************** others ***********************************************************/
 
 parser_error_t _parser_init(parser_context_t *ctx, const uint8_t *buffer, uint32_t bufferSize, uint16_t *alloc_size);
@@ -19,7 +28,12 @@ parser_error_t _validate(const parser_context_t *ctx, const parser_tx_t *v);
 
 parser_error_t _getNumItems(const parser_context_t *ctx, const parser_tx_t *v, uint8_t *num_items);
 
-parser_error_t _getItem(const parser_context_t *ctx, int8_t displayIdx, char *outKey, uint16_t outKeyLen, char *outValue,
+// displayIdx is unsigned, matching the u8 the Rust side has always taken. Declared int8_t, every
+// index from 128 up crossed the FFI sign-extended, the item was never found, and the device
+// answered display_idx_out_of_range -- refusing a transaction it had just counted and could
+// render. zxlib's viewfunc_getItem_t is int8_t as well, which is why MAX_DISPLAY_ITEMS caps a
+// transaction at 128 items: past that the review screens cannot address them either.
+parser_error_t _getItem(const parser_context_t *ctx, uint8_t displayIdx, char *outKey, uint16_t outKeyLen, char *outValue,
                         uint16_t outValueLen, uint8_t pageIdx, uint8_t *pageCount, const parser_tx_t *v);
 
 /****************************** Getters for the required information for signing*******************/
@@ -35,7 +49,7 @@ parser_error_t _tx_requires_blindsign(const parser_tx_t *v, uint8_t *requires);
 parser_error_t _structured_msg_hash(const parser_tx_t *v, uint8_t *out, uint16_t out_len);
 
 uint8_t _is_multisig(const parser_tx_t *v);
-uint32_t _num_multisig_fields(const parser_tx_t *v);
+parser_error_t _num_multisig_fields(const parser_tx_t *v, uint32_t *num_fields);
 parser_error_t _get_multisig_field(const parser_tx_t *v, uint32_t index, uint8_t *id, uint8_t **data);
 
 parser_error_t _hash_mode(const parser_tx_t *v, uint8_t *hash_mode);
