@@ -31,7 +31,14 @@
 
 static bool tx_initialized = false;
 
-bool review_pending = false;
+// A chunked transfer belongs to the instruction that opened it, and derives from the path that
+// instruction validated on its INIT chunk. Both are kept here rather than read back from the
+// shared `hdPath` at the end: any path-taking command (GET_AUTH_PUBKEY, GET_ADDR, ...) sent
+// between INIT and LAST overwrites `hdPath`, and the transfer would then derive from a path the
+// host chose freely, never validated for this instruction.
+static uint8_t tx_ins = 0;
+static uint32_t tx_hdPath[HDPATH_LEN_DEFAULT];
+static uint32_t tx_hdPath_len = 0;
 
 __Z_INLINE void extractHDPath(uint32_t rx, uint32_t offset, uint32_t path_len) {
     if ((rx - offset) < sizeof(uint32_t) * path_len) {
@@ -54,15 +61,25 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
         THROW(APDU_CODE_INVALIDP1P2);
     }
 
+    const uint8_t ins = G_io_apdu_buffer[OFFSET_INS];
+
     uint32_t added = 0;
     switch (payloadType) {
         case P1_INIT:
+            // The handler has just extracted and validated this instruction's path.
             tx_initialize();
             tx_reset();
+            tx_ins = ins;
+            MEMCPY(tx_hdPath, hdPath, sizeof(tx_hdPath));
+            tx_hdPath_len = hdPath_len;
             tx_initialized = true;
             return false;
         case P1_ADD:
             if (!tx_initialized) {
+                THROW(APDU_CODE_TX_NOT_INITIALIZED);
+            }
+            if (ins != tx_ins) {
+                tx_initialized = false;
                 THROW(APDU_CODE_TX_NOT_INITIALIZED);
             }
             added = tx_append(&(G_io_apdu_buffer[OFFSET_DATA]), rx - OFFSET_DATA);
@@ -75,11 +92,18 @@ __Z_INLINE bool process_chunk(uint32_t rx) {
             if (!tx_initialized) {
                 THROW(APDU_CODE_TX_NOT_INITIALIZED);
             }
+            if (ins != tx_ins) {
+                tx_initialized = false;
+                THROW(APDU_CODE_TX_NOT_INITIALIZED);
+            }
             added = tx_append(&(G_io_apdu_buffer[OFFSET_DATA]), rx - OFFSET_DATA);
             if (added != rx - OFFSET_DATA) {
                 tx_initialized = false;
                 THROW(APDU_CODE_OUTPUT_BUFFER_TOO_SMALL);
             }
+            // Derive from the path validated on INIT, whatever ran in between.
+            MEMCPY(hdPath, tx_hdPath, sizeof(hdPath));
+            hdPath_len = tx_hdPath_len;
             tx_initialized = false;
             return true;
         default:
@@ -151,7 +175,6 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     }
 
     if (requireConfirmation) {
-        review_pending = true;
         app_fill_address(addr_secp256k1);
 
         view_review_init(addr_getItem, addr_getNumItems, app_reply_address);
@@ -162,6 +185,91 @@ __Z_INLINE void handleGetAddrSecp256K1(volatile uint32_t *flags, volatile uint32
     }
 
     *tx = app_fill_address(addr_secp256k1);
+    THROW(APDU_CODE_OK);
+}
+
+__Z_INLINE void handleGetAddrMultisig(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
+    // Chunked transport (like signing): larger key sets (up to n = 15) exceed a
+    // single APDU. The INIT chunk carries the device's own derivation path
+    // (validated as a standard Stacks path, sets `hdPath`); the ADD/LAST chunks
+    // accumulate the multisig header and cosigner keys. process_chunk() binds the
+    // chunks to this instruction and restores the INIT path on LAST.
+    if (G_io_apdu_buffer[OFFSET_PAYLOAD_TYPE] == P1_INIT) {
+        extract_default_path(rx, OFFSET_DATA);
+    }
+
+    if (!process_chunk(rx)) {
+        THROW(APDU_CODE_OK);
+    }
+
+    // Assembled payload:
+    //   confirm (1) | version (1) | hash_mode (1) | m (1) | n (1) | device_key_index (1)
+    //   | cosigner keys ((n-1) * 33)
+    const uint8_t *const data = tx_get_buffer();
+    const uint32_t data_len = tx_get_buffer_length();
+
+    const uint32_t MULTISIG_HEADER_LEN = 6;
+    if (data_len < MULTISIG_HEADER_LEN) {
+        THROW(APDU_CODE_WRONG_LENGTH);
+    }
+
+    const uint8_t requireConfirmation = data[0];
+    const uint8_t version_byte = data[1];
+    const uint8_t hash_mode = data[2];
+    const uint8_t num_required = data[3];
+    const uint8_t num_pubkeys = data[4];
+    const uint8_t device_key_index = data[5];
+
+    // The c32 multisig version byte (mainnet=20 / testnet=21) travels in the
+    // payload: the chunked transport reserves P1 for the chunk type and P2 = 0.
+    if (!set_multisig_version(version_byte)) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (hash_mode != MULTISIG_HASH_MODE_P2SH && hash_mode != MULTISIG_HASH_MODE_P2SH_NONSEQ) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (num_pubkeys < MULTISIG_MIN_PUBKEYS || num_pubkeys > MULTISIG_MAX_PUBKEYS) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (num_required < MULTISIG_MIN_PUBKEYS || num_required > num_pubkeys) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+    if (device_key_index >= num_pubkeys) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
+
+    const uint32_t cosigner_bytes = (uint32_t)(num_pubkeys - 1) * PK_LEN_SECP256K1;
+    if (data_len != MULTISIG_HEADER_LEN + cosigner_bytes) {
+        THROW(APDU_CODE_WRONG_LENGTH);
+    }
+
+    MEMZERO(&multisig_data, sizeof(multisig_data));
+    multisig_data.hash_mode = hash_mode;
+    multisig_data.num_required = num_required;
+    multisig_data.num_pubkeys = num_pubkeys;
+    multisig_data.device_key_index = device_key_index;
+    // Borrow the cosigner keys straight out of the reassembled chunk buffer
+    // rather than copying them, the same way tx_parse() points the transaction
+    // parser at it. The address is derived synchronously below, before anything
+    // can reuse the buffer.
+    multisig_data.pubkeys = (cosigner_bytes > 0) ? (data + MULTISIG_HEADER_LEN) : NULL;
+
+    if (requireConfirmation) {
+        if (app_fill_address_multisig() == 0) {
+            THROW(APDU_CODE_DATA_INVALID);
+        }
+
+        view_review_init(addr_multisig_getItem, addr_multisig_getNumItems, app_reply_address);
+        view_review_show(REVIEW_ADDRESS);
+
+        *flags |= IO_ASYNCH_REPLY;
+        return;
+    }
+
+    *tx = app_fill_address_multisig();
+    if (*tx == 0) {
+        THROW(APDU_CODE_DATA_INVALID);
+    }
     THROW(APDU_CODE_OK);
 }
 
@@ -198,8 +306,10 @@ __Z_INLINE void SignSecp256K1(volatile uint32_t *flags, volatile uint32_t *tx, u
         zemu_log_stack("tx_parse done\n");
 
         CHECK_APP_CANARY()
-        review_pending = true;
-        view_review_init(tx_getItem, tx_getNumItems, app_sign);
+        // Progressive review: the UI offers a way to the approval once the transaction is long
+        // enough to be worth skipping (REVIEW_SKIP_MIN_ITEMS). Address review stays plain -- it
+        // is three items and there is nothing to skip.
+        view_review_init_progressive(tx_getItem, tx_getNumItems, app_sign);
         view_review_show(REVIEW_TXN);
         *flags |= IO_ASYNCH_REPLY;
     }
@@ -250,7 +360,7 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                 THROW(APDU_CODE_WRONG_LENGTH);
             }
 
-            if (review_pending) {
+            if (view_review_is_pending()) {
                 THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
             }
 
@@ -265,6 +375,14 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
                         THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
                     }
                     handleGetAddrSecp256K1(flags, tx, rx);
+                    break;
+                }
+
+                case INS_GET_ADDR_MULTISIG: {
+                    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                        THROW(APDU_CODE_COMMAND_NOT_ALLOWED);
+                    }
+                    handleGetAddrMultisig(flags, tx, rx);
                     break;
                 }
 
@@ -305,7 +423,7 @@ void handleApdu(volatile uint32_t *flags, volatile uint32_t *tx, uint32_t rx) {
             }
         }
         CATCH(EXCEPTION_IO_RESET) {
-            review_pending = false;
+            view_review_clear_pending();
             THROW(EXCEPTION_IO_RESET);
         }
         CATCH_OTHER(err) {

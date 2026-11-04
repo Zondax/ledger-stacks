@@ -171,6 +171,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ripemd"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
+dependencies = [
+ "digest",
+]
+
+[[package]]
 name = "rslib"
 version = "0.1.0"
 dependencies = [
@@ -181,6 +190,7 @@ dependencies = [
  "no-std-compat",
  "nom",
  "numtoa",
+ "ripemd",
  "serde",
  "serde-json-core",
  "serde_json",

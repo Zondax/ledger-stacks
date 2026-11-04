@@ -15,6 +15,8 @@ use crate::{
     zxformat,
 };
 
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
 // c32 address + '.' + contract name
 const QUALIFIED_CONTRACT_ID_LEN: usize = C32_ENCODED_ADDRS_LENGTH + 1 + ClarityName::MAX_LEN as usize;
 
@@ -187,10 +189,36 @@ impl<'a> StxTokenTransfer<'a> {
                     .write_str("Memo")
                     .map_err(|_| ParserError::UnexpectedBufferEnd)?;
                 check_canary!();
-                zxformat::page_string(out_value, self.memo(), page_idx)
+                self.render_memo(out_value, page_idx)
             }
             _ => Err(ParserError::DisplayIdxOutOfRange),
         }
+    }
+
+    /// The memo is a fixed 34-byte buffer, and a text memo is right-padded with zeros. That
+    /// common case is paged as it is: the screen reads the value as a C string, so the padding
+    /// shows as nothing.
+    ///
+    /// Any other byte before the padding -- a NUL followed by more text, or a control byte --
+    /// would hide part of the memo from the user while the signature covers it, so the whole
+    /// buffer is shown as hex instead.
+    fn render_memo(&self, out_value: &mut [u8], page_idx: u8) -> Result<u8, ParserError> {
+        let memo = self.memo();
+        let text_len = memo
+            .iter()
+            .rposition(|&b| b != 0)
+            .map_or(0, |last| last + 1);
+        if zxformat::is_printable_ascii(&memo[..text_len]) {
+            return zxformat::page_string(out_value, memo, page_idx);
+        }
+
+        let mut hex = [0u8; 2 + 2 * MEMO_LEN];
+        hex[..2].copy_from_slice(b"0x");
+        for (pair, byte) in hex[2..].chunks_exact_mut(2).zip(memo) {
+            pair[0] = HEX_DIGITS[(byte >> 4) as usize];
+            pair[1] = HEX_DIGITS[(byte & 0x0f) as usize];
+        }
+        zxformat::page_string(out_value, &hex, page_idx)
     }
 
     pub fn raw_data(&self) -> &'a [u8] {
@@ -280,6 +308,49 @@ mod test {
             assert_eq!(transfer.amount().unwrap(), AMOUNT);
             assert_eq!(transfer.memo().len(), MEMO_LEN);
         }
+    }
+
+    fn with_memo(memo: &[u8]) -> Vec<u8> {
+        let mut b = standard_payload();
+        let at = b.len() - MEMO_LEN;
+        b[at..at + memo.len()].copy_from_slice(memo);
+        b
+    }
+
+    /// Whatever the device shows for display item 2 ("Memo"), as the UI reads it: up to the
+    /// first NUL.
+    fn rendered_memo(bytes: &[u8]) -> String {
+        let transfer = parse(bytes);
+        let mut out_key = [0u8; 32];
+        let mut out_value = [0u8; 200];
+        transfer
+            .get_token_transfer_items(2, &mut out_key, &mut out_value, 0)
+            .expect("render failed");
+        let end = out_value.iter().position(|&c| c == 0).unwrap_or(out_value.len());
+        String::from_utf8(out_value[..end].to_vec()).expect("utf8")
+    }
+
+    /// A text memo padded with zeros shows as its text; an empty one as nothing.
+    #[test]
+    fn test_text_memo_renders_as_text() {
+        assert_eq!(rendered_memo(&with_memo(b"invoice 42")), "invoice 42");
+        assert_eq!(rendered_memo(&standard_payload()), "");
+    }
+
+    /// Audit HIGH-5: text after a NUL used to be signed but never shown. The memo is shown as hex
+    /// so every byte is visible.
+    #[test]
+    fn test_memo_with_hidden_bytes_renders_as_hex() {
+        let rendered = rendered_memo(&with_memo(b"ok\0SPATTACKER"));
+        assert_eq!(rendered.len(), 2 + 2 * MEMO_LEN);
+        assert!(
+            rendered.starts_with("0x6f6b00535041545441434b4552"),
+            "got {}",
+            rendered
+        );
+
+        let rendered = rendered_memo(&with_memo(b"line\nbreak"));
+        assert!(rendered.starts_with("0x6c696e650a"), "got {}", rendered);
     }
 
     /// The c32 address is the deployer's address in both cases; only the suffix differs.

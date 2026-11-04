@@ -24,16 +24,31 @@ The general structure of commands and responses is as follows:
 
 #### Return codes
 
-| Return code | Description             |
-| ----------- | ----------------------- |
-| 0x6400      | Execution Error         |
-| 0x6982      | Empty buffer            |
-| 0x6983      | Output buffer too small |
-| 0x6986      | Command not allowed     |
-| 0x6D00      | INS not supported       |
-| 0x6E00      | CLA not supported       |
-| 0x6F00      | Unknown                 |
-| 0x9000      | Success                 |
+| Return code | Description              | Returned when                                                                                                                                                   |
+| ----------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0x9000      | Success                  | The command completed. Chunked commands also answer 0x9000, with no data, to every INIT and ADD chunk.                                                        |
+| 0x6700      | Wrong length             | The APDU is shorter than 5 bytes, the derivation path is shorter than the command expects, or the multisig payload length does not match its header.          |
+| 0x6982      | Empty buffer             | The APDU carries no data at all (reported by the zxlib main loop before dispatch).                                                                                |
+| 0x6983      | Output buffer too small  | A chunk would overflow the buffer that holds the reassembled payload. The transfer is cancelled and must start again from INIT.                                 |
+| 0x6984      | Data invalid             | The derivation path is not allowed for this command, a field is out of range, the payload does not parse (the response then carries the error message as ASCII), the address could not be built, or the user dismissed the blind-signing screen. |
+| 0x6986      | Command not allowed      | A review is already on screen, the device PIN is not validated, or the user rejected the request.                                                              |
+| 0x6987      | Transfer not initialised | An ADD or LAST chunk arrived with no INIT before it, or the transfer was opened by a different INS. In the second case the transfer is cancelled.              |
+| 0x6B00      | Invalid P1/P2            | P2 is not 0 on a chunked command, or P1 is not a known chunk type (INIT, ADD, LAST).                                                                           |
+| 0x6D00      | INS not supported        | The INS is unknown.                                                                                                                                             |
+| 0x6E00      | CLA not supported        | The CLA is not 0x09.                                                                                                                                            |
+| 0x6F01      | Sign/verify error        | Signing failed after the user approved: the signing hash could not be computed, the signature could not be produced, or the payload type is unknown.           |
+| 0x68xx      | Internal error           | An exception the SDK raised with a code outside 0x6xxx, reported as 0x6800 with its low 11 bits.                                                                |
+| 0x6400      | Execution error          | Never set by the application; only seen if the SDK raises it.                                                                                                   |
+| 0x6F00      | Unknown                  | Never set by the application; only seen if the SDK raises it.                                                                                                   |
+
+#### Chunked commands
+
+INS_SIGN_SECP256K1 (0x02), INS_SIGN_JWT_SECP256K1 (0x04) and INS_GET_ADDR_MULTISIG (0x07) send their payload in chunks of up to
+250 bytes: P1 = 0x00 (INIT) carries the derivation path, then any number of P1 = 0x01 (ADD) chunks and one P1 = 0x02 (LAST) chunk carry
+the payload, and P2 is 0 on every chunk.
+
+A transfer belongs to the INS that sent its INIT chunk. ADD and LAST chunks with another INS are refused with 0x6987 and cancel the
+transfer. The device derives from the path validated on the INIT chunk, even if other commands run between INIT and LAST.
 
 ---
 
@@ -89,6 +104,84 @@ The general structure of commands and responses is as follows:
 | ADDR_HUMAN_LEN | byte (1)  | ADDR_HUMAN Len       |                          |
 | ADDR_HUMAN     | byte (??) | Address as String    |                          |
 | SW1-SW2        | byte (2)  | Return code          | see list of return codes |
+
+---
+
+### INS_GET_ADDR_MULTISIG
+
+Derives and (optionally) displays a Stacks **multisig (P2SH) address** for
+on-device verification. The device derives its own public key from the supplied
+path and splices it into the ordered cosigner set at `device_key_index`, builds
+the Bitcoin-style multisig redeem script (`OP_m · (len·pubkey)ⁿ · OP_n ·
+OP_CHECKMULTISIG`), takes `Hash160 = RIPEMD160(SHA256(script))`, and c32-encodes
+it with the multisig version byte.
+
+Supports both **sequential P2SH** (`0x01`) and **non-sequential P2SH** (`0x05`)
+hash modes — they derive the same address and differ only in transaction
+signing — with **compressed** cosigner public keys, up to the protocol maximum
+of `n ≤ 15` (the 520-byte redeem-script limit).
+
+Larger key sets exceed a single APDU, so the command uses **chunked transport**
+(like signing): `P1` is the chunk type and `P2` is `0`. The **INIT** chunk carries
+the device path; the **ADD/LAST** chunks carry the multisig header and cosigner
+keys. The c32 version byte and the confirm flag travel in the payload header.
+
+#### Command — INIT chunk (P1 = 0x00)
+
+| Field | Type      | Content                                | Expected |
+| ----- | --------- | -------------------------------------- | -------- |
+| CLA   | byte (1)  | Application Identifier                  | 0x09     |
+| INS   | byte (1)  | Instruction ID                         | 0x07     |
+| P1    | byte (1)  | Chunk type = INIT                      | 0x00     |
+| P2    | byte (1)  | Unused                                 | 0x00     |
+| Path  | byte (20) | Device derivation path (5 × 4-byte LE) |          |
+
+#### Command — ADD / LAST chunks (P1 = 0x01 / 0x02)
+
+The following payload is concatenated across the ADD/LAST chunks (split at 250 bytes):
+
+| Field          | Type      | Content                                   | Expected                    |
+| -------------- | --------- | ----------------------------------------- | --------------------------- |
+| P1             | byte (1)  | Chunk type = ADD (0x01) / LAST (0x02)     |                             |
+| P2             | byte (1)  | Unused                                     | 0x00                        |
+| Confirm        | byte (1)  | Request user confirmation                  | No = 0, Yes = 1             |
+| Version        | byte (1)  | c32 multisig version byte                  | 20 (mainnet) / 21 (testnet) |
+| HashMode       | byte (1)  | Multisig hash mode                         | 0x01 (P2SH) / 0x05 (non-seq)|
+| m              | byte (1)  | Required signatures (threshold)            | 1 ≤ m ≤ n                   |
+| n              | byte (1)  | Total participating keys                   | 1 ≤ n ≤ 15                  |
+| DeviceKeyIndex | byte (1)  | Position of this device's key in the set   | 0 ≤ index < n               |
+| CosignerKeys   | byte (?)  | (n-1) × 33-byte compressed cosigner pubkeys, in order, excluding the device slot | |
+
+#### Response (on the LAST chunk)
+
+| Field          | Type      | Content                  | Note                     |
+| -------------- | --------- | ------------------------ | ------------------------ |
+| PK             | byte (33) | This device's public key |                          |
+| ADDR_HUMAN     | byte (??) | Multisig address string  | c32-encoded (SM…/SN…)    |
+| SW1-SW2        | byte (2)  | Return code              | see list of return codes |
+
+#### Return codes
+
+| Return code | Chunk     | Cause                                                                                                  |
+| ----------- | --------- | ------------------------------------------------------------------------------------------------------ |
+| 0x9000      | any       | INIT/ADD accepted; on LAST, the public key and address follow (after approval when Confirm = 1)        |
+| 0x6700      | INIT      | The path is shorter than 20 bytes                                                                      |
+| 0x6700      | LAST      | The payload is shorter than the 6-byte header, or longer or shorter than 6 + (n-1) × 33 bytes          |
+| 0x6983      | ADD, LAST | The payload overflows the reassembly buffer                                                            |
+| 0x6984      | INIT      | The path is not `44'/5757'/...`, `5757'/...` or `44'/1'/...`                                           |
+| 0x6984      | LAST      | Version, HashMode, m, n or DeviceKeyIndex is out of range, or the address could not be derived        |
+| 0x6986      | any       | A review is on screen or the PIN is not validated; on LAST, also when the user rejects the address    |
+| 0x6987      | ADD, LAST | No INIT was sent first, or the transfer was opened by another INS                                      |
+| 0x6B00      | any       | P2 is not 0, or P1 is not INIT, ADD or LAST                                                            |
+
+#### Notes
+
+- The device deriving its own key (rather than trusting a host-supplied one)
+  guarantees the displayed multisig address actually includes this device.
+- Key order matters for P2SH (both sequential and non-sequential): the cosigner
+  keys must be supplied in the exact order they occupy in the multisig, omitting
+  the device's own slot.
+- Follow-ups: P2WSH / P2WSH-non-sequential hash modes and uncompressed keys.
 
 ---
 
@@ -189,19 +282,33 @@ Data is defined as:
 | SIG         | byte (variable) | Signature   | DER format               |
 | SW1-SW2     | byte (2)        | Return code | see list of return codes |
 
+#### Return codes
+
+| Return code | Chunk     | Cause                                                                                                           |
+| ----------- | --------- | --------------------------------------------------------------------------------------------------------------- |
+| 0x9000      | any       | INIT/ADD accepted; on LAST, the signature follows once the user approves                                       |
+| 0x6700      | INIT      | The path is shorter than 20 bytes                                                                               |
+| 0x6983      | ADD, LAST | The payload overflows the reassembly buffer                                                                     |
+| 0x6984      | INIT      | The path is not `44'/5757'/...`, `5757'/...` or `44'/1'/...`                                                    |
+| 0x6984      | LAST      | The payload does not parse or validate (the error message follows as ASCII), or the user dismissed the blind-signing screen |
+| 0x6986      | any       | A review is on screen or the PIN is not validated; on LAST, also when the user rejects                         |
+| 0x6987      | ADD, LAST | No INIT was sent first, or the transfer was opened by another INS                                               |
+| 0x6B00      | any       | P2 is not 0, or P1 is not INIT, ADD or LAST                                                                     |
+| 0x6F01      | LAST      | The signing hash or the signature could not be computed after approval                                          |
+
 ### INS_SIGN_JWT_SECP256K1
 
 #### Command
 
-| Field   | Type     | Content                | Expected    |
-| ------- | -------- | ---------------------- | ----------- |
-| CLA     | byte (1) | Application Identifier | 0x09        |
-| INS     | byte (1) | Instruction ID         | 0x04        |
-| P1      | byte (1) | Chunk index            | 1 to N      |
-| P2      | byte (1) | Total chunks           | N           |
-| L       | byte (1) | Bytes in payload       | (depends)   |
-| Path    | byte (?) | Derivation Path Data   | (see below) |
-| Message | byte (?) | JWT message to sign    | (variable)  |
+| Field   | Type     | Content                | Expected                         |
+| ------- | -------- | ---------------------- | -------------------------------- |
+| CLA     | byte (1) | Application Identifier | 0x09                             |
+| INS     | byte (1) | Instruction ID         | 0x04                             |
+| P1      | byte (1) | Payload desc           | 0 = init, 1 = add, 2 = last      |
+| P2      | byte (1) | ----                   | 0                                |
+| L       | byte (1) | Bytes in payload       | (depends)                        |
+| Path    | byte (?) | Derivation Path Data   | INIT chunk only (see below)      |
+| Message | byte (?) | JWT message to sign    | ADD/LAST chunks (variable)       |
 
 ##### Derivation Path
 
@@ -226,11 +333,10 @@ Data is defined as:
 
 1. The message is split into chunks of up to 250 bytes each.
 2. Each chunk is sent in a separate APDU command.
-3. P1 indicates the current chunk index (starting from 1).
-4. P2 indicates the total number of chunks.
-5. The first chunk includes the derivation path.
-6. Subsequent chunks only contain message data.
-7. The device processes all chunks and returns the final result.
+3. The first chunk (P1 = 0, INIT) carries only the derivation path, `m/888'/0'/<account>`.
+4. The message follows in ADD chunks (P1 = 1) and ends with one LAST chunk (P1 = 2). P2 is 0 on every chunk.
+5. The device processes all chunks and returns the final result.
+6. Return codes are those of INS_SIGN_SECP256K1, except that the path on the INIT chunk must be the identity path above (0x6984 otherwise).
 
 #### Notes
 

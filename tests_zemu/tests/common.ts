@@ -67,20 +67,32 @@ export const SIP10_DATA = [
       snapshotSuffix: 'sign_sip10_contract_with_post_conditions'
     },
     {
+      // The one post-condition restates the transfer: the sender sends exactly the 20000 sBTC
+      // the card shows. Only then is it hidden (audit LOW-4).
       name: 'sign_sip10_contract_with_post_conditions_hidden',
       postConditions: [
         {
           address: 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE',
           code: FungibleConditionCode.Equal,
-          amount: 1000000n
-        },
-        {
-          address: 'ST39RCH114B48GY5E0K2Q4SV28XZMXW4ZZTN8QSS5',
-          code: FungibleConditionCode.Equal,
-          amount: 1005020n
+          amount: 20000n,
+          ft: true
         }
       ],
       snapshotSuffix: 'sign_sip10_contract_with_post_conditions_hidden'
+    },
+    {
+      // Same sender and token, another amount: the condition says something the card does not,
+      // so it is shown (audit LOW-4).
+      name: 'sign_sip10_contract_with_ft_post_condition_other_amount',
+      postConditions: [
+        {
+          address: 'SP2ZD731ANQZT6J4K3F5N8A40ZXWXC1XFXHVVQFKE',
+          code: FungibleConditionCode.Equal,
+          amount: 20001n,
+          ft: true
+        }
+      ],
+      snapshotSuffix: 'sign_sip10_contract_with_ft_post_condition_other_amount'
     },
     {
       name: 'review_non_transfer_registry_call',

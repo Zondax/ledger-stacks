@@ -169,7 +169,8 @@ $(OBJECT_FILES): | rust
 
 .PHONY: rust
 rust:
-	cd rust && RUSTC_BOOTSTRAP=1 CARGO_HOME="$(CURDIR)/rust/.cargo" TARGET_NAME=$(TARGET_NAME) \
+	mkdir -p "$(CURDIR)/rust/target/tmp"
+	cd rust && RUSTC_BOOTSTRAP=1 CARGO_HOME="$(CURDIR)/rust/.cargo" TMPDIR="$(CURDIR)/rust/target/tmp" TARGET_NAME=$(TARGET_NAME) \
 	cargo build -Z build-std=core --release --target $(RUST_TARGET)
 
 .PHONY: rust_clean

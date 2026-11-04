@@ -129,6 +129,20 @@ async function patchedPreSignHash(
 }
 
 // Helper function to create STX post conditions with the new Pc API
+// A fungible-token post-condition on `contractId`'s token `tokenName`.
+function createFtPostCondition(address: string, code: FungibleConditionCode, amount: bigint, contractId: string, tokenName: string) {
+  const builder = Pc.principal(address)
+  const contract = contractId as `${string}.${string}`
+  switch (code) {
+    case FungibleConditionCode.Equal:
+      return builder.willSendEq(amount).ft(contract, tokenName)
+    case FungibleConditionCode.LessEqual:
+      return builder.willSendLte(amount).ft(contract, tokenName)
+    default:
+      throw new Error(`unsupported condition code ${code}`)
+  }
+}
+
 function createStxPostCondition(address: string, code: FungibleConditionCode, amount: bigint) {
   const builder = Pc.principal(address)
   switch (code) {
@@ -788,17 +802,14 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`, true, 0, undefined, true)
+      // Its tuple, list and optional arguments are shown one item per leaf, so this reviews
+      // normally -- no blind-signing opt-in.
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-contract_call_long_args`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1107,17 +1118,14 @@ describe('Standard', function () {
       const serializeTx = transaction.serialize()
 
       const blob = Buffer.from(serializeTx, 'hex')
-      // This transaction carries data the device cannot display (opaque contract-call
-      // arguments, or a contract deploy whose Clarity source is never shown), so the app
-      // refuses to sign it unless the user has opted into blind signing.
-      await sim.toggleBlindSigning()
-
       const signatureRequest = app.sign(path, blob)
 
       // Wait until we are not in the main menu
       await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
 
-      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`, true, 0, undefined, true)
+      // Its tuple, list and optional arguments are shown one item per leaf, so this reviews
+      // normally -- no blind-signing opt-in.
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-swap_with_post_conditions`)
 
       const signature = await signatureRequest
       console.log(signature)
@@ -1453,10 +1461,13 @@ describe('Standard', function () {
           fee: fee,
           nonce: nonce,
           publicKey: devicePublicKey,
-          postConditions: data.postConditions ? [
-            createStxPostCondition(data.postConditions[0].address, data.postConditions[0].code, data.postConditions[0].amount),
-            createStxPostCondition(data.postConditions[1].address, data.postConditions[1].code, data.postConditions[1].amount),
-          ] : [],
+          postConditions: data.postConditions
+            ? data.postConditions.map((pc: any) =>
+                pc.ft
+                  ? createFtPostCondition(pc.address, pc.code, pc.amount, `${contract_address}.${contract_name}`, 'sbtc-token')
+                  : createStxPostCondition(pc.address, pc.code, pc.amount),
+              )
+            : [],
         }
 
         const transaction = await makeUnsignedContractCall(txOptions)
@@ -1656,6 +1667,70 @@ describe('Standard', function () {
       // @ts-ignore
       const signature1Ok = ec.verify(presig_hash, signature1_obj, devicePublicKey, 'hex')
       expect(signature1Ok).toEqual(true)
+    } finally {
+      await sim.close()
+    }
+  })
+
+  // Regression for the "ledger has rejected the payload" bug on newer Clarity versions:
+  // a deploy that carries an explicit clarityVersion serializes as a VersionedSmartContract
+  // (0x06) payload whose first body byte is the version. The app used to whitelist versions
+  // 1-4 and reject anything else on-device, so a Clarity 6 deploy (valid on pox-5 testnet)
+  // failed even though a software wallet signed it. The parser now accepts any non-zero
+  // version and shows it as a "Clarity Version" review screen.
+  test.concurrent.each(models)('sign clarity_version_6_deployment', async function (m) {
+    const sim = new Zemu(m.path)
+    const path = "m/44'/5757'/5'/0/0"
+    try {
+      await sim.start({ ...defaultOptions, model: m.name })
+      const app = new StacksApp(sim.getTransport())
+
+      const pkResponse = await app.getAddressAndPubKey(path, AddressVersion.TestnetSingleSig)
+      expect(pkResponse.returnCode).toEqual(0x9000)
+      const devicePublicKey = pkResponse.publicKey.toString('hex')
+
+      const codeBody = `(define-data-var counter uint u0)
+(define-public (increment) (ok (var-set counter (+ (var-get counter) u1))))`
+
+      const transaction = await makeUnsignedContractDeploy({
+        contractName: 'clarity6-contract',
+        codeBody,
+        publicKey: devicePublicKey,
+        network: STACKS_TESTNET,
+        fee: 10000n,
+        nonce: 0n,
+        // The @stacks/transactions ClarityVersion enum lags the wire format (it stops at
+        // Clarity5), but the field is serialized as a raw byte, so cast to emit version 6 --
+        // the exact payload from the reported transaction.
+        clarityVersion: 6 as any,
+      })
+
+      const blob = Buffer.from(transaction.serialize(), 'hex')
+      // Contract deploys never render their Clarity source, so signing requires blind signing.
+      await sim.toggleBlindSigning()
+
+      const signatureRequest = app.sign(path, blob)
+      await sim.waitUntilScreenIsNot(sim.getMainMenuSnapshot())
+      await sim.compareSnapshotsAndApprove('.', `${m.prefix.toLowerCase()}-sign_clarity_version_6_deployment`, true, 0, undefined, true)
+
+      const signature = await signatureRequest
+      expect(signature.returnCode).toEqual(0x9000)
+      expect(signature.signatureVRS).toBeDefined()
+
+      // Verify the device signed the exact bytes we sent.
+      const txSigHashPreSign = sigHashPreSign(
+        transaction.signBegin(),
+        // @ts-ignore
+        transaction.auth.authType,
+        transaction.auth.spendingCondition?.fee,
+        transaction.auth.spendingCondition?.nonce,
+      )
+      const presig_hash = Buffer.from(txSigHashPreSign, 'hex')
+      const ec = new EC('secp256k1')
+      const sig = signature.signatureVRS.toString('hex')
+      const sig_obj = { r: sig.substr(2, 64), s: sig.substr(66, 64) }
+      // @ts-ignore
+      expect(ec.verify(presig_hash, sig_obj, devicePublicKey, 'hex')).toEqual(true)
     } finally {
       await sim.close()
     }
@@ -2036,11 +2111,13 @@ describe('Standard', function () {
   })
 
   // SIP-040 post-condition handling — issue #224 (HODLMM Zest/STX "remove liquidity"
-  // failed on Ledger with "Data invalid"). These transactions carry 84 post-conditions
-  // (81x NFT MaySend + 2x FT + 1x STX, Deny mode). Identical MaySend NFT conditions are
-  // collapsed into one "Count: N" display item so the screen count stays under the
-  // device's display-item ceiling.
-  // Real captured unsigned transaction blobs (issue #224), keyed by label.
+  // failed on Ledger with "Data invalid"). These transactions carry one post-condition per
+  // liquidity bin: 84 (81x NFT MaySend + 2x FT + 1x STX, Deny mode) for the two blobs from
+  // #224, and 158 (155x NFT MaySend + 2x FT + 1x STX) for the 145-bin position in issue
+  // #238, which the 128-condition parse cap then still rejected. Identical MaySend NFT
+  // conditions are collapsed into one "Count: N" display item so the screen count stays
+  // under the device's display-item ceiling, whatever the position width.
+  // Real captured unsigned transaction blobs, keyed by label.
   const dlmmFixtures: Record<string, string> = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, 'dlmm_post_conditions.json'), 'utf8'),
   )

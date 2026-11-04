@@ -1,5 +1,6 @@
 //! Rust interfaces to Ledger SDK APIs.
 pub const SHA256_LEN: usize = 32;
+pub const RIPEMD160_LEN: usize = 20;
 
 #[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
@@ -16,37 +17,89 @@ pub fn c_zemu_log_stack<S: AsRef<[u8]>>(_s: S) {
     std::println!("{:?}", std::str::from_utf8(_s.as_ref()).unwrap());
 }
 
-// extern function that uses the device sdk to compute a hash
-// (only linked on device; host/test builds hash via the sha2 crate below)
+// extern function that uses the device sdk to compute a hash.
+//
+// Linked on device and in the CMake host builds, which compile this crate with `cpp_test` and
+// provide the symbol from app/src/c_api/rust.c; only `cargo test` hashes via the sha2 crate
+// below.
+//
+// `in_len` mirrors the `uint32_t` of the C prototype in `app/src/c_api/rust.h`. It used to be
+// declared `u16` here, which silently truncated any input above 64 KiB -- reachable on every
+// target whose transaction buffer is 85 KiB -- and made the device sign a digest of a prefix of
+// the message it was given.
+//
+// It returns false when the SDK could not compute the digest. That used to be dropped, so a
+// failure handed back an all-zero digest as if it were the real one.
 #[cfg(not(any(test, feature = "fuzzing")))]
 extern "C" {
-    pub fn hash_sha256(in_data: *const u8, in_len: u16, out: *mut u8);
+    pub fn hash_sha256(in_data: *const u8, in_len: u32, out: *mut u8) -> bool;
 }
 
 #[derive(Debug)]
-pub struct OutputTooSmall;
+pub enum HashError {
+    /// The output buffer cannot hold the digest.
+    OutputTooSmall,
+    /// The device failed to compute the digest. Host builds hash in Rust, which cannot fail.
+    #[cfg_attr(any(test, feature = "fuzzing"), allow(dead_code))]
+    Failed,
+}
 
 #[cfg(not(any(test, feature = "fuzzing")))]
-pub fn sha256(data: &[u8], output: &mut [u8]) -> Result<(), OutputTooSmall> {
+pub fn sha256(data: &[u8], output: &mut [u8]) -> Result<(), HashError> {
     if output.len() < SHA256_LEN {
-        return Err(OutputTooSmall);
+        return Err(HashError::OutputTooSmall);
     }
+    let len = core::convert::TryFrom::try_from(data.len()).map_err(|_| HashError::Failed)?;
 
-    unsafe {
-        hash_sha256(data.as_ptr(), data.len() as _, output.as_mut_ptr());
+    if unsafe { hash_sha256(data.as_ptr(), len, output.as_mut_ptr()) } {
+        Ok(())
+    } else {
+        Err(HashError::Failed)
     }
-
-    Ok(())
 }
 
 #[cfg(any(test, feature = "fuzzing"))]
-pub fn sha256(data: &[u8], out: &mut [u8]) -> Result<(), OutputTooSmall> {
+pub fn sha256(data: &[u8], out: &mut [u8]) -> Result<(), HashError> {
     use sha2::Digest;
     use sha2::Sha256;
     let digest = Sha256::digest(data);
     if out.len() != digest.len() {
-        return Err(OutputTooSmall);
+        return Err(HashError::OutputTooSmall);
     }
     out.copy_from_slice(digest.as_ref());
+    Ok(())
+}
+
+// extern function that uses the device sdk to compute a ripemd160 hash. Like `hash_sha256`,
+// `in_len` mirrors the C `uint32_t` (it was declared `u16` here), and false means the digest
+// could not be computed: the multisig address must then fail, not be built from a zero hash.
+#[cfg(not(any(test, feature = "fuzzing")))]
+extern "C" {
+    pub fn hash_ripemd160(in_data: *const u8, in_len: u32, out: *mut u8) -> bool;
+}
+
+#[cfg(not(any(test, feature = "fuzzing")))]
+pub fn ripemd160(data: &[u8], output: &mut [u8]) -> Result<(), HashError> {
+    if output.len() < RIPEMD160_LEN {
+        return Err(HashError::OutputTooSmall);
+    }
+    let len = core::convert::TryFrom::try_from(data.len()).map_err(|_| HashError::Failed)?;
+
+    if unsafe { hash_ripemd160(data.as_ptr(), len, output.as_mut_ptr()) } {
+        Ok(())
+    } else {
+        Err(HashError::Failed)
+    }
+}
+
+#[cfg(any(test, feature = "fuzzing"))]
+pub fn ripemd160(data: &[u8], out: &mut [u8]) -> Result<(), HashError> {
+    use ripemd::Digest;
+    use ripemd::Ripemd160;
+    let digest = Ripemd160::digest(data);
+    if out.len() < RIPEMD160_LEN {
+        return Err(HashError::OutputTooSmall);
+    }
+    out[..RIPEMD160_LEN].copy_from_slice(digest.as_ref());
     Ok(())
 }
