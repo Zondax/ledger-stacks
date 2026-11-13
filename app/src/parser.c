@@ -36,16 +36,13 @@ static zxerr_t parser_deallocate();
 
 parser_tx_t parser_state;
 // This buffer will store parser_state.
-// Its size must be >= size_of::<ParsedObj>() (Rust). The post-condition list is stored
-// inline (NUM_SUPPORTED_POST_CONDITIONS slices), so the struct grows with that cap *and*
-// with pointer width: each slice is 8 bytes on the 32-bit device but 16 on a 64-bit host
-// (unit tests), making the same struct ~2x larger there. 2048 covers the device layout;
-// the host needs more, so size per pointer width to avoid overflowing parser_allocate().
-#if UINTPTR_MAX > 0xFFFFFFFFu
-#define PARSER_BUFFER_SIZE 4096
-#else
-#define PARSER_BUFFER_SIZE 2048
-#endif
+// Its size must be >= size_of::<ParsedObj>() (Rust). Post-conditions are no longer stored
+// one slice each -- PostConditions keeps the serialized block and re-walks it on demand --
+// so the struct no longer grows with NUM_SUPPORTED_POST_CONDITIONS. What is left is ~492
+// bytes on the 32-bit device and ~584 on a 64-bit host (unit tests, where every pointer is
+// twice as wide), so a single size covers both. Guarded by the size_of assert in
+// parsed_obj.rs at compile time and by parser_allocate() at run time.
+#define PARSER_BUFFER_SIZE 1024
 // Ensure 8-byte alignment for ARM64 and other 64-bit architectures
 static uint8_t parser_buffer[PARSER_BUFFER_SIZE] __attribute__((aligned(8)));
 
@@ -162,8 +159,8 @@ int8_t parser_is_transaction_multisig() {
     return _is_multisig(&parser_state);
 }
 
-uint32_t parser_num_multisig_fields() {
-    return _num_multisig_fields(&parser_state);
+parser_error_t parser_num_multisig_fields(uint32_t *num_fields) {
+    return _num_multisig_fields(&parser_state, num_fields);
 }
 
 parser_error_t parser_get_multisig_field(uint32_t index, uint8_t *id, uint8_t **data) {

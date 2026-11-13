@@ -16,6 +16,7 @@ clippy = []
 fuzzing = [
     "no-std-compat/std",
     "sha2",              # Add sha2 as a dependency when fuzzing is enabled
+    "ripemd",            # Add ripemd as a dependency when fuzzing is enabled
 ]
 
 [dependencies]
@@ -28,8 +29,9 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-json-core = { version = "0.4.0", features = ["std"] }
 nom = { version = "7.1.2", default-features = false }
 lexical-core = { version = "0.7", features = ["libm"] }
-# Make sha2 an optional dependency, enabled by the fuzzing feature
+# Make sha2/ripemd optional dependencies, enabled by the fuzzing feature
 sha2 = { version = "0.9.1", optional = true }
+ripemd = { version = "0.1", optional = true }
 
 [dependencies.arrayvec]
 version = "0.5.1"
@@ -43,6 +45,7 @@ no-std-compat = { version = "0.4.1", features = ["std"] }
 hex = { version = "0.4" }
 serde = { version = "1.0", features = ["derive"] }
 sha2 = { version = "0.9.1" }
+ripemd = { version = "0.1" }
 base64 = { version = "0.13.0" }
 
 # Additional dependencies for fuzzing

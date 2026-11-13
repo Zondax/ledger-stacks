@@ -14,15 +14,18 @@ pub const STX_DECIMALS: u8 = 6;
 
 pub const C32_ENCODED_ADDRS_LENGTH: usize = 48;
 
-// Max post-conditions we store (and therefore can sign). Chosen as ~1.5x the largest
-// real-world transaction observed (an 84-post-condition DLMM liquidity withdrawal,
-// issue #224), rounded to a power of two. Each slot is one slice (8 bytes on the 32-bit
-// device), so 128 slots keep `ParsedObj` within the C-side parser buffer (see the
-// size_of assert in parsed_obj.rs). Transactions with more post-conditions are rejected
-// at parse. Note: the *display* path additionally relies on aggregating near-duplicate
+// Max post-conditions we accept (and therefore can sign). Post-conditions are *not*
+// stored one slice each: `PostConditions` keeps the serialized block and re-walks it on
+// demand, so `ParsedObj` no longer grows with this number and the cap costs no RAM (see
+// tx_post_conditions.rs and the size_of assert in parsed_obj.rs). What it bounds is
+// parse/display *time*, which is O(conditions x distinct NFT groups). 512 covers the
+// widest real transactions by a wide margin — the largest observed is a 158-post-condition
+// DLMM liquidity withdrawal from a 145-bin position (issue #238), itself already twice
+// the 84 of issue #224. Transactions with more post-conditions are rejected at parse.
+// Note: the *display* path additionally relies on aggregating near-duplicate
 // post-conditions to stay under the device's ~200 display-item ceiling; transactions
 // with many *distinct* post-conditions are rejected gracefully at num_items().
-pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 128;
+pub const NUM_SUPPORTED_POST_CONDITIONS: usize = 512;
 pub const SIGNATURE_LEN: usize = 65;
 pub const PUBKEY_LEN: usize = 33;
 pub const MEMO_LEN: usize = 34;
@@ -207,9 +210,9 @@ impl<'a> ContractName<'a> {
         let (rem, name) = ClarityName::from_bytes(bytes)?;
 
         // we are using the ClarityName inner type to wrap-up the parsing which is the same for
-        // Contract names, but the docs do not say nothing about what is a valid clarity name either
-        // ascii or utf8 values, lets check it here.
-        if !name.0.is_ascii() {
+        // Contract names. A valid one is `^[a-zA-Z]([a-zA-Z0-9]|[-_])*$`, so anything that is not
+        // printable ASCII is malformed -- and a NUL would cut the name short on screen.
+        if !crate::zxformat::is_printable_ascii(name.0) {
             return Err(ParserError::InvalidContractName.into());
         }
 
@@ -242,7 +245,16 @@ impl<'a> ClarityName<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<(&'a [u8], Self), nom::Err<ParserError>> {
         let (rem, name) = Self::read_as_bytes(bytes)?;
         // Omit the first byte as it is the encoded length
-        Ok((rem, Self(&name[1..])))
+        let name = &name[1..];
+
+        // Function, asset and tuple-key names are shown as they are. Clarity only allows
+        // printable ASCII in a name, and a NUL would end it early on screen while the
+        // signature still covers the bytes after it.
+        if !crate::zxformat::is_printable_ascii(name) {
+            return Err(ParserError::UnexpectedValue.into());
+        }
+
+        Ok((rem, Self(name)))
     }
 
     #[inline(never)]

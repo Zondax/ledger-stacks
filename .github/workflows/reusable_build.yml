@@ -10,6 +10,12 @@ on:
       - master
       - dev
 
+permissions:
+  actions: write
+  contents: read
+  pull-requests: write
+  packages: read
+
 jobs:
   build_application:
     name: Build application using the reusable workflow

@@ -103,9 +103,8 @@ impl<'a> Jwt<'a> {
         Self::parse_header_payload(data).is_ok()
     }
 
-    pub fn get_hash(&self, output: &mut [u8; SHA256_LEN]) {
-        // wont panic as output is the right len
-        sha256(self.jwt_data, output.as_mut()).unwrap()
+    pub fn get_hash(&self, output: &mut [u8; SHA256_LEN]) -> Result<(), ParserError> {
+        sha256(self.jwt_data, output.as_mut()).map_err(|_| ParserError::CryptoError)
     }
 
     pub fn num_items(&self) -> u8 {
@@ -131,7 +130,7 @@ impl<'a> Jwt<'a> {
             .map_err(|_| ParserError::UnexpectedBufferEnd)?;
 
         let mut out_data = [0u8; SHA256_LEN];
-        self.get_hash(&mut out_data);
+        self.get_hash(&mut out_data)?;
         // hex encode the hash
         let mut hash_str = [0u8; SHA256_LEN * 2];
         encode_to_slice(out_data.as_ref(), hash_str.as_mut())

@@ -25,15 +25,35 @@ impl<'a> Domain<'a> {
         // Domain is a tuple with 3 elements
         let tuple = value.tuple().ok_or(ParserError::InvalidStructuredMsg)?;
 
+        // Each key is matched independently, so counting alone would accept a tuple that repeats
+        // one key and omits another -- `{name, name, version}` looked like three valid fields.
+        // `get_item` walks the tuple by position and labels each row with whatever key it finds,
+        // so the user saw "name" twice and never saw the chain id, while the domain hash still
+        // covered all three fields.
+        let mut seen = [false; Self::LEN];
         let mut items = 0;
         for (key, value) in tuple.iter() {
             let value_id = value.value_id();
-            match (key.name(), value_id) {
-                (b"name", ValueId::StringAscii) => {}
-                (b"version", ValueId::StringAscii) => {}
-                (b"chain-id", ValueId::UInt) => {}
+            let slot = match (key.name(), value_id) {
+                (b"name", ValueId::StringAscii) => 0,
+                (b"version", ValueId::StringAscii) => 1,
+                (b"chain-id", ValueId::UInt) => 2,
                 _ => return Err(ParserError::InvalidStructuredMsg.into()),
+            };
+            // `get_item` shows the name and version as they are, and the screen stops at a NUL:
+            // `app\0evil` would review as `app` while the domain hash covers every byte.
+            if value_id == ValueId::StringAscii {
+                let printable = value
+                    .string_ascii()
+                    .is_some_and(|s| crate::zxformat::is_printable_ascii(s.content()));
+                if !printable {
+                    return Err(ParserError::InvalidStructuredMsg.into());
+                }
             }
+            if seen[slot] {
+                return Err(ParserError::InvalidStructuredMsg.into());
+            }
+            seen[slot] = true;
             items += 1;
         }
 
@@ -199,21 +219,19 @@ impl<'a> StructuredMsg<'a> {
         to_hash[..prefix_len].copy_from_slice(&prefix[..]);
 
         // 1. get domain hash
-        // wont panic as out has the right len
         let domain = self.domain();
         sha256(
             domain.bytes(),
             &mut to_hash[prefix_len..prefix_len + SHA256_LEN],
         )
-        .unwrap();
+        .map_err(|_| ParserError::CryptoError)?;
         // 1. get msg hash
-        // wont panic as out has the right len
         let len = to_hash.len();
-        sha256(self.msg(), &mut to_hash[len - SHA256_LEN..]).unwrap();
+        sha256(self.msg(), &mut to_hash[len - SHA256_LEN..])
+            .map_err(|_| ParserError::CryptoError)?;
 
         // compute msg hash
-        // wont panic as out is SHA256_LEN bytes len
-        sha256(&to_hash[..], &mut out[0..SHA256_LEN]).unwrap();
+        sha256(&to_hash[..], &mut out[0..SHA256_LEN]).map_err(|_| ParserError::CryptoError)?;
 
         Ok(())
     }
@@ -243,8 +261,7 @@ impl<'a> StructuredMsg<'a> {
 
                 // 1. get prefix hash
                 let mut hash = [0; SHA256_LEN];
-                // wont panic as we are passing an output buffer longer enough
-                self.get_hash(&mut hash).unwrap();
+                self.get_hash(&mut hash)?;
 
                 // buffer to store the hex hash
                 let mut hex = [0; SHA256_LEN * 2];
@@ -265,9 +282,12 @@ mod test {
 
     use super::*;
 
+    // These fixtures carry the "SIP018" prefix so they reach domain validation. Without it
+    // `parse_prefix` rejects them on the first byte and the domain is never looked at, which
+    // would make the assertions below pass for any input at all.
     #[test]
     fn parse_bad_domain_name() {
-        let input = "0c0000000308636861696e2d69640100000000000000000000000000025983016e0d00000006537461636b730776657273696f6e0d00000005312e302e30";
+        let input = "5349503031380c0000000308636861696e2d69640100000000000000000000000000025983016e0d00000006537461636b730776657273696f6e0d00000005312e302e30";
         let bytes = hex::decode(input).unwrap();
         let msg = StructuredMsg::from_bytes(&bytes);
         assert!(msg.is_err());
@@ -275,10 +295,58 @@ mod test {
 
     #[test]
     fn parse_bad_domain_name_type() {
-        let input = "0c0000000308636861696e2d69640100000000000000000000000000025983046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0d00000005312e302e30";
+        let input = "5349503031380c0000000308636861696e2d69640100000000000000000000000000025983046e616d650c0000000308636861696e2d69640100000000000000000000000000025983046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0d00000005312e302e30";
         let bytes = hex::decode(input).unwrap();
         let msg = StructuredMsg::from_bytes(&bytes);
         assert!(msg.is_err());
+    }
+
+    /// A domain that repeats a key is rejected instead of passing on the field count alone.
+    ///
+    /// Each key is checked on its own, so `{name, name, version}` satisfied both the count and
+    /// every per-field check while carrying no chain id. The review lists fields by position,
+    /// so it showed "name" twice and no chain id, and the domain hash still covered all three.
+    #[test]
+    fn parse_domain_repeating_a_key_is_rejected() {
+        // {name, name, version} -- chain-id omitted.
+        let dup_name = "5349503031380c00000003046e616d650d00000006537461636b73046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300d0000000568656c6c6f";
+        // {name, version, version} -- a collision in a different slot.
+        let dup_version = "5349503031380c00000003046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300776657273696f6e0d00000005322e302e300d0000000568656c6c6f";
+
+        for input in [dup_name, dup_version] {
+            let bytes = hex::decode(input).unwrap();
+            assert!(
+                StructuredMsg::from_bytes(&bytes).is_err(),
+                "accepted a domain repeating a key: {}",
+                input
+            );
+        }
+
+        // The same shape with three distinct keys still parses, so the check cannot be
+        // tightened into rejecting well-formed domains without this failing.
+        let valid = "5349503031380c0000000308636861696e2d69640100000000000000000000000000000001046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300d0000000568656c6c6f";
+        let bytes = hex::decode(valid).unwrap();
+        StructuredMsg::from_bytes(&bytes).unwrap();
+    }
+
+    /// The domain name and version are shown as they are, and the screen stops at a NUL, so a
+    /// name of `St\0cks` would review as `St`. Such a domain is rejected (audit HIGH-5).
+    #[test]
+    fn parse_domain_with_unprintable_string_is_rejected() {
+        let valid = "5349503031380c0000000308636861696e2d69640100000000000000000000000000000001046e616d650d00000006537461636b730776657273696f6e0d00000005312e302e300d0000000568656c6c6f";
+        // "Stacks" -> "St\0cks", and "1.0.0" -> "1.0\n0".
+        for (from, to) in [
+            ("537461636b73", "537400636b73"),
+            ("312e302e30", "312e300a30"),
+        ] {
+            let input = valid.replacen(from, to, 1);
+            let bytes = hex::decode(&input).unwrap();
+            assert!(
+                StructuredMsg::from_bytes(&bytes).is_err(),
+                "accepted {}",
+                input
+            );
+        }
     }
 
     #[test]
